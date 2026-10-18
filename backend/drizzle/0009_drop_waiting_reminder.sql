@@ -1,0 +1,1 @@
+ALTER TABLE "items" DROP COLUMN "waiting_reminder_at";

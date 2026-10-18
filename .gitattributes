@@ -1,0 +1,2 @@
+# Zeilenenden im Repository und beim Auschecken immer LF, auch unter Windows (Bash-Skripte, Docker-Build)
+* text=auto eol=lf

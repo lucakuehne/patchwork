@@ -1,0 +1,19 @@
+{
+  "name": "patchwork",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Störungen und Aufgaben an einem Ort",
+  "packageManager": "pnpm@10.11.0",
+  "scripts": {
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "build": "pnpm --filter frontend build && pnpm --filter backend build",
+    "build:devtools": "pnpm --filter frontend build:devtools && pnpm --filter backend build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter backend db:generate"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

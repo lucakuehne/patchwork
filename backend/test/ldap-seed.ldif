@@ -1,0 +1,51 @@
+dn: ou=people,dc=test,dc=local
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=test,dc=local
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=lena,ou=people,dc=test,dc=local
+objectClass: inetOrgPerson
+uid: lena
+cn: Lena Lind
+sn: Lind
+displayName: Lena Lind
+mail: lena@test.local
+userPassword: lena-passwort
+
+dn: uid=otto,ou=people,dc=test,dc=local
+objectClass: inetOrgPerson
+uid: otto
+cn: Otto Ober
+sn: Ober
+displayName: Otto Ober
+mail: otto@test.local
+userPassword: otto-passwort
+
+dn: uid=sam,ou=people,dc=test,dc=local
+objectClass: inetOrgPerson
+uid: sam
+cn: Sam Standard
+sn: Standard
+displayName: Sam Standard
+mail: sam@test.local
+userPassword: sam-passwort
+
+dn: uid=nomail,ou=people,dc=test,dc=local
+objectClass: inetOrgPerson
+uid: nomail
+cn: Nora Ohnemail
+sn: Ohnemail
+userPassword: nomail-passwort
+
+dn: cn=patchwork-it,ou=groups,dc=test,dc=local
+objectClass: groupOfUniqueNames
+cn: patchwork-it
+uniqueMember: uid=lena,ou=people,dc=test,dc=local
+
+dn: cn=patchwork-admin,ou=groups,dc=test,dc=local
+objectClass: groupOfUniqueNames
+cn: patchwork-admin
+uniqueMember: uid=otto,ou=people,dc=test,dc=local
