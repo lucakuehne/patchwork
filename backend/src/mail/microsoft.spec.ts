@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { decryptSecret, encryptSecret } from '../common/crypto';
 import type { Mailbox } from '../db/schema';
@@ -26,6 +27,19 @@ function microsoft(responses: Record<string, Response[]>) {
 }
 
 afterEach(() => vi.unstubAllGlobals());
+
+const mailbox = { id: 'm1', address: 'helpdesk@firma.ch' } as Mailbox;
+
+function service(clientId = 'app-id') {
+  const mailboxes = { storeMicrosoftLogin: vi.fn() };
+  const transport = { forget: vi.fn() };
+  const settings = { get: async () => ({ clientId }) };
+  return {
+    auth: new MicrosoftAuthService(settings as never, mailboxes as never, transport as never),
+    mailboxes,
+    transport,
+  };
+}
 
 describe('Hilfsfunktionen', () => {
   it('liest den Tenant aus dem Token-Endpunkt', () => {
@@ -56,20 +70,59 @@ describe('Hilfsfunktionen', () => {
   });
 });
 
+describe('Anmeldung im Browser', () => {
+  it('öffnet die Anmeldeseite mit PKCE und tauscht den eingefügten Code gegen Tokens', async () => {
+    const calls = microsoft({
+      '/firma.ch/v2.0/.well-known/openid-configuration': [json({ token_endpoint: TOKEN_URL })],
+      '/oauth2/v2.0/token': [
+        json({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, id_token: idToken({ preferred_username: 'luca@firma.ch' }) }),
+      ],
+    });
+    const { auth, mailboxes, transport } = service();
+
+    const authorize = new URL((await auth.startBrowser(mailbox)).url);
+    expect(`${authorize.origin}${authorize.pathname}`).toBe(`https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/authorize`);
+    const params = authorize.searchParams;
+    expect(params.get('client_id')).toBe('app-id');
+    expect(params.get('response_type')).toBe('code');
+    expect(params.get('redirect_uri')).toBe('https://login.microsoftonline.com/common/oauth2/nativeclient');
+    expect(params.get('code_challenge_method')).toBe('S256');
+    expect(params.get('scope')).toContain('https://outlook.office.com/SMTP.Send');
+
+    const pasted = `https://login.microsoftonline.com/common/oauth2/nativeclient?code=abc-123&state=${params.get('state')}&session_state=x`;
+    expect(await auth.finishBrowser(mailbox, ` ${pasted} `)).toEqual({ status: 'done', account: 'luca@firma.ch' });
+    const form = calls[1]!.form;
+    expect(form.get('grant_type')).toBe('authorization_code');
+    expect(form.get('code')).toBe('abc-123');
+    expect(form.get('redirect_uri')).toBe('https://login.microsoftonline.com/common/oauth2/nativeclient');
+    // Der geheime Prüfwert passt zum Hash auf der Anmeldeseite
+    expect(createHash('sha256').update(form.get('code_verifier')!).digest('base64url')).toBe(params.get('code_challenge'));
+
+    const [id, login] = mailboxes.storeMicrosoftLogin.mock.calls[0]!;
+    expect(id).toBe('m1');
+    expect(login).toMatchObject({ tokenUrl: TOKEN_URL, clientId: 'app-id', account: 'luca@firma.ch' });
+    expect(decryptSecret(login.refreshTokenEnc)).toBe('rt');
+    expect(transport.forget).toHaveBeenCalledWith('m1');
+    // Dieselbe Adresse ein zweites Mal einfügen geht nicht
+    await expect(auth.finishBrowser(mailbox, pasted)).rejects.toThrow(/abgelaufen/);
+  });
+
+  it('erkennt Adressen ohne Code, fremde und abgelehnte Anmeldungen', async () => {
+    microsoft({ '/firma.ch/v2.0/.well-known/openid-configuration': [json({ token_endpoint: TOKEN_URL })] });
+    const { auth } = service();
+    await auth.startBrowser(mailbox);
+    await expect(auth.finishBrowser(mailbox, 'irgendwas')).rejects.toThrow(/kein Anmeldecode/);
+    await expect(auth.finishBrowser(mailbox, '?code=abc&state=fremd')).rejects.toThrow(/gehört nicht zu dieser Anmeldung/);
+    await expect(
+      auth.finishBrowser(
+        mailbox,
+        'https://login.microsoftonline.com/common/oauth2/nativeclient?error=access_denied&error_description=AADSTS53003%3A+Blocked+by+Conditional+Access',
+      ),
+    ).rejects.toThrow(/bedingten Zugriff.*\(AADSTS53003\)$/);
+  });
+});
+
 describe('Anmeldung mit Code', () => {
-  const mailbox = { id: 'm1', address: 'helpdesk@firma.ch' } as Mailbox;
-
-  function service(clientId = 'app-id') {
-    const mailboxes = { storeMicrosoftLogin: vi.fn() };
-    const transport = { forget: vi.fn() };
-    const settings = { get: async () => ({ clientId }) };
-    return {
-      auth: new MicrosoftAuthService(settings as never, mailboxes as never, transport as never),
-      mailboxes,
-      transport,
-    };
-  }
-
   it('ermittelt den Tenant aus der Domain, zeigt den Code und speichert die Anmeldung', async () => {
     const calls = microsoft({
       '/firma.ch/v2.0/.well-known/openid-configuration': [json({ token_endpoint: TOKEN_URL })],

@@ -255,31 +255,104 @@ async function saveSetup() {
   }
 }
 
-// ---- Microsoft 365: Anmeldung eines Postfachs mit Code ----
+// ---- Microsoft 365: Anmeldung eines Postfachs, im Browser oder mit Code ----
 
 interface Login {
   mailbox: Mailbox;
+  mode: 'browser' | 'code';
+  /** Im Browser: Adresse der Anmeldeseite und eingefügte Adresse der leeren Rücksprungseite */
+  url: string;
+  pasted: string;
+  /** Mit Code: Code für microsoft.com/devicelogin */
   userCode: string;
   verificationUri: string;
   expiresIn: number;
   error: string;
+  busy: boolean;
 }
 const login = ref<Login | null>(null);
 const copied = ref(false);
 let loginTimer: number | undefined;
 let popup: Window | null = null;
 
+/** Standard ist die Anmeldung im Browser; die Anmeldung mit Code sperren manche Tenants. */
 async function startMicrosoft(m: Mailbox) {
   stopLogin();
+  login.value = {
+    mailbox: m,
+    mode: 'browser',
+    url: '',
+    pasted: '',
+    userCode: '',
+    verificationUri: '',
+    expiresIn: 0,
+    error: '',
+    busy: false,
+  };
+  await startBrowser();
+}
+
+async function startBrowser() {
+  const current = login.value;
+  if (!current) return;
+  stopLogin();
+  Object.assign(current, { mode: 'browser', url: '', pasted: '', error: '', busy: true });
+  try {
+    current.url = (await api.post<{ url: string }>(`/admin/mailboxes/${current.mailbox.id}/microsoft/browser/start`)).url;
+  } catch (err) {
+    current.error = errorMessage(err);
+  } finally {
+    current.busy = false;
+  }
+}
+
+/** Anmeldeseite in einem neuen Tab, damit man danach die Adresse der leeren Seite kopieren kann. */
+function openBrowserLogin() {
+  if (login.value?.url) window.open(login.value.url, '_blank', 'noopener');
+}
+
+async function finishBrowser() {
+  const current = login.value;
+  if (!current || !current.pasted.trim() || current.busy) return;
+  current.busy = true;
+  current.error = '';
+  try {
+    const result = await api.post<{ account: string }>(`/admin/mailboxes/${current.mailbox.id}/microsoft/browser/finish`, {
+      url: current.pasted,
+    });
+    await loggedIn(result.account);
+  } catch (err) {
+    current.error = errorMessage(err);
+  } finally {
+    current.busy = false;
+  }
+}
+
+/** Eine eingefügte Adresse mit Code schliesst die Anmeldung gleich ab. */
+function onPaste(e: ClipboardEvent) {
+  const text = e.clipboardData?.getData('text') ?? '';
+  if (!login.value || !/[?&](code|error)=/.test(text)) return;
+  e.preventDefault();
+  login.value.pasted = text.trim();
+  void finishBrowser();
+}
+
+async function startCode() {
+  const current = login.value;
+  if (!current) return;
+  stopLogin();
   copied.value = false;
+  Object.assign(current, { mode: 'code', userCode: '', error: '', busy: true });
   try {
     const started = await api.post<{ userCode: string; verificationUri: string; expiresIn: number; interval: number }>(
-      `/admin/mailboxes/${m.id}/microsoft/start`,
+      `/admin/mailboxes/${current.mailbox.id}/microsoft/start`,
     );
-    login.value = { mailbox: m, ...started, error: '' };
+    Object.assign(current, { userCode: started.userCode, verificationUri: started.verificationUri, expiresIn: started.expiresIn });
     loginTimer = window.setInterval(checkMicrosoft, Math.max(started.interval, 3) * 1000);
   } catch (err) {
-    login.value = { mailbox: m, userCode: '', verificationUri: '', expiresIn: 0, error: errorMessage(err) };
+    current.error = errorMessage(err);
+  } finally {
+    current.busy = false;
   }
 }
 
@@ -294,9 +367,7 @@ async function checkMicrosoft() {
     stopLogin();
     if (result.status === 'done') {
       popup?.close();
-      login.value = null;
-      toast.success(`Angemeldet als ${result.account}`);
-      await load();
+      await loggedIn(result.account ?? '');
     } else {
       current.error = result.message ?? 'Die Anmeldung ist fehlgeschlagen';
     }
@@ -304,6 +375,12 @@ async function checkMicrosoft() {
     stopLogin();
     current.error = errorMessage(err);
   }
+}
+
+async function loggedIn(account: string) {
+  login.value = null;
+  toast.success(`Angemeldet als ${account}`);
+  await load();
 }
 
 function stopLogin() {
@@ -554,27 +631,59 @@ function copyText(text: string): boolean {
       </template>
     </ModalDialog>
 
-    <ModalDialog v-if="login" title="Mit Microsoft anmelden" @close="closeLogin">
-      <template v-if="login.userCode">
-        <p class="intro">
-          Melde dich mit einem Konto an, das Zugriff auf <strong>{{ login.mailbox.address }}</strong> hat: dem Konto des Postfachs
-          selbst oder einem Konto mit Vollzugriff (bei einem freigegebenen Postfach zusätzlich «Senden als»).
-        </p>
-        <div class="code mono">{{ login.userCode }}</div>
-        <button v-if="!login.error" class="btn btn-primary" type="button" @click="openMicrosoft">
-          Code kopieren und Anmeldeseite öffnen
-        </button>
-        <p v-if="!login.error" class="faint small">
-          <template v-if="copied">Der Code ist kopiert. </template>Auf der Anmeldeseite von Microsoft ({{ login.verificationUri }})
-          den Code einfügen, anmelden und bestätigen. Danach schliesst sich das Fenster von selbst. Der Code gilt
-          {{ Math.round(login.expiresIn / 60) }} Minuten.
-        </p>
-        <p v-if="!login.error" class="muted small">Warte auf die Anmeldung …</p>
+    <ModalDialog v-if="login" title="Mit Microsoft anmelden" wide @close="closeLogin">
+      <p class="intro">
+        Melde dich mit einem Konto an, das Zugriff auf <strong>{{ login.mailbox.address }}</strong> hat: dem Konto des Postfachs
+        selbst oder einem Konto mit Vollzugriff (bei einem freigegebenen Postfach zusätzlich «Senden als»).
+      </p>
+      <template v-if="login.mode === 'browser'">
+        <ol class="steps">
+          <li>
+            <button class="btn btn-primary" type="button" :disabled="!login.url" @click="openBrowserLogin">
+              Anmeldeseite von Microsoft öffnen
+            </button>
+            <span class="faint small"> in einem neuen Tab</span>
+          </li>
+          <li>Dort anmelden und bestätigen. Danach zeigt der Tab eine leere Seite.</li>
+          <li>
+            Die Adresse dieser leeren Seite kopieren (in die Adresszeile klicken, alles markieren und kopieren) und hier einfügen:
+            <input
+              v-model="login.pasted"
+              class="input mono pasted"
+              placeholder="https://login.microsoftonline.com/common/oauth2/nativeclient?code=…"
+              autocomplete="off"
+              @paste="onPaste"
+              @keydown.enter="finishBrowser"
+            />
+          </li>
+        </ol>
+        <button class="btn btn-ghost btn-sm alternative" type="button" @click="startCode">Stattdessen mit Code anmelden</button>
+      </template>
+      <template v-else>
+        <template v-if="login.userCode">
+          <div class="code mono">{{ login.userCode }}</div>
+          <button v-if="!login.error" class="btn btn-primary alternative" type="button" @click="openMicrosoft">
+            Code kopieren und Anmeldeseite öffnen
+          </button>
+          <p v-if="!login.error" class="faint small">
+            <template v-if="copied">Der Code ist kopiert. </template>Auf der Anmeldeseite von Microsoft ({{ login.verificationUri }})
+            den Code einfügen, anmelden und bestätigen. Danach schliesst sich das Fenster von selbst. Der Code gilt
+            {{ Math.round(login.expiresIn / 60) }} Minuten.
+          </p>
+          <p v-if="!login.error" class="muted small">Warte auf die Anmeldung …</p>
+        </template>
+        <button class="btn btn-ghost btn-sm alternative" type="button" @click="startBrowser">Stattdessen im Browser anmelden</button>
       </template>
       <div v-if="login.error" class="error-box">{{ login.error }}</div>
       <template #footer>
-        <button class="btn" type="button" @click="closeLogin">{{ login.error ? 'Schliessen' : 'Abbrechen' }}</button>
-        <button v-if="login.error" class="btn btn-primary" type="button" @click="startMicrosoft(login.mailbox)">Neu starten</button>
+        <button class="btn" type="button" @click="closeLogin">Abbrechen</button>
+        <template v-if="login.mode === 'browser'">
+          <button v-if="login.error" class="btn" type="button" @click="startBrowser">Neu starten</button>
+          <button class="btn btn-primary" type="button" :disabled="!login.pasted.trim() || login.busy" @click="finishBrowser">
+            Anmeldung abschliessen
+          </button>
+        </template>
+        <button v-else-if="login.error" class="btn btn-primary" type="button" @click="startCode">Neu starten</button>
       </template>
     </ModalDialog>
 
@@ -594,11 +703,14 @@ function copyText(text: string): boolean {
         </li>
         <li>
           Name: <code>Patchwork</code>. Unterstützte Kontotypen: <strong>Nur Konten in diesem Organisationsverzeichnis</strong>
-          (Single tenant). Umleitungs-URI leer lassen und <strong>Registrieren</strong>.
+          (Single tenant). Umleitungs-URI: <strong>Öffentlicher Client/nativ (mobil und Desktop)</strong> mit
+          <code>https://login.microsoftonline.com/common/oauth2/nativeclient</code>. Dann <strong>Registrieren</strong>.
         </li>
         <li>
           Unter <strong>Authentifizierung</strong> (Authentication) die Einstellung <strong>Öffentliche Clientflows zulassen</strong>
-          (Allow public client flows) auf <strong>Ja</strong> setzen und speichern.
+          (Allow public client flows) auf <strong>Ja</strong> setzen und speichern. Fehlt die Umleitungs-URI aus Schritt 2, hier
+          unter <strong>Plattform hinzufügen</strong> → <strong>Mobile- und Desktopanwendungen</strong> die vorgeschlagene Adresse
+          <code>https://login.microsoftonline.com/common/oauth2/nativeclient</code> anhaken.
         </li>
         <li>
           Unter <strong>API-Berechtigungen</strong> (API permissions) → <strong>Berechtigung hinzufügen</strong> →
@@ -675,6 +787,12 @@ h3 {
   font-size: 24px;
   letter-spacing: 3px;
   user-select: all;
+}
+.alternative {
+  align-self: flex-start;
+}
+.pasted {
+  margin-top: 6px;
 }
 .steps {
   margin: 0;

@@ -197,18 +197,21 @@ Mailserver, Name und Logo werden in der Oberfläche unter **Verwaltung** eingeri
 
 ### Microsoft 365
 
-Postfächer in Microsoft 365 meldet man mit einem Microsoft-Konto an (OAuth 2.0 mit Gerätecode, delegierte Rechte):
+Postfächer in Microsoft 365 meldet man mit einem Microsoft-Konto an (OAuth 2.0, delegierte Rechte, ohne Client Secret):
 
 1. **Einmalig für die ganze Instanz:** eine App-Registrierung in Entra ID. Die Anleitung steht in Patchwork unter
-   Verwaltung → Postfächer → Microsoft 365 → «Einrichten»: öffentlicher Client, einzelner Mandant, delegierte Rechte
+   Verwaltung → Postfächer → Microsoft 365 → «Einrichten»: einzelner Mandant, Umleitungs-URI «Öffentlicher Client/nativ»
+   mit `https://login.microsoftonline.com/common/oauth2/nativeclient`, «Öffentliche Clientflows zulassen», delegierte Rechte
    `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid` und `profile` (alle unter Microsoft Graph),
-   Administratorzustimmung. Am Schluss die Anwendungs-ID dort eintragen. Ein Client Secret braucht es nicht.
-2. **Pro Postfach:** Vorlage «Microsoft 365» wählen, speichern und «Mit Microsoft anmelden». Patchwork zeigt einen Code und
-   öffnet die Anmeldeseite von Microsoft. Anmelden kann sich das Konto des Postfachs oder ein Konto mit Vollzugriff
+   Administratorzustimmung. Am Schluss die Anwendungs-ID dort eintragen.
+2. **Pro Postfach:** Vorlage «Microsoft 365» wählen, speichern und «Mit Microsoft anmelden». Standard ist die Anmeldung im
+   Browser (Autorisierungscode mit PKCE): Patchwork öffnet die Anmeldeseite von Microsoft in einem neuen Tab, danach fügt man
+   die Adresse der leeren Seite in Patchwork ein. Alternativ «Stattdessen mit Code anmelden» (Gerätecode), sofern der Tenant
+   das nicht per bedingtem Zugriff sperrt. Anmelden kann sich das Konto des Postfachs oder ein Konto mit Vollzugriff
    (bei einem freigegebenen Postfach zusätzlich «Senden als»). Den Tenant ermittelt Patchwork aus der Mail-Domain.
 3. Im Postfach müssen IMAP und für den Versand «Authentifiziertes SMTP» erlaubt sein.
 
-Eine Anmeldung mit Rückleitung statt Code erlaubt Microsoft nur über HTTPS. Unter «Erweitert» bleibt der App-Zugriff ohne
+Eine Rückleitung zu Patchwork selbst (ohne das Einfügen der Adresse) erlaubt Microsoft nur über HTTPS. Unter «Erweitert» bleibt der App-Zugriff ohne
 angemeldetes Konto möglich (Client Credentials: `IMAP.AccessAsApp`, `SMTP.SendAsApp`, Service Principal in Exchange
 Online, Client Secret). Anleitung von Microsoft:
 <https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth>

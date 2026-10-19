@@ -1,6 +1,16 @@
-/** Anmeldung von Postfächern mit einem Microsoft-Konto (OAuth 2.0 mit Gerätecode, delegierte Rechte). */
+/**
+ * Anmeldung von Postfächern mit einem Microsoft-Konto (OAuth 2.0, delegierte Rechte): im Browser
+ * (Autorisierungscode mit PKCE) oder mit Gerätecode.
+ */
+import { createHash, randomBytes } from 'node:crypto';
 
 export const MICROSOFT_LOGIN = 'https://login.microsoftonline.com';
+
+/**
+ * Rücksprungadresse für die Anmeldung im Browser: eine leere Seite von Microsoft, deren Adresse man in Patchwork
+ * einfügt. Rücksprungadressen auf Patchwork selbst erlaubt Microsoft nur mit HTTPS.
+ */
+export const NATIVE_REDIRECT_URI = 'https://login.microsoftonline.com/common/oauth2/nativeclient';
 
 /** Delegierte Rechte für IMAP und SMTP, dazu das Refresh-Token (offline_access) und der Kontoname (openid, profile). */
 export const MICROSOFT_SCOPE =
@@ -30,6 +40,25 @@ export function tenantFromTokenEndpoint(url: string): string | null {
   return match ? match[1]!.toLowerCase() : null;
 }
 
+/** PKCE (RFC 7636, S256): geheimer Prüfwert und dessen Hash für die Anmeldeseite. */
+export function pkcePair(): { verifier: string; challenge: string } {
+  const verifier = randomBytes(32).toString('base64url');
+  return { verifier, challenge: createHash('sha256').update(verifier).digest('base64url') };
+}
+
+/** Liest Code oder Fehler aus der eingefügten Adresse der Rücksprungseite; null, wenn nichts davon enthalten ist. */
+export function parseRedirect(
+  input: string,
+): { code?: string; state?: string; error?: string; errorDescription?: string } | null {
+  const text = input.trim();
+  const query = (text.includes('?') ? text.slice(text.indexOf('?') + 1) : text).split('#')[0]!;
+  const params = new URLSearchParams(query);
+  const code = params.get('code') || undefined;
+  const error = params.get('error') || undefined;
+  if (!code && !error) return null;
+  return { code, state: params.get('state') || undefined, error, errorDescription: params.get('error_description') || undefined };
+}
+
 /** Angemeldetes Konto aus dem ID-Token. Ohne Signaturprüfung, nur für die Anzeige. */
 export function accountFromIdToken(idToken: string | undefined): string | null {
   const payload = idToken?.split('.')[1];
@@ -51,13 +80,17 @@ const CODE_HINTS: Record<number, string> = {
   700016:
     'Die App-Registrierung wurde in diesem Tenant nicht gefunden. Stimmt die Anwendungs-ID, und gehört die Mail-Domain zum selben Tenant wie die App-Registrierung?',
   7000218:
-    'In der App-Registrierung sind öffentliche Clientflows nicht zugelassen (Authentifizierung → «Öffentliche Clientflows zulassen»: Ja).',
+    'Microsoft verlangt ein Client Secret: In der App-Registrierung unter Authentifizierung «Öffentliche Clientflows zulassen» auf Ja setzen, und die Rücksprungadresse muss unter «Mobile- und Desktopanwendungen» stehen, nicht unter «Web».',
+  50011:
+    'Die Rücksprungadresse fehlt in der App-Registrierung: Authentifizierung → Plattform «Mobile- und Desktopanwendungen» → https://login.microsoftonline.com/common/oauth2/nativeclient.',
+  54005: 'Diese Anmeldung wurde schon abgeschlossen. Bitte die Anmeldung neu starten.',
+  70008: 'Die Anmeldung ist abgelaufen. Bitte die Anmeldung neu starten.',
   65001:
     'Für die App fehlt die Zustimmung: In der App-Registrierung unter «API-Berechtigungen» die Administratorzustimmung erteilen oder beim Anmelden als Admin «Im Namen Ihrer Organisation zustimmen» anhaken.',
   70011: 'Der App-Registrierung fehlen Berechtigungen (IMAP.AccessAsUser.All, SMTP.Send, offline_access, openid, profile).',
   50020: 'Das Konto gehört nicht zum Tenant der App-Registrierung.',
   53003:
-    'Eine Richtlinie für bedingten Zugriff blockiert die Anmeldung, z.B. weil die Anmeldung mit Code gesperrt ist. Ausweg: App-Zugriff unter «Erweitert».',
+    'Eine Richtlinie für bedingten Zugriff blockiert die Anmeldung, z.B. weil die Anmeldung mit Code gesperrt ist. Ausweg: im Browser anmelden, sonst App-Zugriff unter «Erweitert».',
   70019: 'Der Code ist abgelaufen. Bitte die Anmeldung neu starten.',
   700082: `Die Microsoft-Anmeldung ist abgelaufen. ${RENEW}`,
   50173: `Die Microsoft-Anmeldung ist ungültig geworden, z.B. nach einer Passwortänderung. ${RENEW}`,

@@ -34,6 +34,9 @@ const mailboxSchema = z.object({
   fetchFrom: z.coerce.date().optional(),
 }).refine((m) => m.authType === 'microsoft' || m.username.length > 0, { message: 'Benutzername fehlt', path: ['username'] });
 
+/** Eingefügte Adresse der Rücksprungseite nach der Anmeldung im Browser */
+const browserFinishSchema = z.object({ url: z.string().trim().min(1, 'Adresse fehlt').max(8000) });
+
 /** Aktive Postfächer zur Auswahl des Antwort-Postfachs (für IT). */
 @Controller('mailboxes')
 export class MailboxOptionsController {
@@ -119,7 +122,24 @@ export class MailboxesController {
     return toPublicMailbox(await this.mailboxes.get(id));
   }
 
-  /** Startet die Anmeldung mit einem Microsoft-Konto (Code für microsoft.com/devicelogin). */
+  /** Startet die Anmeldung mit einem Microsoft-Konto im Browser (Adresse der Anmeldeseite). */
+  @Post(':id/microsoft/browser/start')
+  @HttpCode(200)
+  async microsoftBrowserStart(@Param('id', ParseUUIDPipe) id: string) {
+    return this.microsoft.startBrowser(await this.mailboxes.get(id));
+  }
+
+  /** Schliesst die Anmeldung im Browser mit der eingefügten Adresse der Rücksprungseite ab. */
+  @Post(':id/microsoft/browser/finish')
+  @HttpCode(200)
+  async microsoftBrowserFinish(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(browserFinishSchema)) body: z.infer<typeof browserFinishSchema>,
+  ) {
+    return this.microsoft.finishBrowser(await this.mailboxes.get(id), body.url);
+  }
+
+  /** Startet die Anmeldung mit einem Microsoft-Konto per Code (für microsoft.com/devicelogin). */
   @Post(':id/microsoft/start')
   @HttpCode(200)
   async microsoftStart(@Param('id', ParseUUIDPipe) id: string) {
