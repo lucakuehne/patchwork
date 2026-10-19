@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
+import type { ImapFlow } from 'imapflow';
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
 import { createHash } from 'node:crypto';
 import { appConfig } from '../config';
@@ -84,20 +85,25 @@ export class MailFetcherService implements OnModuleInit {
     try {
       client = await this.transport.imapClient(mailbox);
       await client.connect();
-      const lock = await client.getMailboxLock(mailbox.imapFolder);
+      // Nur lesend öffnen: Patchwork verändert keine Mails im Postfach (bleiben ungelesen, kein Verschieben)
+      const lock = await client.getMailboxLock(mailbox.imapFolder, { readOnly: true });
       try {
         const opened = client.mailbox;
         if (!opened) throw new Error(`Ordner ${mailbox.imapFolder} konnte nicht geöffnet werden`);
         const uidValidity = Number(opened.uidValidity);
-        // Erster Abruf oder neue UIDVALIDITY: nur ungelesene Mails übernehmen
+        // Erster Abruf, anderer Startzeitpunkt oder neue UIDVALIDITY: Mails ab dem Startzeitpunkt übernehmen,
+        // gelesen oder nicht. Danach geht es über die UID weiter, damit nach einem Ausfall nichts fehlt.
         const fresh = mailbox.uidValidity === null || mailbox.uidValidity !== uidValidity;
+        // Verarbeitet bis zu dieser UID. Dauert der erste Abruf mehrere Durchgänge, steht hier der Fortschritt
+        // (UIDVALIDITY ist dann noch leer). Nach einer neuen UIDVALIDITY gelten die alten UIDs nicht mehr.
+        const doneUid = fresh && mailbox.uidValidity !== null ? 0 : mailbox.lastUid;
         const found = fresh
-          ? await client.search({ seen: false }, { uid: true })
-          : await client.search({ uid: `${mailbox.lastUid + 1}:*` }, { uid: true });
-        const pendingUids = (found || []).filter((uid) => fresh || uid > mailbox.lastUid).sort((a, b) => a - b);
+          ? await this.receivedSince(client, mailbox.fetchFrom)
+          : await client.search({ uid: `${doneUid + 1}:*` }, { uid: true });
+        const pendingUids = (found || []).filter((uid) => uid > doneUid).sort((a, b) => a - b);
         const uids = pendingUids.slice(0, BATCH_SIZE);
 
-        let lastUid = fresh ? 0 : mailbox.lastUid;
+        let lastUid = doneUid;
         let error: string | null = null;
         for (const uid of uids) {
           const message = await client.fetchOne(String(uid), { source: true }, { uid: true });
@@ -108,16 +114,15 @@ export class MailFetcherService implements OnModuleInit {
               error = `Mail UID ${uid}: ${(err as Error).message}`;
               this.logger.error(`Verarbeitung von UID ${uid} in ${mailbox.address} fehlgeschlagen`, (err as Error).stack);
             }
-            await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
           }
           lastUid = Math.max(lastUid, uid);
         }
         if (fresh && pendingUids.length > uids.length) {
-          // Noch weitere ungelesene Mails: beim nächsten Abruf wieder über «ungelesen» suchen
-          await this.mailboxes.recordPoll(mailbox.id, { uidValidity: null, lastUid: 0, error });
+          // Noch weitere Mails ab dem Startzeitpunkt: beim nächsten Abruf nach dem Fortschritt weitersuchen
+          await this.mailboxes.recordPoll(mailbox.id, { uidValidity: null, lastUid, error });
         } else {
           if (fresh) {
-            // Startpunkt merken (Stand beim Öffnen des Ordners), damit ältere gelesene Mails nicht übernommen werden
+            // Stand beim Öffnen des Ordners merken, damit Mails vor dem Startzeitpunkt nicht übernommen werden
             lastUid = Math.max(lastUid, Number(opened.uidNext) - 1);
           }
           await this.mailboxes.recordPoll(mailbox.id, { uidValidity, lastUid, error });
@@ -132,6 +137,22 @@ export class MailFetcherService implements OnModuleInit {
       await this.mailboxes.recordPoll(mailbox.id, { error: message });
       client?.close();
     }
+  }
+
+  /**
+   * UIDs der Mails, die ab dem Zeitpunkt im Ordner eingegangen sind. SINCE kennt nur ganze Tage,
+   * deshalb einen Tag Reserve und danach auf die Sekunde genau über den Eingang (INTERNALDATE) filtern.
+   */
+  private async receivedSince(client: ImapFlow, from: Date): Promise<number[]> {
+    const since = new Date(from.getTime() - 24 * 60 * 60 * 1000);
+    const start = Math.floor(from.getTime() / 1000) * 1000;
+    const uids: number[] = [];
+    for await (const message of client.fetch({ since }, { uid: true, internalDate: true }, { uid: true })) {
+      const received = message.internalDate ? new Date(message.internalDate).getTime() : NaN;
+      // Ohne lesbares Eingangsdatum lieber übernehmen als verlieren
+      if (Number.isNaN(received) || received >= start) uids.push(message.uid);
+    }
+    return uids;
   }
 
   /** Verarbeitet eine einzelne Mail (Rohdaten). */

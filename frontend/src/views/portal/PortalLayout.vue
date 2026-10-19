@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
+import TestModeBanner from '../../components/TestModeBanner.vue';
 import { useSession } from '../../stores/session';
 
 const session = useSession();
@@ -15,6 +16,7 @@ async function logout() {
 </script>
 
 <template>
+  <TestModeBanner />
   <header class="portal-header">
     <RouterLink to="/portal" class="brand">
       <img v-if="session.logoUrl" :src="session.logoUrl" alt="" class="logo" />

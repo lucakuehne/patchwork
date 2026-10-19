@@ -32,7 +32,8 @@ export const statusCategory = pgEnum('status_category', ['new', 'in_progress', '
 export const priority = pgEnum('priority', ['high', 'normal', 'low']);
 export const itemSource = pgEnum('item_source', ['mail', 'portal', 'internal']);
 export const entryKind = pgEnum('entry_kind', ['reply', 'note', 'status', 'type', 'change']);
-export const mailAuth = pgEnum('mail_auth', ['password', 'oauth2']);
+/** oauth2 = App-Zugriff (Client Credentials), microsoft = Anmeldung mit einem Microsoft-Konto (Gerätecode) */
+export const mailAuth = pgEnum('mail_auth', ['password', 'oauth2', 'microsoft']);
 export const mailDirection = pgEnum('mail_direction', ['in', 'out']);
 /** relates = bezieht sich auf (beidseitig), fixes = from behebt to, duplicate = from ist Duplikat von to */
 export const linkKind = pgEnum('link_kind', ['relates', 'fixes', 'duplicate']);
@@ -92,6 +93,11 @@ export const mailboxes = pgTable('mailboxes', {
   oauthClientId: text('oauth_client_id'),
   oauthClientSecretEnc: text('oauth_client_secret_enc'),
   oauthScope: text('oauth_scope'),
+  /** Anmeldung mit Microsoft: Refresh-Token (verschlüsselt) und angemeldetes Konto */
+  oauthRefreshTokenEnc: text('oauth_refresh_token_enc'),
+  oauthAccount: text('oauth_account'),
+  /** Mails abholen ab diesem Eingang im Postfach */
+  fetchFrom: timestamp('fetch_from', { withTimezone: true }).notNull().defaultNow(),
   uidValidity: bigint('uid_validity', { mode: 'number' }),
   lastUid: bigint('last_uid', { mode: 'number' }).notNull().default(0),
   lastPollAt: timestamp('last_poll_at', { withTimezone: true }),
@@ -251,6 +257,29 @@ export const mailMessages = pgTable(
   (t) => [index('mail_messages_item_idx').on(t.itemId, t.createdAt)],
 );
 
+/** Im Testbetrieb zurückgehaltene Mails: fertig zusammengestellt (.eml), aber nicht versendet. */
+export const heldMails = pgTable(
+  'held_mails',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: text('message_id').notNull().unique(),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => items.id, { onDelete: 'cascade' }),
+    /** Timeline-Eintrag der öffentlichen Antwort, null = Bestätigung oder Benachrichtigung */
+    entryId: uuid('entry_id').references(() => entries.id, { onDelete: 'set null' }),
+    mailboxId: uuid('mailbox_id').references(() => mailboxes.id, { onDelete: 'set null' }),
+    fromAddress: text('from_address').notNull(),
+    to: jsonb('to').$type<string[]>().notNull(),
+    cc: jsonb('cc').$type<string[]>().notNull(),
+    subject: text('subject').notNull(),
+    automated: boolean('automated').notNull(),
+    storageKey: text('storage_key').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('held_mails_created_idx').on(t.createdAt), index('held_mails_item_idx').on(t.itemId)],
+);
+
 /** Verknüpfungen zwischen Vorgängen. Bei «relates» ist die Richtung bedeutungslos. */
 export const links = pgTable(
   'links',
@@ -370,6 +399,7 @@ export type Item = typeof items.$inferSelect;
 export type Status = typeof statuses.$inferSelect;
 export type Entry = typeof entries.$inferSelect;
 export type Mailbox = typeof mailboxes.$inferSelect;
+export type HeldMail = typeof heldMails.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
 export type Rule = typeof rules.$inferSelect;
 export type Snippet = typeof snippets.$inferSelect;

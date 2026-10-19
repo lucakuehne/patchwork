@@ -110,6 +110,7 @@ async function save() {
       </a>
       <span class="faint small">{{ formatDateTime(entry.createdAt) }}</span>
       <span v-if="entry.editedAt" class="faint small" :title="`Bearbeitet am ${formatDateTime(entry.editedAt)}`">· bearbeitet</span>
+      <span v-if="entry.held" class="badge held" title="Im Testbetrieb zusammengestellt, aber nicht versendet">nicht versendet</span>
     </div>
     <div v-if="editing" class="stack">
       <MarkdownEditor v-model="draft" :min-height="90" autofocus @submit="save" />
@@ -171,5 +172,9 @@ async function save() {
 }
 .edit-btn:hover {
   text-decoration: underline;
+}
+.badge.held {
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 </style>

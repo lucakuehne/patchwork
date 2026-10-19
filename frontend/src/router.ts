@@ -49,6 +49,11 @@ export const router = createRouter({
         { path: 'allgemein', name: 'admin-general', component: () => import('./views/admin/AdminGeneral.vue') },
         { path: 'benutzer', name: 'admin-users', component: () => import('./views/admin/AdminUsers.vue') },
         { path: 'postfaecher', name: 'admin-mailboxes', component: () => import('./views/admin/AdminMailboxes.vue') },
+        {
+          path: 'nicht-versendet',
+          name: 'admin-held-mails',
+          component: () => import('./views/admin/AdminHeldMails.vue'),
+        },
         { path: 'status', name: 'admin-statuses', component: () => import('./views/admin/AdminStatuses.vue') },
         { path: 'ldap', name: 'admin-ldap', component: () => import('./views/admin/AdminLdap.vue') },
         {

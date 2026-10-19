@@ -43,6 +43,8 @@ export interface PublicInfo {
   hasLogo: boolean;
   logoVersion: string | null;
   setupRequired: boolean;
+  /** Testbetrieb: Patchwork versendet keine Mails */
+  testMode: boolean;
 }
 
 export interface Status {
@@ -166,6 +168,8 @@ export interface Entry {
   editedAt: string | null;
   author: User | null;
   originalMessageId: string | null;
+  /** Öffentliche Antwort, die im Testbetrieb nicht versendet wurde */
+  held: boolean;
   attachments: Attachment[];
 }
 
@@ -223,16 +227,42 @@ export interface Mailbox {
   smtpHost: string;
   smtpPort: number;
   smtpSecurity: 'tls' | 'starttls' | 'none';
-  authType: 'password' | 'oauth2';
+  /** microsoft = Anmeldung mit einem Microsoft-Konto, oauth2 = App-Zugriff (Client Credentials) */
+  authType: 'password' | 'oauth2' | 'microsoft';
   username: string;
   oauthTokenUrl: string | null;
   oauthClientId: string | null;
   oauthScope: string | null;
+  /** Mit Microsoft angemeldetes Konto */
+  oauthAccount: string | null;
+  microsoftConnected: boolean;
   hasPassword: boolean;
   hasClientSecret: boolean;
+  /** Mails abholen ab diesem Eingang */
+  fetchFrom: string;
   lastUid: number;
   lastPollAt: string | null;
   lastError: string | null;
+}
+
+/** Im Testbetrieb nicht versendete Mail */
+export interface HeldMail {
+  id: string;
+  createdAt: string;
+  fromAddress: string;
+  to: string[];
+  cc: string[];
+  subject: string;
+  automated: boolean;
+  /** Öffentliche Antwort aus der Timeline (sonst Bestätigung oder Benachrichtigung) */
+  reply: boolean;
+  item: { number: number; title: string };
+}
+
+export interface HeldMailDetail extends HeldMail {
+  text: string;
+  html: string | null;
+  attachments: { index: number; filename: string; contentType: string; size: number }[];
 }
 
 export interface LdapCheck {

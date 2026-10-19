@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, type ReadStream } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { appConfig } from '../config';
 
@@ -24,6 +24,10 @@ export class StorageService {
 
   stream(key: string): ReadStream {
     return createReadStream(this.pathFor(key));
+  }
+
+  read(key: string): Promise<Buffer> {
+    return readFile(this.pathFor(key));
   }
 
   async remove(key: string): Promise<void> {

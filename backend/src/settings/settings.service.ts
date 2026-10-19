@@ -52,16 +52,30 @@ export const DEFAULT_LDAP: LdapSettings = {
   nestedGroups: true,
 };
 
+export interface MailSettings {
+  /** Testbetrieb: Mails werden fertig zusammengestellt und abgelegt, aber nicht versendet. */
+  testMode: boolean;
+}
+
+export interface MicrosoftSettings {
+  /** Anwendungs-ID (Client-ID) der App-Registrierung in Entra ID für die Anmeldung von Postfächern */
+  clientId: string;
+}
+
 interface SettingsMap {
   general: GeneralSettings;
   logo: LogoSettings | null;
   ldap: LdapSettings;
+  mail: MailSettings;
+  microsoft: MicrosoftSettings;
 }
 
 const DEFAULTS: SettingsMap = {
   general: { appName: 'Patchwork' },
   logo: null,
   ldap: DEFAULT_LDAP,
+  mail: { testMode: false },
+  microsoft: { clientId: '' },
 };
 
 @Injectable()

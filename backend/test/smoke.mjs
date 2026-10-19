@@ -155,6 +155,8 @@ await step('Postfach anlegen und testen', async () => {
   mailboxId = mb.id;
   assert.equal(mb.isDefault, true, 'erstes Postfach wird Standard');
   assert.equal(mb.passwordEnc, undefined, 'Passwort wird nicht ausgeliefert');
+  assert.equal(mb.oauthRefreshTokenEnc, undefined, 'Refresh-Token wird nicht ausgeliefert');
+  assert.ok(Math.abs(Date.now() - new Date(mb.fetchFrom).getTime()) < 60_000, 'Mails abholen ab: beim Anlegen jetzt');
   const test = await api('POST', `/admin/mailboxes/${mailboxId}/test`);
   assert.equal(test.ok, true, JSON.stringify(test));
   await poll(); // Startpunkt setzen
@@ -189,6 +191,21 @@ await step('Mail mit CC landet im Eingang, Bestätigung an Melder', async () => 
   assert.deepEqual(counts, { inbox: 1, incidents: 0, tasks: 0 });
   const confirmation = await waitForMail(ANNA, (m) => m.subject === `[PW-${itemNo}] VPN verbindet nicht`, 'Bestätigung');
   assert.ok(/auto-submitted: auto-generated/i.test(confirmation.headers));
+});
+
+await step('Abgeholte Mail bleibt ungelesen im Postfach', async () => {
+  const client = new ImapFlow({ host: 'localhost', port: 13143, secure: false, auth: { user: MAILBOX, pass: 'x' }, logger: false });
+  await client.connect();
+  const lock = await client.getMailboxLock('INBOX', { readOnly: true });
+  const flags = [];
+  try {
+    for await (const msg of client.fetch('1:*', { flags: true })) flags.push(msg.flags);
+  } finally {
+    lock.release();
+  }
+  await client.logout();
+  assert.ok(flags.length > 0, 'Mail liegt noch im Postfach');
+  assert.ok(flags.every((f) => !f.has('\\Seen')), 'Patchwork markiert Mails nicht als gelesen');
 });
 
 await step('Doppelt abgerufene Mail wird nicht doppelt erfasst', async () => {
@@ -1099,6 +1116,88 @@ await step('Auswertungen: Kennzahlen pro Zeitraum, CSV, nur für Admin', async (
   await loginAs(IVAN, 'geheim-geheim');
   await api('GET', `/admin/reports?${query}`, undefined, { expect: [403] });
   await loginAs('ada@test.local', 'geheim-geheim');
+});
+
+const EXTERN = `extern-${RUN}@test.local`;
+const ARCHIV = `archiv-${RUN}@test.local`;
+const archivMailbox = (fetchFrom) => ({
+  name: 'Archiv',
+  address: ARCHIV,
+  active: true,
+  isDefault: false,
+  imapHost: 'localhost',
+  imapPort: 13143,
+  imapSecure: false,
+  imapFolder: 'INBOX',
+  smtpHost: 'localhost',
+  smtpPort: 13025,
+  smtpSecurity: 'none',
+  authType: 'password',
+  username: ARCHIV,
+  password: 'x',
+  ...(fetchFrom ? { fetchFrom } : {}),
+});
+
+await step('Mails abholen ab: nur Mails ab dem Startzeitpunkt, nach Vorverlegen ohne doppelte Vorgänge', async () => {
+  const before = `Vor dem Start ${RUN}`;
+  const after = `Nach dem Start ${RUN}`;
+  const inInbox = async (title) => (await api('GET', '/items?view=inbox')).items.filter((i) => i.title === title).length;
+  await smtp.sendMail({ from: EXTERN, to: ARCHIV, subject: before, text: 'Schon älter.' });
+  await sleep(1500);
+  const mb = await api('POST', '/admin/mailboxes', archivMailbox());
+  const pollArchiv = () => api('POST', `/admin/mailboxes/${mb.id}/poll`);
+  await pollArchiv();
+  await smtp.sendMail({ from: EXTERN, to: ARCHIV, subject: after, text: 'Neu.' });
+  await sleep(500);
+  await pollArchiv();
+  assert.equal(await inInbox(before), 0, 'Mail vor dem Startzeitpunkt wird nicht übernommen');
+  assert.equal(await inInbox(after), 1);
+
+  // Startzeitpunkt vorverlegen: Die ältere Mail wird nachgeholt, die neuere nicht doppelt erfasst
+  await api('PUT', `/admin/mailboxes/${mb.id}`, archivMailbox(new Date(Date.now() - 10 * 60_000).toISOString()));
+  await pollArchiv();
+  assert.equal(await inInbox(before), 1);
+  assert.equal(await inInbox(after), 1);
+  await api('DELETE', `/admin/mailboxes/${mb.id}`);
+});
+
+await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet worden wäre', async () => {
+  await api('PUT', '/settings/mail', { testMode: true });
+  assert.equal((await api('GET', '/public/info')).testMode, true);
+  const text = `Antwort im Testbetrieb ${RUN}`;
+  const form = new FormData();
+  form.append('kind', 'reply');
+  form.append('body', text);
+  form.append('files', new Blob(['Inhalt']), 'Beilage.txt');
+  await api('POST', `/items/${itemNo}/entries`, form);
+
+  let held;
+  for (let i = 0; i < 30 && !held; i++) {
+    held = (await api('GET', '/admin/held-mails')).find((m) => m.reply && m.item.number === itemNo);
+    if (!held) await sleep(1000);
+  }
+  assert.ok(held, 'Antwort steht in der Liste der nicht versendeten Mails');
+  assert.deepEqual(held.to, [ANNA]);
+  assert.ok(held.cc.includes(CARLA), 'Beteiligte in CC');
+  assert.equal(held.subject, `[PW-${itemNo}] VPN verbindet nicht`);
+  const full = await api('GET', `/admin/held-mails/${held.id}`);
+  assert.ok(full.text.includes(text));
+  assert.deepEqual(full.attachments.map((a) => a.filename), ['Beilage.txt']);
+  const attachment = await fetch(`${BASE}/admin/held-mails/${held.id}/attachments/0`, { headers: { cookie } });
+  assert.equal(await attachment.text(), 'Inhalt');
+  const eml = await fetch(`${BASE}/admin/held-mails/${held.id}/eml`, { headers: { cookie } });
+  assert.equal(eml.status, 200);
+  assert.match(await eml.text(), /^Message-ID: <pw\./im);
+  assert.equal((await detail(itemNo)).entries.find((e) => e.body === text).held, true, 'Vermerk in der Timeline');
+  await sleep(1500);
+  assert.ok(!(await inbox(ANNA)).some((m) => m.text.includes(text)), 'Mail ist nicht beim Melder angekommen');
+
+  await loginAs(IVAN, 'geheim-geheim');
+  await api('GET', '/admin/held-mails', undefined, { expect: [403] });
+  await api('PUT', '/settings/mail', { testMode: false }, { expect: [403] });
+  await loginAs('ada@test.local', 'geheim-geheim');
+  await api('PUT', '/settings/mail', { testMode: false });
+  assert.equal((await api('GET', '/public/info')).testMode, false);
 });
 
 console.log('\nAlle Prüfungen bestanden.');

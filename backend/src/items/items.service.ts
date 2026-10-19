@@ -6,6 +6,7 @@ import {
   checklistItems,
   checklists,
   entries,
+  heldMails,
   items,
   links,
   mailboxes,
@@ -121,7 +122,7 @@ export class ItemsService {
         : null,
     ]);
 
-    const [participantRows, entryRows, attachmentRows, muteRows, mailRows] = await Promise.all([
+    const [participantRows, entryRows, attachmentRows, muteRows, mailRows, heldRows] = await Promise.all([
       this.db
         .select({ user: users })
         .from(participants)
@@ -144,7 +145,13 @@ export class ItemsService {
         .from(mailMessages)
         .where(and(eq(mailMessages.itemId, item.id), eq(mailMessages.direction, 'in'), isNotNull(mailMessages.storageKey)))
         .orderBy(asc(mailMessages.createdAt)),
+      // Im Testbetrieb zurückgehaltene Antworten
+      this.db
+        .select({ entryId: heldMails.entryId })
+        .from(heldMails)
+        .where(and(eq(heldMails.itemId, item.id), isNotNull(heldMails.entryId))),
     ]);
+    const heldEntries = new Set(heldRows.map((r) => r.entryId));
 
     const toAttachment = (a: (typeof attachmentRows)[number]) => ({
       id: a.id,
@@ -189,6 +196,7 @@ export class ItemsService {
         editedAt: entry.editedAt,
         author: author && toPublicUser(author),
         originalMessageId: originalByEntry.get(entry.id) ?? null,
+        held: heldEntries.has(entry.id),
         attachments: attachmentRows.filter((a) => a.entryId === entry.id).map(toAttachment),
       })),
     };

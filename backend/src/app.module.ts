@@ -14,11 +14,13 @@ import { LinksController } from './items/links.controller';
 import { LinksService } from './items/links.service';
 import { BossService } from './jobs/boss.service';
 import { MaintenanceService } from './jobs/maintenance.service';
+import { HeldMailsController } from './mail/held-mails.controller';
 import { MailFetcherService } from './mail/mail-fetcher.service';
 import { MailSenderService } from './mail/mail-sender.service';
 import { MailTransportService } from './mail/mail-transport.service';
 import { MailboxesController, MailboxOptionsController } from './mail/mailboxes.controller';
 import { MailboxesService } from './mail/mailboxes.service';
+import { MicrosoftAuthService } from './mail/microsoft-auth.service';
 import { NotificationsService } from './mail/notifications.service';
 import { PortalController } from './portal/portal.controller';
 import { PortalService } from './portal/portal.service';
@@ -50,6 +52,7 @@ import { UsersService } from './users/users.service';
     PortalController,
     MailboxesController,
     MailboxOptionsController,
+    HeldMailsController,
     RulesController,
     SnippetsController,
     ReportsController,
@@ -71,6 +74,7 @@ import { UsersService } from './users/users.service';
     MaintenanceService,
     MailTransportService,
     MailboxesService,
+    MicrosoftAuthService,
     MailSenderService,
     NotificationsService,
     MailFetcherService,

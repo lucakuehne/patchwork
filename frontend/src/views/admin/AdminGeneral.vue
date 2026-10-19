@@ -9,14 +9,35 @@ const toast = useToast();
 const appName = ref('');
 const saving = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
+const testMode = ref(false);
+const savingTestMode = ref(false);
 
 onMounted(async () => {
   try {
-    appName.value = (await api.get<{ appName: string }>('/settings/general')).appName;
+    const [general, mail] = await Promise.all([
+      api.get<{ appName: string }>('/settings/general'),
+      api.get<{ testMode: boolean }>('/settings/mail'),
+    ]);
+    appName.value = general.appName;
+    testMode.value = mail.testMode;
   } catch (err) {
     toast.error(err);
   }
 });
+
+async function saveTestMode() {
+  savingTestMode.value = true;
+  try {
+    await api.put('/settings/mail', { testMode: testMode.value });
+    await session.loadInfo();
+    toast.success(testMode.value ? 'Testbetrieb eingeschaltet: Es werden keine Mails versendet' : 'Testbetrieb ausgeschaltet');
+  } catch (err) {
+    testMode.value = !testMode.value;
+    toast.error(err);
+  } finally {
+    savingTestMode.value = false;
+  }
+}
 
 async function save() {
   saving.value = true;
@@ -68,6 +89,18 @@ async function removeLogo() {
         <span class="hint">Erscheint in der Kopfzeile, auf der Anmeldeseite und in Mails.</span>
       </div>
       <div><button class="btn btn-primary" type="button" :disabled="saving" @click="save">Speichern</button></div>
+    </div>
+    <div class="card card-body stack">
+      <h2>Testbetrieb</h2>
+      <label class="checkbox">
+        <input v-model="testMode" type="checkbox" :disabled="savingTestMode" @change="saveTestMode" />
+        Keine Mails versenden
+      </label>
+      <span class="hint faint">
+        Patchwork stellt alle Mails wie gewohnt zusammen, versendet sie aber nicht: Eingangsbestätigungen, Antworten und
+        Benachrichtigungen. Sie stehen unter <RouterLink to="/admin/nicht-versendet">Nicht versendete Mails</RouterLink>. Beim
+        Ausschalten werden sie nicht nachträglich versendet. Solange der Testbetrieb läuft, sehen alle Benutzer oben einen Hinweis.
+      </span>
     </div>
     <div class="card card-body stack">
       <h2>Logo</h2>

@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
 import ConfirmHost from './components/ConfirmHost.vue';
+import TestModeBanner from './components/TestModeBanner.vue';
 import ToastHost from './components/ToastHost.vue';
 import { useSession } from './stores/session';
 
@@ -15,6 +16,7 @@ const showHeader = computed(
 </script>
 
 <template>
+  <TestModeBanner v-if="showHeader" />
   <AppHeader v-if="showHeader" />
   <main>
     <RouterView />

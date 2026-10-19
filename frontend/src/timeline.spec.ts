@@ -16,6 +16,7 @@ const entry = (minute: number, patch: Partial<Entry> = {}): Entry => ({
   editedAt: null,
   author: ada,
   originalMessageId: null,
+  held: false,
   attachments: [],
   ...patch,
 });

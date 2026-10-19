@@ -8,9 +8,10 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 - **Ein Vorgang, zwei Typen:** Störung oder Aufgabe, Typwechsel mit einem Klick. Verlauf, Kommentare und Anhänge bleiben erhalten.
 - **Tabs:** Eingang (Mails ohne Typ), Störungen (Liste, dringend zuerst; Ansicht «Gelöst»), Aufgaben (Board mit Drag & Drop; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge und hat den Filter «Nur meine».
 - **Status pro Typ** in der Verwaltung bearbeitbar. Die Kategorie (Neu, In Arbeit, Wartend, Erledigt, Abgelehnt) steuert das Verhalten.
-- **E-Mail rein und raus:** mehrere Postfächer (IMAP/SMTP, Passwort oder OAuth 2.0 für Microsoft 365), Zuordnung von Antworten über Mail-Header oder `[PW-1234]` im Betreff, Eingangsbestätigung, öffentliche Antworten an Melder und CC-Beteiligte, interne Notizen, Benachrichtigungen an Zuständige, Stummschalten pro Vorgang.
+- **E-Mail rein und raus:** mehrere Postfächer (IMAP/SMTP, Passwort oder Anmeldung mit Microsoft 365), die Patchwork nur liest (Mails bleiben ungelesen im Postfach), Abruf ab einem einstellbaren Zeitpunkt, Zuordnung von Antworten über Mail-Header oder `[PW-1234]` im Betreff, Eingangsbestätigung, öffentliche Antworten an Melder und CC-Beteiligte, interne Notizen, Benachrichtigungen an Zuständige, Stummschalten pro Vorgang.
 - **Login:** lokale Benutzer und LDAP/AD (Rolle über AD-Gruppen). Erster Admin über den Einrichtungs-Assistenten.
 - **Volltextsuche** über Titel, Beschreibung und Timeline (PostgreSQL).
+- **Testbetrieb** (Verwaltung → Allgemein): Patchwork stellt alle Mails zusammen, versendet sie aber nicht. Sie stehen unter Verwaltung → Nicht versendete Mails, öffentliche Antworten tragen in der Timeline den Vermerk «nicht versendet». Alle Benutzer sehen oben einen Hinweis.
 
 ## Etappe 2
 
@@ -77,6 +78,10 @@ docker run -d --name patchwork-greenmail -p 13025:3025 -p 13143:3143 -e "GREENMA
 ```bash
 pnpm --filter backend test:smoke
 ```
+
+**Auf dem Docker-Server:** [deploy/test-stack.yml](deploy/test-stack.yml) startet als vorübergehender Portainer-Stack eine
+Test-Instanz mit leerer Datenbank, GreenMail, OpenLDAP und Samba-AD. Die Testskripte holt er aus dem Repo (Variable
+`TEST_REF`), der Ablauf für Smoke-, LDAP- und AD-Test steht in der Datei. Danach den Stack samt Volumes entfernen.
 
 ### LDAP-Tests
 
@@ -190,14 +195,23 @@ Für eine PostgreSQL auf dem Docker-Host (Dev-Betrieb) lautet die Adresse z.B.
 
 Mailserver, Name und Logo werden in der Oberfläche unter **Verwaltung** eingerichtet, nicht im Code.
 
-### Microsoft 365 (OAuth 2.0)
+### Microsoft 365
 
-1. App-Registrierung in Entra ID mit den Anwendungsberechtigungen `IMAP.AccessAsApp` und `SMTP.SendAsApp` (Office 365 Exchange Online), Administratorzustimmung erteilen, Client-Secret erstellen.
-2. In Exchange Online einen Service Principal für die App anlegen und ihm Zugriff auf das Postfach geben (`New-ServicePrincipal`, `Add-MailboxPermission`).
-3. SMTP AUTH auf dem Postfach aktivieren.
-4. In Patchwork unter Verwaltung → Postfächer die Vorlage «Microsoft 365» wählen und Tenant-ID, Client-ID sowie Client-Secret eintragen.
+Postfächer in Microsoft 365 meldet man mit einem Microsoft-Konto an (OAuth 2.0 mit Gerätecode, delegierte Rechte):
 
-Anleitung von Microsoft: <https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth>
+1. **Einmalig für die ganze Instanz:** eine App-Registrierung in Entra ID. Die Anleitung steht in Patchwork unter
+   Verwaltung → Postfächer → Microsoft 365 → «Einrichten»: öffentlicher Client, einzelner Mandant, delegierte Rechte
+   `IMAP.AccessAsUser.All` und `SMTP.Send` (Office 365 Exchange Online) sowie `offline_access`, `openid` und `profile`
+   (Microsoft Graph), Administratorzustimmung. Am Schluss die Anwendungs-ID dort eintragen. Ein Client Secret braucht es nicht.
+2. **Pro Postfach:** Vorlage «Microsoft 365» wählen, speichern und «Mit Microsoft anmelden». Patchwork zeigt einen Code und
+   öffnet die Anmeldeseite von Microsoft. Anmelden kann sich das Konto des Postfachs oder ein Konto mit Vollzugriff
+   (bei einem freigegebenen Postfach zusätzlich «Senden als»). Den Tenant ermittelt Patchwork aus der Mail-Domain.
+3. Im Postfach müssen IMAP und für den Versand «Authentifiziertes SMTP» erlaubt sein.
+
+Eine Anmeldung mit Rückleitung statt Code erlaubt Microsoft nur über HTTPS. Unter «Erweitert» bleibt der App-Zugriff ohne
+angemeldetes Konto möglich (Client Credentials: `IMAP.AccessAsApp`, `SMTP.SendAsApp`, Service Principal in Exchange
+Online, Client Secret). Anleitung von Microsoft:
+<https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth>
 
 ## Projektstruktur
 

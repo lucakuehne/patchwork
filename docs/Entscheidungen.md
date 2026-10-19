@@ -197,17 +197,42 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Zuerst Testbetrieb, mit eigenem PostgreSQL-Container im Stack.
   - Aufruf über einen eigenen DNS-Namen (CNAME auf den Docker-Server), ohne Reverse-Proxy. Patchwork belegt dafür Port 80 des Servers direkt.
   - Gesichert wird über das Sicherungskonzept für den ganzen Host, ohne eigenen `pg_dump`.
-  - Smoke-, LDAP- und AD-Tests laufen in einem vorübergehenden Stack «patchwork-test» auf dem Server, der danach wieder entfernt wird.
+  - Smoke-, LDAP- und AD-Tests laufen in einem vorübergehenden Stack «patchwork-test» auf dem Server (`deploy/test-stack.yml`), der danach wieder entfernt wird.
+  - Einrichtung über die Portainer-API mit einem Access Token des Benutzers. Die Token-Datei `portainer-token.txt` ist von Git und Docker ausgeschlossen.
+  - Neue Versionen gehen erst nach Freigabe durch den Benutzer auf `main` und damit auf den Server.
 - Noch zu bestätigen:
-  - Einrichtung über die Portainer-API mit einem Access Token des Benutzers.
   - Vor dem produktiven Betrieb: HTTPS. Ohne HTTPS gehen Passwörter, auch die AD-Passwörter, unverschlüsselt durchs Netz.
+
+## Testbetrieb, Mail-Abruf und Microsoft 365 (Stand 19.10.2026)
+
+Wünsche des Benutzers vom 19.10.2026:
+
+- Patchwork liest Postfächer nur, Mails bleiben ungelesen (umgesetzt, siehe Randfall 2).
+- Pro Postfach festlegen, ab welchem Datum und welcher Uhrzeit Mails abgeholt werden.
+- Im Testbetrieb bzw. Parallelbetrieb werden keine Mails versendet, aber man sieht, welche versendet worden wären.
+- Microsoft 365: Anmeldung interaktiv, ohne Tenant-ID, Client-ID und Client Secret von Hand einzutragen.
+
+Bestätigt am 19.10.2026:
+
+1. Einstellung pro Postfach «Mails abholen ab» (Datum und Uhrzeit), beim Anlegen vorbelegt mit dem aktuellen Zeitpunkt. Sie ersetzt die Regel «beim ersten Abruf nur ungelesene Mails». Übernommen werden alle Mails ab diesem Zeitpunkt, gelesen oder nicht. Massgebend ist der Eingang im Postfach (IMAP INTERNALDATE), nicht das Datum des Absenders.
+2. Wird der Zeitpunkt geändert, holt Patchwork ab dem neuen Zeitpunkt alles, was noch fehlt, ohne doppelte Vorgänge.
+3. Schalter «Testbetrieb: keine Mails versenden» für die ganze Instanz (Verwaltung → Allgemein), mit Hinweis für alle Benutzer (auch im Portal). Er gilt für alle Mails, auch für Benachrichtigungen an Mitarbeitende.
+4. Nicht versendete Mails: Liste unter Verwaltung → «Nicht versendete Mails» (nur Admin) mit vollständiger Ansicht jeder Mail samt Anhängen und .eml, dazu ein Vermerk «nicht versendet» bei öffentlichen Antworten in der Timeline.
+5. Beim Ausschalten werden zurückgehaltene Mails nicht nachträglich verschickt, die Liste bleibt als Protokoll.
+6. Microsoft 365: Anmeldung pro Postfach mit Gerätecode (microsoft.com/devicelogin): Patchwork zeigt den Code, kopiert ihn und öffnet die Anmeldeseite in einem Popup. Tenant automatisch aus der Mail-Domain, kein Client Secret. Eine Anmeldung mit Weiterleitung zu Patchwork verlangt bei Microsoft HTTPS und folgt erst danach.
+7. Einmalige App-Registrierung für die ganze Instanz (öffentlicher Client, einzelner Mandant, delegierte Rechte `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid`, `profile`, Administratorzustimmung). Ganz automatisch geht es nicht, weil Patchwork für das Anlegen bereits eine Client-ID bräuchte. Die Anleitung steht in der Anwendung (Verwaltung → Postfächer → Microsoft 365), dort trägt man am Schluss die Anwendungs-ID ein.
+8. Benutzer-Postfach und freigegebenes Postfach: Es meldet sich das Konto des Postfachs selbst oder ein Konto mit Vollzugriff an (beim freigegebenen Postfach zusätzlich «Senden als»). Verbunden wird immer mit der Adresse des Postfachs. Patchwork zeigt das angemeldete Konto an.
+9. Der bisherige App-Zugriff (Client Credentials mit Client Secret) bleibt unter «Erweitert» erhalten.
+10. Nur für die Postfächer, keine Anmeldung der Benutzer an Patchwork mit Microsoft.
+
+Zum Vergleich: HelpSpot bietet einen eigenen, im Internet betriebenen Anmeldedienst mit zentraler App (Schlüssel wird zurückkopiert) und als Alternative eine eigene App-Registrierung mit Client Secret und HTTPS-Rücksprungadresse. Es nutzt Microsoft Graph statt IMAP/SMTP – der Ausweg für Patchwork, falls SMTP AUTH im Tenant gesperrt ist.
 
 ## Randfälle (bestätigt am 15.10.2026)
 
 Beim Bauen aufgefallene Randfälle:
 
 1. **Mail von Unbeteiligten auf einen bestehenden Vorgang** (z.B. IT antwortet auf eine Benachrichtigung, oder eine fremde Person nennt `[PW-…]` im Betreff): wird als **interne Notiz** erfasst, ändert den Status nicht und macht die Person nicht zum Beteiligten.
-2. **Erster Abruf eines Postfachs:** Nur **ungelesene** Mails werden übernommen. Verarbeitete Mails werden als gelesen markiert und bleiben im Postfach (kein Verschieben, kein Löschen).
+2. **Erster Abruf eines Postfachs:** Übernommen werden alle Mails ab dem Zeitpunkt «Mails abholen ab», gelesen oder nicht (geändert am 19.10.2026, vorher nur ungelesene). Verarbeitete Mails bleiben unverändert im Postfach: nicht als gelesen markiert, nicht verschoben, nicht gelöscht (geändert am 19.10.2026, vorher als gelesen markiert). Patchwork öffnet den Ordner nur lesend, erkennt danach neue Mails an der IMAP-UID und bereits übernommene an der Message-ID. Nach einem Wechsel von Server, Ordner, Benutzername oder Startzeitpunkt beginnt der Abruf wieder ab dem Startzeitpunkt, ohne doppelte Vorgänge.
 3. **Antworten per Mail:** Der zitierte Verlauf wird entfernt und nur der neue Text angezeigt (als Text, ohne HTML-Formatierung). Die Originalmail (.eml) lässt sich herunterladen. Neue Vorgänge aus Mails zeigen das HTML der Mail.
 4. **Antwort des Melders auf eine abgelehnte Aufgabe:** Die Aufgabe bleibt abgelehnt (nur «Wartend» und «Erledigt» öffnen wieder), die Antwort erscheint in der Timeline.
 5. **Newsletter und automatische Mails** (List-Header, Auto-Submitted, Abwesenheitsnotizen, Unzustellbarkeit): keine Eingangsbestätigung. Abwesenheitsnotizen ändern den Status nicht und benachrichtigen niemanden.

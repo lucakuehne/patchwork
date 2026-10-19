@@ -16,7 +16,8 @@ export interface MailboxInput {
   smtpHost: string;
   smtpPort: number;
   smtpSecurity: 'tls' | 'starttls' | 'none';
-  authType: 'password' | 'oauth2';
+  /** microsoft = Anmeldung mit einem Microsoft-Konto, oauth2 = App-Zugriff (Client Credentials) */
+  authType: 'password' | 'oauth2' | 'microsoft';
   username: string;
   /** undefined = unverändert */
   password?: string;
@@ -25,13 +26,23 @@ export interface MailboxInput {
   /** undefined = unverändert */
   oauthClientSecret?: string;
   oauthScope?: string | null;
+  /** Mails abholen ab diesem Eingang; undefined = unverändert bzw. beim Anlegen ab jetzt */
+  fetchFrom?: Date;
 }
 
 /** Postfach ohne Geheimnisse, für die Oberfläche. */
 export function toPublicMailbox(m: Mailbox) {
-  const { passwordEnc, oauthClientSecretEnc, uidValidity: _uv, ...rest } = m;
-  return { ...rest, hasPassword: !!passwordEnc, hasClientSecret: !!oauthClientSecretEnc };
+  const { passwordEnc, oauthClientSecretEnc, oauthRefreshTokenEnc, uidValidity: _uv, ...rest } = m;
+  return {
+    ...rest,
+    hasPassword: !!passwordEnc,
+    hasClientSecret: !!oauthClientSecretEnc,
+    microsoftConnected: m.authType === 'microsoft' && !!oauthRefreshTokenEnc,
+  };
 }
+
+/** IMAP kennt den Eingang nur auf die Sekunde genau. */
+const wholeSecond = (d: Date) => new Date(Math.floor(d.getTime() / 1000) * 1000);
 
 @Injectable()
 export class MailboxesService {
@@ -95,14 +106,18 @@ export class MailboxesService {
       const connectionChanged =
         values.imapHost !== current.imapHost ||
         values.imapFolder !== current.imapFolder ||
-        values.username !== current.username;
+        values.username !== current.username ||
+        values.fetchFrom!.getTime() !== wholeSecond(current.fetchFrom).getTime();
       if (values.isDefault) await tx.update(mailboxes).set({ isDefault: false }).where(ne(mailboxes.id, id));
       const [updated] = await tx
         .update(mailboxes)
         .set({
           ...values,
-          // Anderer Server/Ordner: Abruf beginnt neu bei den ungelesenen Mails
+          // Anderer Server/Ordner oder anderer Startzeitpunkt: Abruf beginnt neu ab dem Startzeitpunkt,
+          // schon übernommene Mails erkennt die Message-ID
           ...(connectionChanged ? { uidValidity: null, lastUid: 0 } : {}),
+          // Die Anmeldung mit Microsoft gilt nur für dieses Verfahren
+          ...(values.authType !== 'microsoft' ? { oauthRefreshTokenEnc: null, oauthAccount: null } : {}),
           lastError: null,
         })
         .where(eq(mailboxes.id, id))
@@ -120,6 +135,27 @@ export class MailboxesService {
         if (next) await tx.update(mailboxes).set({ isDefault: true }).where(eq(mailboxes.id, next.id));
       }
     });
+  }
+
+  /** Speichert die Anmeldung mit einem Microsoft-Konto. */
+  async storeMicrosoftLogin(id: string, login: { tokenUrl: string; clientId: string; refreshTokenEnc: string; account: string }) {
+    await this.db
+      .update(mailboxes)
+      .set({
+        authType: 'microsoft',
+        oauthTokenUrl: login.tokenUrl,
+        oauthClientId: login.clientId,
+        oauthScope: null,
+        oauthRefreshTokenEnc: login.refreshTokenEnc,
+        oauthAccount: login.account,
+        lastError: null,
+      })
+      .where(eq(mailboxes.id, id));
+  }
+
+  /** Microsoft liefert beim Erneuern ein neues Refresh-Token; damit bleibt die Anmeldung gültig. */
+  async storeRefreshToken(id: string, refreshTokenEnc: string) {
+    await this.db.update(mailboxes).set({ oauthRefreshTokenEnc: refreshTokenEnc }).where(eq(mailboxes.id, id));
   }
 
   async recordPoll(id: string, state: { uidValidity?: number | null; lastUid?: number; error: string | null }) {
@@ -160,9 +196,12 @@ export class MailboxesService {
       throw new BadRequestException('Für OAuth 2.0 braucht es Token-URL, Client-ID und Client-Secret');
     }
 
+    const address = input.address.trim().toLowerCase();
+    // Anmeldung mit Microsoft: Token-URL und Client-ID setzt die Anmeldung, verbunden wird mit der Adresse des Postfachs
+    const microsoft = input.authType === 'microsoft';
     return {
       name: input.name.trim(),
-      address: input.address.trim().toLowerCase(),
+      address,
       active: input.active,
       isDefault: input.isDefault,
       imapHost: input.imapHost.trim(),
@@ -173,12 +212,13 @@ export class MailboxesService {
       smtpPort: input.smtpPort,
       smtpSecurity: input.smtpSecurity,
       authType: input.authType,
-      username: input.username.trim(),
+      username: microsoft ? address : input.username.trim(),
       passwordEnc,
-      oauthTokenUrl: input.oauthTokenUrl?.trim() || null,
-      oauthClientId: input.oauthClientId?.trim() || null,
+      oauthTokenUrl: microsoft ? (current?.oauthTokenUrl ?? null) : input.oauthTokenUrl?.trim() || null,
+      oauthClientId: microsoft ? (current?.oauthClientId ?? null) : input.oauthClientId?.trim() || null,
       oauthClientSecretEnc,
-      oauthScope: input.oauthScope?.trim() || null,
+      oauthScope: microsoft ? null : input.oauthScope?.trim() || null,
+      fetchFrom: wholeSecond(input.fetchFrom ?? current?.fetchFrom ?? new Date()),
     };
   }
 }

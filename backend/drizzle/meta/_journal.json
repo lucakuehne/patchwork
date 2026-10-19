@@ -71,6 +71,13 @@
       "when": 1792327359806,
       "tag": "0009_drop_waiting_reminder",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792407843496,
+      "tag": "0010_testbetrieb_abruf_microsoft",
+      "breakpoints": true
     }
   ]
 }

@@ -76,6 +76,7 @@ async function send() {
           </template>
         </template>
         <template v-else>Kein Mail-Empfänger (du bist selbst Melder)</template>
+        <strong v-if="session.info?.testMode" class="test-mode"> · Testbetrieb: wird nicht versendet</strong>
       </span>
       <span v-else class="faint small">Nur für die IT sichtbar, keine Mail</span>
     </div>
@@ -131,6 +132,10 @@ async function send() {
 }
 .small {
   font-size: 12px;
+}
+.test-mode {
+  color: var(--warning);
+  font-weight: 500;
 }
 .tools {
   display: flex;

@@ -28,6 +28,16 @@ import { SettingsService, type LdapSettings } from './settings.service';
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
 
 const generalSchema = z.object({ appName: z.string().trim().min(1, 'Name fehlt').max(100) });
+const mailSchema = z.object({ testMode: z.boolean() });
+const microsoftSchema = z.object({
+  clientId: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .refine((id) => id === '' || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id), {
+      message: 'Die Anwendungs-ID hat das Format 00000000-0000-0000-0000-000000000000',
+    }),
+});
 
 /** Prüft ein PEM-Zertifikat und liefert Angaben zur Anzeige. */
 function certificateInfo(pem: string): { subject: string; issuer: string; validTo: string } {
@@ -91,12 +101,19 @@ export class SettingsController {
   @Public()
   @Get('public/info')
   async info() {
-    const [general, logo, setupRequired] = await Promise.all([
+    const [general, logo, mail, setupRequired] = await Promise.all([
       this.settings.get('general'),
       this.settings.get('logo'),
+      this.settings.get('mail'),
       this.auth.isSetupRequired(),
     ]);
-    return { appName: general.appName, hasLogo: !!logo, logoVersion: logo?.storageKey.slice(-8) ?? null, setupRequired };
+    return {
+      appName: general.appName,
+      hasLogo: !!logo,
+      logoVersion: logo?.storageKey.slice(-8) ?? null,
+      setupRequired,
+      testMode: mail.testMode,
+    };
   }
 
   @Public()
@@ -121,6 +138,33 @@ export class SettingsController {
   @Put('settings/general')
   async updateGeneral(@Body(new ZodPipe(generalSchema)) body: z.infer<typeof generalSchema>) {
     await this.settings.set('general', body);
+    return body;
+  }
+
+  @AdminOnly()
+  @Get('settings/mail')
+  mail() {
+    return this.settings.get('mail');
+  }
+
+  /** Testbetrieb ein/aus. Zurückgehaltene Mails werden beim Ausschalten nicht nachträglich versendet. */
+  @AdminOnly()
+  @Put('settings/mail')
+  async updateMail(@Body(new ZodPipe(mailSchema)) body: z.infer<typeof mailSchema>) {
+    await this.settings.set('mail', body);
+    return body;
+  }
+
+  @AdminOnly()
+  @Get('settings/microsoft')
+  microsoft() {
+    return this.settings.get('microsoft');
+  }
+
+  @AdminOnly()
+  @Put('settings/microsoft')
+  async updateMicrosoft(@Body(new ZodPipe(microsoftSchema)) body: z.infer<typeof microsoftSchema>) {
+    await this.settings.set('microsoft', body);
     return body;
   }
 

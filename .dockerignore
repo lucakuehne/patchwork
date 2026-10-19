@@ -4,3 +4,4 @@ data
 .env
 .git
 *.log
+**/portainer-token.txt

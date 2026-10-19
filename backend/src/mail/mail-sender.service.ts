@@ -1,9 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { inArray } from 'drizzle-orm';
+import nodemailer, { type SendMailOptions } from 'nodemailer';
 import type PgBoss from 'pg-boss';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
-import { attachments, mailMessages, type Mailbox } from '../db/schema';
+import { attachments, heldMails, mailMessages, type Mailbox } from '../db/schema';
 import { BossService, QUEUE_MAIL_SEND } from '../jobs/boss.service';
 import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
@@ -79,28 +80,34 @@ export class MailSenderService implements OnModuleInit {
       ? await this.db.select().from(attachments).where(inArray(attachments.id, mail.attachmentIds))
       : [];
     const { appName } = await this.settings.get('general');
+    const message: SendMailOptions = {
+      from: { name: `${mailbox.name || appName}`, address: mailbox.address },
+      to: mail.to,
+      cc: mail.cc,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+      messageId: mail.messageId,
+      inReplyTo: mail.inReplyTo ?? undefined,
+      references: mail.references?.length ? mail.references : undefined,
+      headers: mail.automated ? { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' } : {},
+      attachments: files.map((f) => ({
+        filename: f.filename,
+        contentType: f.contentType,
+        content: this.storage.stream(f.storageKey),
+      })),
+      disableFileAccess: true,
+      disableUrlAccess: true,
+    };
+
+    if ((await this.settings.get('mail')).testMode) {
+      await this.hold(mail, mailbox, message);
+      return;
+    }
 
     const transporter = await this.transport.smtpTransport(mailbox);
     try {
-      await transporter.sendMail({
-        from: { name: `${mailbox.name || appName}`, address: mailbox.address },
-        to: mail.to,
-        cc: mail.cc,
-        subject: mail.subject,
-        text: mail.text,
-        html: mail.html,
-        messageId: mail.messageId,
-        inReplyTo: mail.inReplyTo ?? undefined,
-        references: mail.references?.length ? mail.references : undefined,
-        headers: mail.automated ? { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' } : {},
-        attachments: files.map((f) => ({
-          filename: f.filename,
-          contentType: f.contentType,
-          content: this.storage.stream(f.storageKey),
-        })),
-        disableFileAccess: true,
-        disableUrlAccess: true,
-      });
+      await transporter.sendMail(message);
       this.logger.log(`Mail «${mail.subject}» an ${[...mail.to, ...mail.cc].join(', ')} gesendet`);
     } catch (err) {
       this.logger.error(`Versand von «${mail.subject}» fehlgeschlagen: ${(err as Error).message}`);
@@ -108,5 +115,27 @@ export class MailSenderService implements OnModuleInit {
     } finally {
       transporter.close();
     }
+  }
+
+  /** Testbetrieb: Mail fertig zusammenstellen und ablegen statt versenden. */
+  private async hold(mail: OutgoingMail, mailbox: Mailbox, message: SendMailOptions) {
+    const built = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail(message);
+    const storageKey = await this.storage.save(built.message as Buffer, 'eml');
+    await this.db
+      .insert(heldMails)
+      .values({
+        messageId: mail.messageId,
+        itemId: mail.itemId,
+        entryId: mail.entryId ?? null,
+        mailboxId: mailbox.id,
+        fromAddress: mailbox.address,
+        to: mail.to,
+        cc: mail.cc,
+        subject: mail.subject,
+        automated: mail.automated,
+        storageKey,
+      })
+      .onConflictDoNothing();
+    this.logger.log(`Testbetrieb: Mail «${mail.subject}» an ${[...mail.to, ...mail.cc].join(', ')} nicht versendet`);
   }
 }
