@@ -189,6 +189,19 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - Anhänge: höchstens 25 MB pro Datei, 20 Dateien pro Antwort.
 - Nach einem Update fehlen einem noch offenen Browser-Tab die Dateien der alten Version. Die Seite lädt sich dann einmal automatisch neu (beim Seitenwechsel direkt mit dem Ziel), statt «Failed to fetch dynamically imported module» zu zeigen.
 
+## Betrieb (Stand 19.10.2026)
+
+- Patchwork läuft vollständig auf dem Docker-Server, der mit Portainer verwaltet wird: Anwendung, Datenbank und auch Testläufe. Auf dem Laptop läuft nichts, er dient nur zum Bearbeiten und Steuern.
+- Das GitHub-Repo ist öffentlich. GitHub Actions prüft bei jedem Push auf `main` Typen und Unit-Tests und baut danach das Image in die GitHub Container Registry (`ghcr.io/lucakuehne/patchwork`). Der Portainer-Stack (`deploy/portainer.yml`) holt es von dort, ohne Zugangsdaten. Interne Namen (Server, Domain) stehen deshalb nicht im Repo, sondern nur in den Variablen des Stacks.
+- Bestätigt am 19.10.2026:
+  - Zuerst Testbetrieb, mit eigenem PostgreSQL-Container im Stack.
+  - Aufruf über einen eigenen DNS-Namen (CNAME auf den Docker-Server), ohne Reverse-Proxy. Patchwork belegt dafür Port 80 des Servers direkt.
+  - Gesichert wird über das Sicherungskonzept für den ganzen Host, ohne eigenen `pg_dump`.
+  - Smoke-, LDAP- und AD-Tests laufen in einem vorübergehenden Stack «patchwork-test» auf dem Server, der danach wieder entfernt wird.
+- Noch zu bestätigen:
+  - Einrichtung über die Portainer-API mit einem Access Token des Benutzers.
+  - Vor dem produktiven Betrieb: HTTPS. Ohne HTTPS gehen Passwörter, auch die AD-Passwörter, unverschlüsselt durchs Netz.
+
 ## Randfälle (bestätigt am 15.10.2026)
 
 Beim Bauen aufgefallene Randfälle:

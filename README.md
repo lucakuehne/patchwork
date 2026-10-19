@@ -151,6 +151,15 @@ Das Dienstkonto kann als `benutzer@domäne`, `DOMÄNE\benutzer` oder vollständi
 
 Das Image enthält Front- und Backend. Daten (Anhänge, Logo, Originalmails) liegen im Volume `/data`.
 
+**Fertiges Image:** GitHub Actions ([.github/workflows/image.yml](.github/workflows/image.yml)) prüft bei jedem Push auf
+`main` Typen und Unit-Tests und legt danach das Image in der GitHub Container Registry ab: `ghcr.io/lucakuehne/patchwork:latest`,
+dazu `sha-<commit>` für jeden Commit und `1.2.3` für ein Git-Tag `v1.2.3`.
+
+**Mit Portainer:** Stack aus dem Git-Repository mit dem Compose-Pfad `deploy/portainer.yml` anlegen. Er enthält Patchwork
+und eine eigene PostgreSQL und holt das fertige Image, gebaut wird nichts. Die nötigen Variablen (`APP_SECRET`,
+`POSTGRES_PASSWORD`, `PUBLIC_URL`, optional `PATCHWORK_PORT`) sind in der Datei beschrieben. Aktualisieren mit
+«Pull and redeploy» und «Re-pull image».
+
 **Mit eigenem Datenbank-Container** (Profil `db`):
 
 ```bash
