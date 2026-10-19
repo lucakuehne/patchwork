@@ -201,8 +201,8 @@ Postfächer in Microsoft 365 meldet man mit einem Microsoft-Konto an (OAuth 2.0 
 
 1. **Einmalig für die ganze Instanz:** eine App-Registrierung in Entra ID. Die Anleitung steht in Patchwork unter
    Verwaltung → Postfächer → Microsoft 365 → «Einrichten»: öffentlicher Client, einzelner Mandant, delegierte Rechte
-   `IMAP.AccessAsUser.All` und `SMTP.Send` (Office 365 Exchange Online) sowie `offline_access`, `openid` und `profile`
-   (Microsoft Graph), Administratorzustimmung. Am Schluss die Anwendungs-ID dort eintragen. Ein Client Secret braucht es nicht.
+   `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid` und `profile` (alle unter Microsoft Graph),
+   Administratorzustimmung. Am Schluss die Anwendungs-ID dort eintragen. Ein Client Secret braucht es nicht.
 2. **Pro Postfach:** Vorlage «Microsoft 365» wählen, speichern und «Mit Microsoft anmelden». Patchwork zeigt einen Code und
    öffnet die Anmeldeseite von Microsoft. Anmelden kann sich das Konto des Postfachs oder ein Konto mit Vollzugriff
    (bei einem freigegebenen Postfach zusätzlich «Senden als»). Den Tenant ermittelt Patchwork aus der Mail-Domain.

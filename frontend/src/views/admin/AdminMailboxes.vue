@@ -601,18 +601,10 @@ function copyText(text: string): boolean {
           (Allow public client flows) auf <strong>Ja</strong> setzen und speichern.
         </li>
         <li>
-          Unter <strong>API-Berechtigungen</strong> (API permissions) → <strong>Berechtigung hinzufügen</strong>:
-          <ul>
-            <li>
-              <strong>Von meiner Organisation verwendete APIs</strong> → <strong>Office 365 Exchange Online</strong> →
-              <strong>Delegierte Berechtigungen</strong>: <code>IMAP.AccessAsUser.All</code> und <code>SMTP.Send</code>
-            </li>
-            <li>
-              <strong>Microsoft Graph</strong> → <strong>Delegierte Berechtigungen</strong>: <code>offline_access</code>,
-              <code>openid</code> und <code>profile</code>
-            </li>
-          </ul>
-          Danach <strong>Administratorzustimmung für … erteilen</strong> (Grant admin consent).
+          Unter <strong>API-Berechtigungen</strong> (API permissions) → <strong>Berechtigung hinzufügen</strong> →
+          <strong>Microsoft Graph</strong> → <strong>Delegierte Berechtigungen</strong> diese fünf auswählen (über das Suchfeld):
+          <code>IMAP.AccessAsUser.All</code>, <code>SMTP.Send</code>, <code>offline_access</code>, <code>openid</code> und
+          <code>profile</code>. Danach <strong>Administratorzustimmung für … erteilen</strong> (Grant admin consent).
         </li>
         <li>Unter <strong>Übersicht</strong> (Overview) die <strong>Anwendungs-ID (Client)</strong> kopieren und hier einfügen:</li>
       </ol>
@@ -627,8 +619,9 @@ function copyText(text: string): boolean {
         />
       </div>
       <span class="hint faint">
-        Im Postfach müssen IMAP und – für den Versand – «Authentifiziertes SMTP» erlaubt sein (Microsoft 365 Admin Center → Benutzer →
-        Postfach → E-Mail-Apps verwalten). Im Testbetrieb wird nichts versendet.
+        Bittet Microsoft beim ersten Anmelden eines Postfachs trotzdem um Zustimmung, als Admin «Im Namen Ihrer Organisation
+        zustimmen» anhaken. Im Postfach müssen IMAP und – für den Versand – «Authentifiziertes SMTP» erlaubt sein (Microsoft 365
+        Admin Center → Benutzer → Postfach → E-Mail-Apps verwalten). Im Testbetrieb wird nichts versendet.
       </span>
       <div v-if="setupError" class="error-box">{{ setupError }}</div>
       <template #footer>

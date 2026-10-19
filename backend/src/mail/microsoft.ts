@@ -52,7 +52,8 @@ const CODE_HINTS: Record<number, string> = {
     'Die App-Registrierung wurde in diesem Tenant nicht gefunden. Stimmt die Anwendungs-ID, und gehört die Mail-Domain zum selben Tenant wie die App-Registrierung?',
   7000218:
     'In der App-Registrierung sind öffentliche Clientflows nicht zugelassen (Authentifizierung → «Öffentliche Clientflows zulassen»: Ja).',
-  65001: 'Für die App fehlt die Zustimmung: In der App-Registrierung unter «API-Berechtigungen» die Administratorzustimmung erteilen.',
+  65001:
+    'Für die App fehlt die Zustimmung: In der App-Registrierung unter «API-Berechtigungen» die Administratorzustimmung erteilen oder beim Anmelden als Admin «Im Namen Ihrer Organisation zustimmen» anhaken.',
   70011: 'Der App-Registrierung fehlen Berechtigungen (IMAP.AccessAsUser.All, SMTP.Send, offline_access, openid, profile).',
   50020: 'Das Konto gehört nicht zum Tenant der App-Registrierung.',
   53003:
