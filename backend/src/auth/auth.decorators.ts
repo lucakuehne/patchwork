@@ -18,6 +18,8 @@ export const AdminOnly = () => SetMetadata(ADMIN_ONLY, true);
 export interface AuthedRequest extends Request {
   user?: User;
   sessionId?: string;
+  /** «Als dieser Benutzer arbeiten»: der Admin dahinter; alle Rechte richten sich nach «user» */
+  impersonator?: User;
 }
 
 /** Angemeldeter Benutzer der aktuellen Anfrage. */

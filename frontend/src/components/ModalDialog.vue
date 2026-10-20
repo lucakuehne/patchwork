@@ -1,14 +1,26 @@
+<script lang="ts">
+/** Offene Dialoge, der zuletzt geöffnete zuoberst: Escape schliesst nur ihn (z.B. eine Rückfrage über einem Dialog) */
+const openDialogs: symbol[] = [];
+</script>
+
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue';
 
 defineProps<{ title: string; wide?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 
+const self = Symbol('dialog');
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close');
+  if (e.key === 'Escape' && openDialogs.at(-1) === self) emit('close');
 }
-onMounted(() => document.addEventListener('keydown', onKey));
-onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
+onMounted(() => {
+  openDialogs.push(self);
+  document.addEventListener('keydown', onKey);
+});
+onBeforeUnmount(() => {
+  openDialogs.splice(openDialogs.indexOf(self), 1);
+  document.removeEventListener('keydown', onKey);
+});
 </script>
 
 <template>
@@ -65,6 +77,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 }
 .foot {
   display: flex;
+  /* Umbruch statt Überlauf, wenn die Knöpfe auf schmalen Bildschirmen nicht nebeneinander passen */
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;

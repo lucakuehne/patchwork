@@ -35,6 +35,7 @@ export class AuthGuard implements CanActivate {
       if (found) {
         req.user = found.user;
         req.sessionId = found.sessionId;
+        req.impersonator = found.impersonator ?? undefined;
       }
     }
 

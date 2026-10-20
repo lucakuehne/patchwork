@@ -98,10 +98,9 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 </template>
 
 <style scoped>
+/* Klebt zusammen mit den Hinweisbalken oben (Block «top-bar» in App.vue) */
 .header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16px;

@@ -18,6 +18,8 @@ import type {
 export const useSession = defineStore('session', () => {
   const info = ref<PublicInfo | null>(null);
   const user = ref<User | null>(null);
+  /** «Als dieser Benutzer arbeiten»: der Admin dahinter (sonst null); alles läuft mit den Rechten von «user» */
+  const impersonator = ref<User | null>(null);
   const counts = ref<Counts>({ inbox: 0, incidents: 0, tasks: 0 });
   const statuses = ref<Status[]>([]);
   const statusFlow = ref<StatusFlow>({ restrict: { incident: false, task: false }, transitions: [] });
@@ -41,17 +43,73 @@ export const useSession = defineStore('session', () => {
   }
 
   async function loadMe() {
-    user.value = (await api.get<{ user: User | null }>('/auth/me')).user;
+    const me = await api.get<{ user: User | null; impersonator: User | null }>('/auth/me');
+    user.value = me.user;
+    impersonator.value = me.impersonator;
   }
 
   async function login(username: string, password: string) {
     user.value = await api.post<User>('/auth/login', { username, password });
+    impersonator.value = null;
+    announceSessionChange(user.value.id, null);
     if (isStaff.value) await loadAppData();
   }
 
   async function logout() {
     await api.post('/auth/logout');
     user.value = null;
+    impersonator.value = null;
+    announceSessionChange(null, null);
+  }
+
+  /*
+   * Die Anmeldung (Cookie) gilt für alle Tabs. Wechselt sie in einem Tab (Anmelden, Abmelden, als anderer Benutzer
+   * arbeiten und zurück), laden die übrigen neu, sofern sie unter einem anderen Konto stehen, damit nichts unbemerkt
+   * unter einem anderen Konto geschieht. Tabs, die schon zum neuen Konto passen, bleiben (z.B. angefangene Antworten).
+   */
+  interface SessionIdentity {
+    userId: string | null;
+    impersonatorId: string | null;
+  }
+  const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('patchwork-session');
+
+  /** Den anderen Tabs das Konto nach dem Wechsel melden */
+  function announceSessionChange(userId: string | null, impersonatorId: string | null) {
+    channel?.postMessage({ userId, impersonatorId } satisfies SessionIdentity);
+  }
+
+  const sameIdentity = (other: SessionIdentity) =>
+    other.userId === (user.value?.id ?? null) && other.impersonatorId === (impersonator.value?.id ?? null);
+
+  /** Auf das neue Konto umstellen: auf der Anmeldeseite weiter zum Ziel, sonst die Seite neu laden */
+  function followIdentity(other: SessionIdentity) {
+    if (sameIdentity(other)) return;
+    const params = new URLSearchParams(window.location.search);
+    if (other.userId && window.location.pathname.startsWith('/login')) window.location.assign(params.get('weiter') ?? '/');
+    else window.location.reload();
+  }
+
+  let watching = false;
+  /** Einmal beim Start: auf Wechsel in anderen Tabs reagieren, zur Sicherheit auch beim Zurückkehren in den Tab prüfen. */
+  function watchOtherTabs() {
+    if (watching) return;
+    watching = true;
+    channel?.addEventListener('message', (e: MessageEvent<SessionIdentity>) => followIdentity(e.data));
+    let checking = false;
+    const check = async () => {
+      if (document.visibilityState !== 'visible' || !user.value || checking) return;
+      checking = true;
+      try {
+        const me = await api.get<{ user: User | null; impersonator: User | null }>('/auth/me');
+        followIdentity({ userId: me.user?.id ?? null, impersonatorId: me.impersonator?.id ?? null });
+      } catch {
+        // z.B. offline; die nächste Anfrage zeigt den Fehler
+      } finally {
+        checking = false;
+      }
+    };
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
   }
 
   /** Stammdaten nach dem Login. */
@@ -113,6 +171,9 @@ export const useSession = defineStore('session', () => {
   return {
     info,
     user,
+    impersonator,
+    announceSessionChange,
+    watchOtherTabs,
     counts,
     statuses,
     statusFlow,

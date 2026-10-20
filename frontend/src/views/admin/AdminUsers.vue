@@ -5,12 +5,14 @@ import ModalDialog from '../../components/ModalDialog.vue';
 import PersonSearch from '../../components/PersonSearch.vue';
 import { formatDateTime, ROLE_LABELS } from '../../format';
 import { useSession } from '../../stores/session';
+import { useConfirm } from '../../stores/confirm';
 import { useToast } from '../../stores/toast';
 import type { AdminUser, DirectoryPerson, PersonPick, Role } from '../../types';
 import { followName } from '../../user-names';
 
 const session = useSession();
 const toast = useToast();
+const confirm = useConfirm();
 const users = ref<AdminUser[]>([]);
 const filter = ref<'staff' | 'standard' | 'all'>('staff');
 const query = ref('');
@@ -31,7 +33,46 @@ interface Draft {
   hasPassword: boolean;
 }
 const draft = ref<Draft | null>(null);
+/** Stand beim Öffnen von «Bearbeiten», um ungespeicherte Änderungen zu erkennen */
+let draftSnapshot = '';
 const error = ref('');
+
+/** «Als dieser Benutzer arbeiten»: aktive Benutzer mit Rolle IT oder Admin, nicht man selbst */
+const impersonationTarget = computed(() => {
+  const id = draft.value?.id;
+  const u = id ? users.value.find((x) => x.id === id) : undefined;
+  if (!u || session.impersonator || u.id === session.user?.id) return null;
+  return u.active && (u.role === 'admin' || u.role === 'it') ? u : null;
+});
+
+async function impersonate() {
+  const target = impersonationTarget.value;
+  if (!target) return;
+  if (
+    draft.value &&
+    JSON.stringify(draft.value) !== draftSnapshot &&
+    !(await confirm.ask({
+      title: 'Ungespeicherte Änderungen',
+      message: `Die Änderungen an ${target.name} sind noch nicht gespeichert und gehen verloren.`,
+      confirmLabel: 'Trotzdem als dieser Benutzer arbeiten',
+    }))
+  ) {
+    return;
+  }
+  if (impersonating.value) return;
+  impersonating.value = true;
+  try {
+    await api.post(`/admin/users/${target.id}/impersonate`);
+    session.announceSessionChange(target.id, session.user?.id ?? null);
+    // Neu laden: Stammdaten, Zähler und Rechte gelten ab jetzt für diesen Benutzer
+    window.location.assign('/eingang');
+  } catch (err) {
+    error.value = errorMessage(err);
+    impersonating.value = false;
+  }
+}
+/** Gegen Doppelklick: Die zweite Anfrage käme mit der bereits beendeten Sitzung */
+const impersonating = ref(false);
 const saving = ref(false);
 
 /** Neues lokales Konto: Vor- und Nachname folgen dem eingetippten Namen, bis man sie selbst ändert */
@@ -156,6 +197,7 @@ function edit(u: AdminUser) {
   error.value = '';
   resetDirectory();
   draft.value = { ...u, role: u.authSource === 'ldap' && !u.roleManual ? 'auto' : u.role, password: '' };
+  draftSnapshot = JSON.stringify(draft.value);
   if (u.authSource === 'ldap') {
     if (!u.roleManual) adRole.value = u.role;
     // Nur für die Anzeige «zurzeit: …»; ohne LDAP gilt die gespeicherte Rolle
@@ -206,6 +248,8 @@ async function removePassword() {
   try {
     await api.patch(`/admin/users/${draft.value.id}`, { password: '' });
     draft.value.hasPassword = false;
+    // Gespeichert: zählt nicht als ungespeicherte Änderung
+    if (draftSnapshot) draftSnapshot = JSON.stringify({ ...JSON.parse(draftSnapshot), hasPassword: false });
     toast.success('Passwort entfernt, Anmeldung nicht mehr möglich');
     await load();
   } catch (err) {
@@ -344,6 +388,16 @@ async function removePassword() {
       </label>
       <div v-if="error" class="error-box">{{ error }}</div>
       <template #footer>
+        <button
+          v-if="impersonationTarget"
+          class="btn impersonate"
+          type="button"
+          :disabled="impersonating"
+          :title="`Patchwork als ${impersonationTarget.name} verwenden, z.B. um Antworten unter diesem Namen zu testen. Oben erscheint der Weg zurück.`"
+          @click="impersonate"
+        >
+          Als dieser Benutzer arbeiten
+        </button>
         <button class="btn" type="button" @click="draft = null">Abbrechen</button>
         <button class="btn btn-primary" type="button" :disabled="saving || (choosingPerson && adLoading)" @click="save">
           Speichern
@@ -354,6 +408,10 @@ async function removePassword() {
 </template>
 
 <style scoped>
+/* Links im Fuss des Dialogs, getrennt von Abbrechen/Speichern */
+.impersonate {
+  margin-right: auto;
+}
 tr.inactive td {
   color: var(--text-faint);
 }

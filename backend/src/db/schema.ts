@@ -66,6 +66,8 @@ export const sessions = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** «Als dieser Benutzer arbeiten»: der Admin, der die Sitzung gestartet hat (sonst null) */
+    impersonatorId: uuid('impersonator_id').references(() => users.id, { onDelete: 'cascade' }),
     createdAt: createdAt(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },

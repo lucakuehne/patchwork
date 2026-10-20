@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Logger, Post, Req, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
@@ -21,6 +21,8 @@ const setupSchema = z.object({
 
 @Controller()
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
@@ -46,11 +48,28 @@ export class AuthController {
     await this.sessions.destroy(req.sessionId, res);
   }
 
-  /** Aktueller Benutzer oder null. */
+  /** Aktueller Benutzer oder null; bei «Als dieser Benutzer arbeiten» auch der Admin dahinter. */
   @Public()
   @Get('auth/me')
   me(@Req() req: AuthedRequest) {
-    return { user: req.user ? toPublicUser(req.user) : null };
+    return {
+      user: req.user ? toPublicUser(req.user) : null,
+      impersonator: req.impersonator ? toPublicUser(req.impersonator) : null,
+    };
+  }
+
+  /**
+   * «Als dieser Benutzer arbeiten» beenden: zurück zur Sitzung des Admins. Ohne Rollenprüfung, damit der Weg zurück auch
+   * offen bleibt, wenn der Benutzer inzwischen die Rolle Standard hat; die Sitzung selbst prüft den Admin dahinter.
+   */
+  @Public()
+  @Post('auth/impersonation/end')
+  async endImpersonation(@Req() req: AuthedRequest, @Res({ passthrough: true }) res: Response) {
+    const admin = req.impersonator;
+    if (!admin) throw new BadRequestException('Sie arbeiten nicht als anderer Benutzer.');
+    await this.sessions.switchTo(req.sessionId, admin.id, res, null);
+    this.logger.log(`${admin.email} arbeitet nicht mehr als ${req.user?.email}`);
+    return toPublicUser(admin);
   }
 
   @Public()

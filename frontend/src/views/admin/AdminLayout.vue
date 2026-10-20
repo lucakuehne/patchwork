@@ -35,7 +35,10 @@
   padding: 12px;
   gap: 2px;
   position: sticky;
-  top: 72px;
+  /* unter Hinweisbalken und Kopfzeile (useStickyTop), bei Bedarf in sich scrollbar */
+  top: calc(var(--sticky-top, 56px) + 16px);
+  max-height: calc(100vh - var(--sticky-top, 56px) - 32px);
+  overflow-y: auto;
 }
 .admin-nav h2 {
   font-size: 13px;
@@ -65,6 +68,8 @@
   }
   .admin-nav {
     position: static;
+    max-height: none;
+    overflow-y: visible;
   }
 }
 </style>

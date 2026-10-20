@@ -379,7 +379,8 @@ function onRejected() {
 }
 .side {
   position: sticky;
-  top: 72px;
+  /* unter Hinweisbalken und Kopfzeile (useStickyTop); nicht in sich scrollbar, sonst würden Auswahllisten abgeschnitten */
+  top: calc(var(--sticky-top, 56px) + 16px);
   display: flex;
   flex-direction: column;
   gap: 16px;

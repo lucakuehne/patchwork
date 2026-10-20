@@ -176,6 +176,13 @@
       "when": 1792501142565,
       "tag": "0024_vor_nachname",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792507331043,
+      "tag": "0025_als_benutzer",
+      "breakpoints": true
     }
   ]
 }

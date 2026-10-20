@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import ImpersonationBanner from '../../components/ImpersonationBanner.vue';
 import TestModeBanner from '../../components/TestModeBanner.vue';
+import { useStickyTop } from '../../composables';
 import { useSession } from '../../stores/session';
 
 const session = useSession();
 const router = useRouter();
+const topBar = ref<HTMLElement | null>(null);
+useStickyTop(topBar);
 
 async function logout() {
   try {
@@ -16,30 +21,44 @@ async function logout() {
 </script>
 
 <template>
-  <TestModeBanner />
-  <header class="portal-header">
-    <RouterLink to="/portal" class="brand">
-      <img v-if="session.logoUrl" :src="session.logoUrl" alt="" class="logo" />
-      <span>{{ session.appName }}</span>
-    </RouterLink>
-    <nav class="nav">
-      <RouterLink to="/portal" class="nav-link" exact-active-class="active">Meine Vorgänge</RouterLink>
-      <RouterLink to="/portal/neu" class="nav-link" active-class="active">Neue Meldung</RouterLink>
-    </nav>
-    <div class="spacer" />
-    <span class="user muted">{{ session.user?.name }}</span>
-    <button class="btn btn-ghost btn-sm" type="button" @click="logout">Abmelden</button>
-  </header>
+  <!-- Hinweisbalken und Kopfzeile kleben gemeinsam oben -->
+  <div ref="topBar" class="top-bar">
+    <!-- Hat der Benutzer, als der ein Admin arbeitet, inzwischen die Rolle Standard, führt der Weg zurück übers Portal -->
+    <ImpersonationBanner />
+    <TestModeBanner />
+    <header class="portal-header">
+      <RouterLink to="/portal" class="brand">
+        <img v-if="session.logoUrl" :src="session.logoUrl" alt="" class="logo" />
+        <span>{{ session.appName }}</span>
+      </RouterLink>
+      <nav class="nav">
+        <RouterLink to="/portal" class="nav-link" exact-active-class="active">Meine Vorgänge</RouterLink>
+        <RouterLink to="/portal/neu" class="nav-link" active-class="active">Neue Meldung</RouterLink>
+      </nav>
+      <div class="spacer" />
+      <span class="user muted">{{ session.user?.name }}</span>
+      <button class="btn btn-ghost btn-sm" type="button" @click="logout">Abmelden</button>
+    </header>
+  </div>
   <div class="portal-page">
     <RouterView />
   </div>
 </template>
 
 <style scoped>
-.portal-header {
+.top-bar {
   position: sticky;
   top: 0;
   z-index: 50;
+}
+/* Bei wenig Höhe (z.B. Handy quer) würden die Balken zu viel verdecken */
+@media (max-height: 500px) {
+  .top-bar {
+    position: static;
+  }
+}
+.portal-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16px;

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import { useStickyTop } from './composables';
 import AppHeader from './components/AppHeader.vue';
 import CertificateBanner from './components/CertificateBanner.vue';
 import ConfirmHost from './components/ConfirmHost.vue';
+import ImpersonationBanner from './components/ImpersonationBanner.vue';
 import TestModeBanner from './components/TestModeBanner.vue';
 import ToastHost from './components/ToastHost.vue';
 import { useSession } from './stores/session';
@@ -14,15 +16,37 @@ const session = useSession();
 const showHeader = computed(
   () => session.isStaff && !route.meta.public && !route.matched.some((r) => r.meta.portal),
 );
+// Hinweisbalken und Kopfzeile kleben gemeinsam oben
+const topBar = ref<HTMLElement | null>(null);
+useStickyTop(topBar);
+// Wechselt die Anmeldung in einem anderen Tab, lädt dieser neu
+session.watchOtherTabs();
 </script>
 
 <template>
-  <TestModeBanner v-if="showHeader" />
-  <CertificateBanner v-if="showHeader" />
-  <AppHeader v-if="showHeader" />
+  <div v-if="showHeader" ref="topBar" class="top-bar">
+    <ImpersonationBanner />
+    <TestModeBanner />
+    <CertificateBanner />
+    <AppHeader />
+  </div>
   <main>
     <RouterView />
   </main>
   <ToastHost />
   <ConfirmHost />
 </template>
+
+<style scoped>
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+/* Bei wenig Höhe (z.B. Handy quer) würden die Balken zu viel verdecken */
+@media (max-height: 500px) {
+  .top-bar {
+    position: static;
+  }
+}
+</style>

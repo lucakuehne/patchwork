@@ -10,10 +10,13 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  Res,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { z } from 'zod';
-import { AdminOnly } from '../auth/auth.decorators';
+import { AdminOnly, type AuthedRequest } from '../auth/auth.decorators';
 import { LdapService, type DirectoryPerson, type LdapIdentity } from '../auth/ldap.service';
 import { SessionService } from '../auth/session.service';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
@@ -194,7 +197,33 @@ export class UsersController {
     }
     const updated = await this.users.update(id, { ...rest, ...roleChange });
     if (body.active === false || body.password !== undefined) await this.sessions.destroyAllForUser(id);
+    // Kein Admin mehr: «Als Benutzer»-Sitzungen, die er gestartet hat, enden sofort
+    else if (user.role === 'admin' && updated.role !== 'admin') await this.sessions.destroyImpersonationsBy(id);
     return toAdminUser(updated);
+  }
+
+  /**
+   * «Als dieser Benutzer arbeiten»: Die Sitzung des Admins wird durch eine Sitzung des Benutzers ersetzt, die auf den
+   * Admin verweist (zurück über POST /auth/impersonation/end). Nur für aktive Benutzer mit Rolle IT oder Admin.
+   */
+  @AdminOnly()
+  @Post('admin/users/:id/impersonate')
+  async impersonate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const admin = req.user!;
+    if (req.impersonator) throw new BadRequestException('Bitte zuerst zu Ihrem eigenen Konto zurückkehren.');
+    const target = await this.users.getById(id);
+    if (target.id === admin.id) throw new BadRequestException('Das ist Ihr eigenes Konto.');
+    if (!target.active) throw new BadRequestException('Der Benutzer ist deaktiviert.');
+    if (target.role !== 'admin' && target.role !== 'it') {
+      throw new BadRequestException('Nur als Benutzer mit Rolle IT oder Admin möglich.');
+    }
+    await this.sessions.switchTo(req.sessionId, target.id, res, admin.id);
+    this.logger.log(`${admin.email} arbeitet als ${target.email}`);
+    return toPublicUser(target);
   }
 
   private async lookup(email: string): Promise<LdapIdentity> {

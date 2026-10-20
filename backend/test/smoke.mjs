@@ -2046,6 +2046,70 @@ await step('Testbetrieb: Antworten und neue Mails simulieren, verarbeitet wie ec
   await api('PUT', '/settings/mail', { staff: 'all', others: 'all' });
 });
 
+await step('Als Benutzer arbeiten: nur Admins, nur IT/Admin, Rechte und Autor wie der Benutzer, zurück zum eigenen Konto', async () => {
+  await loginAs('ada@test.local', 'geheim-geheim');
+  const users = await api('GET', '/admin/users');
+  const byEmail = (email) => users.find((u) => u.email === email);
+  const ivan = byEmail(IVAN);
+  // Nicht als Standard-Benutzer und nicht als man selbst
+  await api('POST', `/admin/users/${byEmail(ANNA).id}/impersonate`, undefined, { expect: [400] });
+  await api('POST', `/admin/users/${byEmail('ada@test.local').id}/impersonate`, undefined, { expect: [400] });
+  await api('POST', '/auth/impersonation/end', undefined, { expect: [400] });
+  const number = await createItem({ type: 'task', title: `Als Ivan ${RUN}` });
+
+  assert.equal((await api('POST', `/admin/users/${ivan.id}/impersonate`)).email, IVAN);
+  const me = await api('GET', '/auth/me');
+  assert.deepEqual([me.user.email, me.impersonator?.email], [IVAN, 'ada@test.local']);
+  // Rechte von Ivan (IT): keine Verwaltung
+  await api('GET', '/admin/users', undefined, { expect: [403] });
+  const note = new FormData();
+  note.append('kind', 'note');
+  note.append('body', `Notiz von Ivan ${RUN}`);
+  await api('POST', `/items/${number}/entries`, note);
+  const entry = (await detail(number)).entries.find((e) => e.body === `Notiz von Ivan ${RUN}`);
+  assert.equal(entry.author.email, IVAN, 'im Namen von Ivan, ohne Vermerk');
+
+  // Zurück: wieder Ada mit Admin-Rechten; Ivans letzte Anmeldung bleibt unverändert
+  assert.equal((await api('POST', '/auth/impersonation/end')).email, 'ada@test.local');
+  const back = await api('GET', '/auth/me');
+  assert.deepEqual([back.user.email, back.impersonator], ['ada@test.local', null]);
+  const after = (await api('GET', '/admin/users')).find((u) => u.email === IVAN);
+  assert.equal(after.lastLoginAt, ivan.lastLoginAt);
+
+  // Ein zweiter Admin (eigene Sitzung) für die Sicherheitsfälle
+  const ole = await api('POST', '/admin/users', { name: `Ole Admin ${RUN}`, email: `ole-${RUN}@test.local`, role: 'admin', password: 'ole-passwort-1' });
+  const adaCookie = cookie;
+  cookie = '';
+  await api('POST', '/auth/login', { username: `ole-${RUN}@test.local`, password: 'ole-passwort-1' });
+  const oleCookie = cookie;
+
+  // Hat Ivan inzwischen die Rolle Standard, führt der Weg zurück trotzdem
+  cookie = adaCookie;
+  await api('POST', `/admin/users/${ivan.id}/impersonate`);
+  const asIvan = cookie;
+  cookie = oleCookie;
+  await api('PATCH', `/admin/users/${ivan.id}`, { role: 'standard' });
+  cookie = asIvan;
+  assert.equal((await api('POST', '/auth/impersonation/end')).email, 'ada@test.local');
+  const adaAgain = cookie;
+  cookie = oleCookie;
+  await api('PATCH', `/admin/users/${ivan.id}`, { role: 'it' });
+
+  // Passwort von Ada zurückgesetzt: auch ihre «Als Ivan»-Sitzung endet (kein Weg zurück zu einer Admin-Sitzung)
+  cookie = adaAgain;
+  await api('POST', `/admin/users/${ivan.id}/impersonate`);
+  const asIvanAgain = cookie;
+  cookie = oleCookie;
+  await api('PATCH', `/admin/users/${byEmail('ada@test.local').id}`, { password: 'neues-passwort-1' });
+  cookie = asIvanAgain;
+  assert.equal((await api('GET', '/auth/me')).user, null);
+  await api('POST', '/auth/impersonation/end', undefined, { expect: [400] });
+  cookie = oleCookie;
+  await api('PATCH', `/admin/users/${byEmail('ada@test.local').id}`, { password: 'geheim-geheim' });
+  await api('PATCH', `/admin/users/${ole.id}`, { active: false });
+  await loginAs('ada@test.local', 'geheim-geheim');
+});
+
 await step('HTTPS: Anforderung, signiertes Zertifikat hochladen, Abruf über HTTPS', async () => {
   const host = new URL(BASE).hostname;
   let tls = await api('GET', '/admin/tls');
