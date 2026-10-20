@@ -122,6 +122,8 @@ export class PortalService {
         : null,
       description: item.description,
       descriptionHtml: portalHtml(item.descriptionHtml),
+      /** Im Testbetrieb aus einer simulierten Mail entstanden */
+      simulated: item.simulated,
       createdAt: item.createdAt,
       closedAt: item.closedAt,
       status: portalStatus(item.type, row.category),
@@ -133,6 +135,7 @@ export class PortalService {
         author:
           author?.id === user.id ? 'Sie' : author && (author.role === 'admin' || author.role === 'it') ? 'IT' : (author?.name ?? 'IT'),
         own: author?.id === user.id,
+        simulated: !!entry.meta?.simulated,
         body: entry.body,
         bodyHtml: portalHtml(entry.bodyHtml),
         createdAt: entry.createdAt,

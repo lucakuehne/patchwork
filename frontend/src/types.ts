@@ -150,6 +150,8 @@ export interface PortalItemDetail {
   duplicateOf: { number: number; title: string; accessible: boolean } | null;
   description: string;
   descriptionHtml: string | null;
+  /** Im Testbetrieb aus einer simulierten Mail entstanden */
+  simulated: boolean;
   createdAt: string;
   closedAt: string | null;
   status: PortalStatus;
@@ -159,6 +161,7 @@ export interface PortalItemDetail {
     kind: 'reply' | 'rejected';
     author: string;
     own: boolean;
+    simulated: boolean;
     body: string;
     bodyHtml: string | null;
     createdAt: string;
@@ -205,6 +208,8 @@ export interface ItemDetail {
   priority: Priority;
   source: 'mail' | 'portal' | 'internal';
   suggestedType: ItemType | null;
+  /** Im Testbetrieb aus einer simulierten Mail entstanden */
+  simulated: boolean;
   discarded: boolean;
   createdAt: string;
   updatedAt: string;
@@ -348,6 +353,48 @@ export interface OutgoingMail {
 }
 
 export interface OutgoingMailDetail extends OutgoingMail {
+  text: string;
+  html: string | null;
+  attachments: { index: number; filename: string; contentType: string; size: number }[];
+}
+
+/** Gespeicherte Mail zum Anschauen (z.B. Originalmail einer Nachricht) */
+export interface MailView {
+  headers: { from: string; to: string[]; cc: string[]; subject: string; date: string | null };
+  text: string;
+  html: string | null;
+  attachments: { index: number; filename: string; contentType: string; size: number }[];
+}
+
+/**
+ * Ergebnis einer eingehenden Mail: neuer Vorgang, Antwort, interne Notiz (Absender nicht beteiligt), automatische
+ * Antwort, ignoriert (Grund in «reason») oder Fehler (Meldung in «reason»).
+ */
+export type IncomingResult = 'created' | 'reply' | 'note' | 'automated' | 'ignored' | 'failed';
+
+export interface IncomingMail {
+  id: string;
+  /** Abgeholt bzw. simuliert */
+  createdAt: string;
+  processedAt: string | null;
+  /** Datum laut Mail */
+  mailDate: string | null;
+  mailbox: { id: string; name: string; address: string } | null;
+  fromAddress: string;
+  fromName: string;
+  to: string[];
+  cc: string[];
+  subject: string;
+  result: IncomingResult;
+  reason: string | null;
+  attempts: number;
+  simulated: boolean;
+  /** Name des Admins, der die Mail simuliert hat */
+  simulatedBy: string | null;
+  item: { number: number; title: string } | null;
+}
+
+export interface IncomingMailDetail extends IncomingMail {
   text: string;
   html: string | null;
   attachments: { index: number; filename: string; contentType: string; size: number }[];

@@ -1,11 +1,23 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { ImapFlow } from 'imapflow';
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
 import { createHash } from 'node:crypto';
 import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
-import { attachments, items, mailMessages, participants, type Item, type Mailbox, type User } from '../db/schema';
+import {
+  attachments,
+  entries,
+  incomingMails,
+  items,
+  mailMessages,
+  participants,
+  type IncomingMailRow,
+  type IncomingResult,
+  type Item,
+  type Mailbox,
+  type User,
+} from '../db/schema';
 import { duplicateRedirect } from '../items/duplicates';
 import { GraphMailService } from './graph-mail.service';
 import { ItemsService } from '../items/items.service';
@@ -37,6 +49,17 @@ function normalizeMessageId(id: string | undefined): string | null {
 
 export type IngestResult = 'created' | 'appended' | 'duplicate' | 'ignored';
 
+/** Ergebnis der Verarbeitung einer Mail, so wie es im Protokoll steht */
+interface Outcome {
+  result: IncomingResult;
+  /** Grund (ignoriert, Hinweis) bzw. Fehlermeldung */
+  reason?: string | null;
+  itemId?: string | null;
+  entryId?: string | null;
+}
+
+const validDate = (d: Date | undefined) => (d && !Number.isNaN(d.getTime()) ? d : null);
+
 @Injectable()
 export class MailFetcherService implements OnModuleInit {
   private readonly logger = new Logger(MailFetcherService.name);
@@ -63,6 +86,8 @@ export class MailFetcherService implements OnModuleInit {
       await (await this.boss.boss()).unschedule(QUEUE_MAIL_POLL);
       this.logger.log('Mail-Abruf ist deaktiviert (MAIL_POLLING=false)');
     }
+    // Mails von vor dem Protokoll nachtragen; danach gibt es nichts mehr nachzutragen
+    void this.backfillLog().catch((err: Error) => this.logger.warn(`Nachtragen ins Protokoll fehlgeschlagen: ${err.message}`));
   }
 
   async pollAll(): Promise<void> {
@@ -160,38 +185,184 @@ export class MailFetcherService implements OnModuleInit {
     return uids;
   }
 
-  /** Verarbeitet eine einzelne Mail (Rohdaten). */
-  async ingest(mailbox: Mailbox, raw: Buffer): Promise<IngestResult> {
+  /**
+   * Verarbeitet eine einzelne Mail (Rohdaten) und hält sie im Protokoll fest, auch ignorierte. «simulatedBy»: im
+   * Testbetrieb simuliert. Schlägt die Verarbeitung fehl, steht die Mail als Fehler im Protokoll, und der Fehler geht
+   * an den Aufrufer (am Postfach vermerkt).
+   */
+  async ingest(mailbox: Mailbox, raw: Buffer, simulatedBy?: User): Promise<IngestResult> {
     const parsed = await simpleParser(raw, { skipImageLinks: true, skipTextToHtml: true });
-    const from = addresses(parsed.from)[0];
-    if (!from) {
-      this.logger.warn(`Mail ohne Absender in ${mailbox.address} ignoriert`);
-      return 'ignored';
-    }
-    const own = await this.mailboxes.ownAddresses();
-    if (own.has(from.address)) return 'ignored';
-
     const messageId =
       normalizeMessageId(parsed.messageId) ?? `<sha256.${createHash('sha256').update(raw).digest('hex')}@patchwork>`;
+    // Erneut abgerufen (z.B. nach einem Neustart des Abrufs): steht schon im Protokoll
+    const [logged] = await this.db
+      .select({ id: incomingMails.id })
+      .from(incomingMails)
+      .where(eq(incomingMails.messageId, messageId))
+      .limit(1);
+    if (logged) return 'duplicate';
+    // Vor dem Protokoll verarbeitet: wird beim Nachtragen erfasst
     const [known] = await this.db
-      .select({ id: mailMessages.messageId })
+      .select({ direction: mailMessages.direction })
       .from(mailMessages)
       .where(eq(mailMessages.messageId, messageId))
       .limit(1);
-    if (known) return 'duplicate';
+    if (known?.direction === 'in') return 'duplicate';
+
+    const rawKey = await this.storage.save(raw, 'eml');
+    let outcome: Outcome;
+    try {
+      outcome = await this.process(mailbox, parsed, messageId, rawKey, simulatedBy ?? null);
+    } catch (err) {
+      await this.log(mailbox, parsed, messageId, rawKey, simulatedBy ?? null, { result: 'failed', reason: (err as Error).message }).catch(
+        (logErr: Error) => this.logger.error(`Protokoll der Mail ${messageId} fehlgeschlagen: ${logErr.message}`),
+      );
+      throw err;
+    }
+    await this.log(mailbox, parsed, messageId, rawKey, simulatedBy ?? null, outcome);
+    if (outcome.result === 'ignored') this.logger.log(`Mail ${messageId} in ${mailbox.address} ignoriert: ${outcome.reason}`);
+    return outcome.result === 'created' ? 'created' : outcome.result === 'ignored' ? 'ignored' : 'appended';
+  }
+
+  /** Fehlgeschlagene Mail aus dem Protokoll noch einmal verarbeiten; liefert den neuen Stand. */
+  async reprocess(id: string): Promise<IncomingMailRow> {
+    const [row] = await this.db.select().from(incomingMails).where(eq(incomingMails.id, id)).limit(1);
+    if (!row) throw new NotFoundException('Mail nicht gefunden');
+    if (row.result !== 'failed') throw new BadRequestException('Nur Mails mit Fehler lassen sich erneut verarbeiten');
+    const mailbox = (row.mailboxId ? await this.mailboxes.get(row.mailboxId).catch(() => undefined) : undefined) ??
+      (await this.mailboxes.getDefault());
+    if (!mailbox) throw new BadRequestException('Es ist kein Postfach eingerichtet');
+    const simulatedBy = row.simulatedById ? await this.users.getById(row.simulatedById).catch(() => null) : null;
+    const parsed = await simpleParser(await this.storage.read(row.storageKey), { skipImageLinks: true, skipTextToHtml: true });
+    let outcome: Outcome;
+    try {
+      outcome = await this.process(mailbox, parsed, row.messageId, row.storageKey, simulatedBy);
+    } catch (err) {
+      outcome = { result: 'failed', reason: (err as Error).message };
+    }
+    const [updated] = await this.db
+      .update(incomingMails)
+      .set({
+        result: outcome.result,
+        reason: outcome.reason ?? null,
+        itemId: outcome.itemId ?? null,
+        entryId: outcome.entryId ?? null,
+        attempts: sql`${incomingMails.attempts} + 1`,
+        processedAt: new Date(),
+      })
+      .where(eq(incomingMails.id, id))
+      .returning();
+    return updated!;
+  }
+
+  /** Verarbeitung: ignorieren, an einen Vorgang anhängen oder einen neuen anlegen. */
+  private async process(
+    mailbox: Mailbox,
+    parsed: ParsedMail,
+    messageId: string,
+    rawKey: string,
+    simulatedBy: User | null,
+  ): Promise<Outcome> {
+    const from = addresses(parsed.from)[0];
+    if (!from) return { result: 'ignored', reason: 'Mail ohne Absender' };
+    const own = await this.mailboxes.ownAddresses();
+    if (own.has(from.address)) return { result: 'ignored', reason: `Absender ist ein Postfach von Patchwork (${from.address})` };
+    const [known] = await this.db.select().from(mailMessages).where(eq(mailMessages.messageId, messageId)).limit(1);
+    if (known?.direction === 'out') return { result: 'ignored', reason: 'Mail von Patchwork selbst' };
+    if (known) {
+      // Beim ersten Versuch verarbeitet, der Fehler kam danach (z.B. bei einer Benachrichtigung)
+      return { result: known.entryId ? 'reply' : 'created', reason: 'Bereits verarbeitet', itemId: known.itemId, entryId: known.entryId };
+    }
 
     const automated = isAutoGenerated(parsed.headers, from.address);
     const bulk = isBulk(parsed.headers);
     const ccAddresses = addresses(parsed.cc).filter((a) => !own.has(a.address) && a.address !== from.address);
     const item = await this.findItem(parsed);
-    const rawKey = await this.storage.save(raw, 'eml');
+    if (item) return this.appendToItem(item, mailbox, parsed, from, ccAddresses, messageId, rawKey, automated, !!simulatedBy);
+    return this.createItem(mailbox, parsed, from, ccAddresses, messageId, rawKey, automated || bulk, !!simulatedBy);
+  }
 
-    if (item) {
-      await this.appendToItem(item, mailbox, parsed, from, ccAddresses, messageId, rawKey, automated);
-      return 'appended';
+  private async log(
+    mailbox: Mailbox | null,
+    parsed: ParsedMail,
+    messageId: string,
+    rawKey: string,
+    simulatedBy: User | null,
+    outcome: Outcome,
+  ): Promise<void> {
+    const from = addresses(parsed.from)[0];
+    await this.db
+      .insert(incomingMails)
+      .values({
+        messageId,
+        mailboxId: mailbox?.id ?? null,
+        fromAddress: from?.address ?? '',
+        fromName: from?.name ?? '',
+        to: addresses(parsed.to).map((a) => a.address),
+        cc: addresses(parsed.cc).map((a) => a.address),
+        subject: (parsed.subject ?? '').slice(0, 1000),
+        mailDate: validDate(parsed.date),
+        result: outcome.result,
+        reason: outcome.reason ?? null,
+        itemId: outcome.itemId ?? null,
+        entryId: outcome.entryId ?? null,
+        simulated: !!simulatedBy,
+        simulatedById: simulatedBy?.id ?? null,
+        storageKey: rawKey,
+        processedAt: new Date(),
+      })
+      .onConflictDoNothing();
+  }
+
+  /** Mails, die Patchwork vor dem Protokoll abgeholt hat (neue Vorgänge und Antworten), ins Protokoll übernehmen. */
+  async backfillLog(): Promise<number> {
+    const rows = await this.db
+      .select({ mail: mailMessages, mailboxId: items.mailboxId, entryKind: entries.kind, entryMeta: entries.meta })
+      .from(mailMessages)
+      .innerJoin(items, eq(items.id, mailMessages.itemId))
+      .leftJoin(entries, eq(entries.id, mailMessages.entryId))
+      .leftJoin(incomingMails, eq(incomingMails.messageId, mailMessages.messageId))
+      .where(and(eq(mailMessages.direction, 'in'), isNotNull(mailMessages.storageKey), isNull(incomingMails.id)));
+    let added = 0;
+    for (const { mail, mailboxId, entryKind, entryMeta } of rows) {
+      let parsed: ParsedMail;
+      try {
+        parsed = await simpleParser(await this.storage.read(mail.storageKey!), { skipImageLinks: true, skipTextToHtml: true });
+      } catch {
+        continue;
+      }
+      const result: IncomingResult = !mail.entryId
+        ? 'created'
+        : entryMeta?.automated
+          ? 'automated'
+          : entryKind === 'note'
+            ? 'note'
+            : 'reply';
+      const from = addresses(parsed.from)[0];
+      const inserted = await this.db
+        .insert(incomingMails)
+        .values({
+          messageId: mail.messageId,
+          mailboxId,
+          fromAddress: from?.address ?? '',
+          fromName: from?.name ?? '',
+          to: addresses(parsed.to).map((a) => a.address),
+          cc: addresses(parsed.cc).map((a) => a.address),
+          subject: (parsed.subject ?? '').slice(0, 1000),
+          mailDate: validDate(parsed.date),
+          result,
+          itemId: mail.itemId,
+          entryId: mail.entryId,
+          storageKey: mail.storageKey!,
+          createdAt: mail.createdAt,
+          processedAt: mail.createdAt,
+        })
+        .onConflictDoNothing()
+        .returning({ id: incomingMails.id });
+      added += inserted.length;
     }
-    await this.createItem(mailbox, parsed, from, ccAddresses, messageId, rawKey, automated || bulk);
-    return 'created';
+    if (added) this.logger.log(`${added} früher abgeholte Mails ins Protokoll übernommen`);
+    return added;
   }
 
   /** Zuordnung über In-Reply-To/References, sonst über die Nummer im Betreff. */
@@ -230,7 +401,8 @@ export class MailFetcherService implements OnModuleInit {
     messageId: string,
     rawKey: string,
     suppressConfirmation: boolean,
-  ) {
+    simulated: boolean,
+  ): Promise<Outcome> {
     // Regeln vorab prüfen: Abfragen im Verzeichnis (AD-Gruppen) nicht innerhalb der Transaktion
     const rules = await this.rules.prepare('mail_new', {
       sender: from.address,
@@ -249,6 +421,7 @@ export class MailFetcherService implements OnModuleInit {
           reporterId: reporter.id,
           mailboxId: mailbox.id,
           source: 'mail',
+          simulated,
         })
         .returning();
       const inlineUrls = await this.saveMailAttachments(tx, created!.id, null, parsed);
@@ -273,6 +446,12 @@ export class MailFetcherService implements OnModuleInit {
     });
     await rules.afterCommit();
     if (!suppressConfirmation && !rules.suppressConfirmation && !rules.discarded) await this.notifications.confirmation(item);
+    const reason = rules.discarded
+      ? 'Durch eine Regel verworfen'
+      : suppressConfirmation
+        ? 'Automatische Mail oder Newsletter, ohne Eingangsbestätigung'
+        : null;
+    return { result: 'created', reason, itemId: item.id };
   }
 
   private async appendToItem(
@@ -284,10 +463,12 @@ export class MailFetcherService implements OnModuleInit {
     messageId: string,
     rawKey: string,
     automated: boolean,
-  ) {
+    simulated: boolean,
+  ): Promise<Outcome> {
     const text = stripQuotedText(parsed.text ?? '');
     let notifyAuthor: User | null = null;
     let notifyItem: Item | null = null;
+    let outcome: Outcome = { result: 'ignored', reason: 'Vorgang nicht mehr vorhanden' };
     // Regeln für Antworten, nicht für Abwesenheitsnotizen und andere automatische Mails
     const rules = automated
       ? null
@@ -313,9 +494,16 @@ export class MailFetcherService implements OnModuleInit {
         author.id,
         kind,
         text,
-        { source: 'mail', subject: parsed.subject ?? '', automated, ...(involved ? {} : { external: true }) },
+        {
+          source: 'mail',
+          subject: parsed.subject ?? '',
+          automated,
+          ...(involved ? {} : { external: true }),
+          ...(simulated ? { simulated: true } : {}),
+        },
         { mailMessageId: messageId },
       );
+      outcome = { result: automated ? 'automated' : kind === 'note' ? 'note' : 'reply', itemId: locked.id, entryId: entry.id };
       await this.saveMailAttachments(tx, locked.id, entry.id, parsed);
       await tx
         .insert(mailMessages)
@@ -347,6 +535,7 @@ export class MailFetcherService implements OnModuleInit {
     await rules?.afterCommit();
 
     if (notifyAuthor && notifyItem) await this.notifications.inboundReply(notifyItem, notifyAuthor, text);
+    return outcome;
   }
 
   /** Speichert Anhänge einer Mail. Gibt die URLs eingebetteter Bilder (Content-ID → URL) zurück. */

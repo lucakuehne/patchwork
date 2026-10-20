@@ -395,6 +395,11 @@ h3 {
   background: var(--accent-soft);
   color: var(--accent);
 }
+/* Im Testbetrieb simulierte Mail */
+.badge.simulated {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
 
 /* Checklisten-Fortschritt und Typ-Vorschlag in Listen und auf dem Board */
 .progress-badge {
@@ -496,6 +501,23 @@ h3 {
   border-radius: var(--radius-sm);
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+/* Knopf, der wie ein Link aussieht */
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+.link-btn:disabled {
+  opacity: 0.5;
 }
 
 /* Markdown-Inhalte */

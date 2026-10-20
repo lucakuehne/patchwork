@@ -117,6 +117,7 @@ async function send() {
         <div class="msg-head">
           <span class="avatar">{{ e.own ? initials(session.user?.name ?? '') : 'IT' }}</span>
           <strong>{{ e.kind === 'rejected' ? 'Abgelehnt' : e.author }}</strong>
+          <span v-if="e.simulated" class="badge simulated" title="Im Testbetrieb simuliert">simuliert</span>
           <span class="spacer" />
           <span class="faint small">{{ formatDateTime(e.createdAt) }}</span>
         </div>
@@ -130,6 +131,7 @@ async function send() {
       <div class="row original-head">
         <span class="original-label">Ihre Meldung</span>
         <span class="muted small">vom {{ formatDateTime(item.createdAt) }}</span>
+        <span v-if="item.simulated" class="badge simulated" title="Im Testbetrieb simuliert">simuliert</span>
       </div>
       <div v-if="descriptionHtml" class="prose" :class="{ 'mail-html': !!item.descriptionHtml }" v-html="descriptionHtml" />
       <div v-else class="faint">Keine Beschreibung</div>

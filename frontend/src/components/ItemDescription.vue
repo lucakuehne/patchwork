@@ -5,6 +5,7 @@ import { renderMailHtml, renderMarkdown } from '../markdown';
 import type { ItemDetail } from '../types';
 import AttachmentList from './AttachmentList.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
+import OriginalMailDialog from './OriginalMailDialog.vue';
 
 /**
  * Beschreibung bzw. ursprüngliche Meldung eines Vorgangs, weiss hervorgehoben (Antworten blau, Notizen orange).
@@ -20,6 +21,7 @@ const props = defineProps<{
 const editing = ref(false);
 const draft = ref('');
 const uploading = ref(false);
+const showOriginal = ref(false);
 
 const html = computed(() => {
   if (props.item.descriptionHtml) return renderMailHtml(props.item.descriptionHtml);
@@ -47,14 +49,11 @@ async function submit() {
         <template v-else-if="item.source === 'portal'"> · über das Portal</template>
         <template v-if="item.creator.id !== item.reporter.id"> · Melder: {{ item.reporter.name }}</template>
       </span>
+      <span v-if="item.simulated" class="badge simulated" title="Im Testbetrieb simuliert, nicht wirklich per Mail eingegangen">
+        simuliert
+      </span>
       <span class="spacer" />
-      <a
-        v-if="item.originalMessageId"
-        class="small"
-        :href="`/api/items/${item.number}/original?messageId=${encodeURIComponent(item.originalMessageId)}`"
-      >
-        Originalmail
-      </a>
+      <button v-if="item.originalMessageId" class="link-btn small" type="button" @click="showOriginal = true">Originalmail</button>
       <button v-if="!editing" class="btn btn-sm btn-ghost" type="button" @click="start">Bearbeiten</button>
     </div>
     <div v-if="editing" class="stack">
@@ -70,6 +69,12 @@ async function submit() {
     <div v-else-if="html" class="prose" :class="{ 'mail-html': !!item.descriptionHtml }" v-html="html" />
     <div v-else class="faint">Keine Beschreibung</div>
     <AttachmentList :attachments="item.attachments" :text="item.descriptionHtml ? '' : item.description" />
+    <OriginalMailDialog
+      v-if="showOriginal && item.originalMessageId"
+      :number="item.number"
+      :message-id="item.originalMessageId"
+      @close="showOriginal = false"
+    />
   </section>
 </template>
 

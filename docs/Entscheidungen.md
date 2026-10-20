@@ -85,11 +85,11 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 - Neue Meldung: Auswahl «Etwas funktioniert nicht» / «Ich brauche etwas», Titel, Beschreibung, Anhänge, keine Priorität. Die Meldung landet im Eingang mit dem Vorschlag des Melders, die IT bestätigt mit einem Klick oder wählt den anderen Typ. Eingangsbestätigung per Mail.
 - Der Melder sieht Nummer, Titel, Beschreibung, öffentliche Antworten und Anhänge sowie den Status vereinfacht nach Kategorie («Eingegangen», «In Bearbeitung», «Wartet auf Ihre Rückmeldung», «Erledigt», «Abgelehnt»). Nicht sichtbar: interne Notizen, interne Statusnamen, Typ, Zuständiger, Beteiligte. Verworfene Vorgänge erscheinen nicht. Den Ablehnungsgrund sieht er nur, wenn «Melder informieren» gewählt war.
 - Der Melder kann nur antworten (mit Anhängen), das wirkt wie eine Antwort per Mail. Keine Statusänderung, kein Zurückziehen, kein Bearbeiten.
-- Portal freischalten (gewünscht am 20.10.2026, **noch zu bestätigen**): ganz aus, nur für ausgewählte Personen oder für alle.
-  - Vorschlag: Karte «Portal» unter Verwaltung → Allgemein; Auswahl der Personen über die Personensuche wie beim Testbetrieb.
-  - Ohne Zugang wird die Anmeldung mit einem Hinweis abgelehnt, für IT und Admins ändert sich nichts.
+- Portal freischalten (bestätigt am 20.10.2026): ganz aus, nur für ausgewählte oder für alle.
+  - Karte «Portal» unter Verwaltung → Allgemein. «Ausgewählte» sind einzelne Personen (Personensuche wie beim Testbetrieb) und zusätzlich die Mitglieder einer AD-Gruppe.
+  - Ohne Zugang wird die Anmeldung abgelehnt, mit dem Hinweis «Das Portal ist für Sie nicht freigeschaltet. Bitte wenden Sie sich per Mail an die IT.». Für IT und Admins ändert sich nichts.
   - In Mails an Melder ohne Zugang entfällt die Link-Zeile zum Portal.
-  - Nach dem Update bleibt das Portal für alle offen wie bisher.
+  - Nach dem Update ist das Portal aus (Parallelbetrieb mit HelpSpot).
 
 ### Verknüpfungen
 
@@ -175,6 +175,19 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - Antwortfeld: Feld, Umschalter und Senden-Knopf sind im Modus «Öffentliche Antwort» blau, im Modus «Interne Notiz» orange.
 - Editor (gewünscht am 20.10.2026): Die Knöpfe für Listen zeigen drei Punkte bzw. drei Nummern untereinander. Eine Trennlinie gibt es im Editor nicht.
 - Knopf «+ Neu» (gewünscht am 20.10.2026): steht im Eingang rechts neben «Nur meine», wie «+ Störung» und «+ Aufgabe» in den anderen Ansichten, nicht mehr in der Kopfzeile. Er öffnet wie bisher «Neuer Vorgang» mit Auswahl des Typs.
+- Seitenleiste eines Vorgangs (gewünscht am 20.10.2026): unten «Erstellt», «Aktualisiert» und bei abgeschlossenen Vorgängen «Abgeschlossen».
+- Originalmail (gewünscht am 20.10.2026): «Originalmail» bei einer Nachricht oder der ursprünglichen Meldung öffnet die Mail in einem Fenster (Kopf, Text bzw. bereinigtes HTML ohne externe Bilder, Anhänge). Die .eml-Datei lädt man dort herunter, nicht mehr direkt.
+- Bestätigt am 20.10.2026:
+  - «Öffentlich» mit Weltkugel und «Intern» mit Schloss, im Umschalter über dem Antwortfeld und ebenso in der Timeline.
+  - Einheitliche Kopfzeile aller Einträge der Timeline (Nachrichten, graue Änderungskarten, ursprüngliche Meldung): links Avatar, Name und Art des Eintrags, rechts der Zeitpunkt mit Aktionen wie «Bearbeiten» oder «Originalmail» davor. Regeln und System haben ein Zahnrad als Avatar.
+  - Der Knopf «Textbaustein» erscheint weiterhin erst, wenn es Textbausteine gibt. Bilder in Textbausteinen gibt es nicht.
+
+## Meldeweg (bestätigt am 20.10.2026)
+
+- Liste in der Verwaltung pflegbar wie die Status, jeder Meldeweg mit Name und Symbol. Vorbelegt: E-Mail, Portal, Telefon, Persönlich (Walk-In), Teams/Chat, Sonstiges. E-Mail und Portal setzt Patchwork automatisch, sie lassen sich nicht löschen.
+- Beim internen Erfassen («+ Neu», «+ Störung», «+ Aufgabe») Pflichtfeld ohne Vorbelegung.
+- In der Seitenleiste änderbar, mit Eintrag in der Timeline wie bei der Priorität. Angezeigt bei der ursprünglichen Meldung («per Telefon»), in den Listen als eigene Spalte nur mit dem Symbol, in den Auswertungen als Diagramm «Neue Vorgänge nach Meldeweg».
+- Bestehende Vorgänge: aus Mails «E-Mail», aus dem Portal «Portal», intern erfasste ohne Angabe («–»), nachtragbar.
 
 ## Bilder im Text (bestätigt am 20.10.2026)
 

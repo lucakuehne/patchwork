@@ -3,13 +3,17 @@ import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../api';
 import ModalDialog from '../../components/ModalDialog.vue';
+import SimulateMailDialog from '../../components/SimulateMailDialog.vue';
 import TestModeSettings from '../../components/TestModeSettings.vue';
 import { formatDateTime, formatSize, itemRef } from '../../format';
+import { incomingResultText } from '../../incoming';
 import { renderMailHtml } from '../../markdown';
+import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
-import type { OutgoingMail, OutgoingMailDetail, OutgoingStatus } from '../../types';
+import type { IncomingMail, OutgoingMail, OutgoingMailDetail, OutgoingStatus } from '../../types';
 
 /** Protokoll aller ausgehenden Mails, mit Filter nach Status, und darüber der Testbetrieb. */
+const session = useSession();
 const toast = useToast();
 const route = useRoute();
 const router = useRouter();
@@ -17,6 +21,19 @@ const mails = ref<OutgoingMail[]>([]);
 const loading = ref(true);
 const open = ref<OutgoingMailDetail | null>(null);
 const resending = ref(false);
+/** Mail, auf die gerade eine Antwort simuliert wird */
+const replyTo = ref<OutgoingMailDetail | null>(null);
+
+function startReply() {
+  replyTo.value = open.value;
+  open.value = null;
+}
+
+function simulated(mail: IncomingMail) {
+  replyTo.value = null;
+  if (mail.result === 'failed') toast.error(`Simulierte Antwort: ${incomingResultText(mail)}`);
+  else toast.success(`Simulierte Antwort: ${incomingResultText(mail)}`);
+}
 
 const FILTERS = [
   { key: 'alle', label: 'Alle', statuses: '' },
@@ -163,12 +180,15 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
       </div>
       <template #footer>
         <a class="btn" :href="`/api/admin/outgoing-mails/${open.id}/eml`">Als .eml herunterladen</a>
+        <button v-if="session.info?.testMode" class="btn" type="button" @click="startReply">Antwort simulieren</button>
         <button v-if="open.status === 'failed'" class="btn" type="button" :disabled="resending" @click="resend">
           Erneut senden
         </button>
         <button class="btn btn-primary" type="button" @click="open = null">Schliessen</button>
       </template>
     </ModalDialog>
+
+    <SimulateMailDialog v-if="replyTo" :reply="replyTo" @close="replyTo = null" @done="simulated" />
   </div>
 </template>
 

@@ -8,6 +8,7 @@ import { NOTE_EDIT_MINUTES } from '../timeline';
 import type { Entry } from '../types';
 import AttachmentList from './AttachmentList.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
+import OriginalMailDialog from './OriginalMailDialog.vue';
 
 /** Öffentliche Antwort oder interne Notiz in der Timeline. Eigene Notizen lassen sich kurz nach dem Erfassen bearbeiten. */
 const props = defineProps<{ entry: Entry; itemNumber: number; reporterId: string }>();
@@ -78,6 +79,7 @@ const draft = ref('');
 const saving = ref(false);
 const uploading = ref(false);
 const error = ref('');
+const showOriginal = ref(false);
 
 function startEdit() {
   draft.value = props.entry.body;
@@ -110,6 +112,9 @@ async function save() {
       <span class="avatar">{{ initials(author) }}</span>
       <strong>{{ author }}</strong>
       <span class="kind">{{ label }}</span>
+      <span v-if="meta.simulated" class="badge simulated" title="Im Testbetrieb simuliert, nicht wirklich per Mail eingegangen">
+        simuliert
+      </span>
       <span class="spacer" />
       <button
         v-if="canEdit && !editing"
@@ -120,14 +125,9 @@ async function save() {
       >
         Bearbeiten
       </button>
-      <a
-        v-if="entry.originalMessageId"
-        class="faint small"
-        :href="`/api/items/${itemNumber}/original?messageId=${encodeURIComponent(entry.originalMessageId)}`"
-        title="Originalmail herunterladen"
-      >
-        Original
-      </a>
+      <button v-if="entry.originalMessageId" class="link-btn small" type="button" @click="showOriginal = true">
+        Originalmail
+      </button>
       <span class="faint small">{{ formatDateTime(entry.createdAt) }}</span>
       <span v-if="entry.editedAt" class="faint small" :title="`Bearbeitet am ${formatDateTime(entry.editedAt)}`">· bearbeitet</span>
       <span v-if="deliveryBadge" class="badge" :class="deliveryBadge.kind" :title="deliveryBadge.title">{{ deliveryBadge.text }}</span>
@@ -144,6 +144,12 @@ async function save() {
       <div class="prose msg-body" :class="{ 'mail-html': !!entry.bodyHtml }" v-html="html" />
       <AttachmentList :attachments="entry.attachments" :text="entry.body" />
     </template>
+    <OriginalMailDialog
+      v-if="showOriginal && entry.originalMessageId"
+      :number="itemNumber"
+      :message-id="entry.originalMessageId"
+      @close="showOriginal = false"
+    />
   </div>
 </template>
 

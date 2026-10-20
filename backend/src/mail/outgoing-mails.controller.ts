@@ -7,10 +7,7 @@ import { InjectDb, type Db } from '../db/db.module';
 import { items, outgoingMails, type OutgoingMailRow } from '../db/schema';
 import { StorageService } from '../storage/storage.service';
 import { MailSenderService } from './mail-sender.service';
-
-/** Dateiname für Content-Disposition: ASCII-Ersatz und UTF-8-Variante */
-const disposition = (filename: string) =>
-  `attachment; filename="${filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+import { disposition, mailView, sendMailAttachment } from './mail-view';
 
 const STATUSES = ['queued', 'sent', 'partial', 'held', 'failed'] as const;
 type Status = (typeof STATUSES)[number];
@@ -42,25 +39,9 @@ export class OutgoingMailsController {
   @Get(':id')
   async detail(@Param('id', ParseUUIDPipe) id: string) {
     const { mail, number, title } = await this.get(id);
-    const parsed = await simpleParser(await this.read(mail));
-    // Eingebettete Bilder («cid:») über die Anhänge der gespeicherten Mail anzeigen
-    const byCid = new Map(parsed.attachments.map((a, index) => [a.cid ?? '', index]));
-    const html = parsed.html
-      ? parsed.html.replace(/src="cid:([^"]+)"/g, (all, cid: string) =>
-          byCid.has(cid) ? `src="/api/admin/outgoing-mails/${mail.id}/attachments/${byCid.get(cid)}"` : all,
-        )
-      : null;
-    return {
-      ...this.summary(mail, number, title),
-      text: parsed.text ?? '',
-      html,
-      attachments: parsed.attachments.map((a, index) => ({
-        index,
-        filename: a.filename ?? `Anhang ${index + 1}`,
-        contentType: a.contentType,
-        size: a.size,
-      })),
-    };
+    // Eigenes HTML; eingebettete Bilder («cid:») zeigen auf die Anhänge der gespeicherten Mail
+    const view = await mailView(await this.read(mail), (index) => `/api/admin/outgoing-mails/${mail.id}/attachments/${index}`, false);
+    return { ...this.summary(mail, number, title), ...view };
   }
 
   /** Die vollständige Mail, so wie sie ohne Testbetrieb versendet wird. */
@@ -83,13 +64,9 @@ export class OutgoingMailsController {
     @Res() res: Response,
   ) {
     const { mail } = await this.get(id);
-    const attachment = (await simpleParser(await this.read(mail))).attachments[index];
-    if (!attachment) throw new NotFoundException('Anhang nicht gefunden');
-    res.setHeader('Content-Type', attachment.contentType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', disposition(attachment.filename ?? `Anhang ${index + 1}`));
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-    res.send(attachment.content);
+    if (!sendMailAttachment(await simpleParser(await this.read(mail)), index, res)) {
+      throw new NotFoundException('Anhang nicht gefunden');
+    }
   }
 
   /** Fehlgeschlagene Mail noch einmal versenden. */

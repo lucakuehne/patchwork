@@ -136,15 +136,6 @@ async function unlink(l: ItemLink) {
 .hint {
   margin: 4px 0 0;
 }
-.link-btn {
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-}
 .link-row {
   display: flex;
   align-items: flex-start;

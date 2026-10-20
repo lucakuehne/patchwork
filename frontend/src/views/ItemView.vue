@@ -300,6 +300,7 @@ function onRejected() {
         </label>
 
         <div class="meta faint small">
+          <div>Erstellt: {{ formatDateTime(item.createdAt) }}</div>
           <div>Aktualisiert: {{ formatDateTime(item.updatedAt) }}</div>
           <div v-if="item.closedAt">Abgeschlossen: {{ formatDateTime(item.closedAt) }}</div>
         </div>
@@ -382,18 +383,6 @@ function onRejected() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.link-btn {
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-}
-.link-btn:disabled {
-  opacity: 0.5;
 }
 .meta {
   display: flex;

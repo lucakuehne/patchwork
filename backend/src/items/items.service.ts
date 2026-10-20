@@ -197,6 +197,7 @@ export class ItemsService {
       priority: item.priority,
       source: item.source,
       suggestedType: item.suggestedType,
+      simulated: item.simulated,
       discarded: item.discarded,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,

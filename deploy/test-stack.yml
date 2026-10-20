@@ -66,6 +66,9 @@ services:
       APP_SECRET: nur-fuer-den-test-stack-0123456789abcdef
       PUBLIC_URL: http://localhost:8080
       MAIL_POLLING: "false"
+    # Eigenes Volume wie in der Produktion: Ablage bleibt beim Wechsel des Images erhalten (Update-Tests)
+    volumes:
+      - patchworkdata:/data
     depends_on:
       net:
         condition: service_started
@@ -146,3 +149,4 @@ services:
 
 volumes:
   testfiles:
+  patchworkdata:

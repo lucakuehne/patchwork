@@ -55,6 +55,11 @@ export const router = createRouter({
           component: () => import('./views/admin/AdminOutgoingMails.vue'),
         },
         {
+          path: 'eingehende-mails',
+          name: 'admin-incoming-mails',
+          component: () => import('./views/admin/AdminIncomingMails.vue'),
+        },
+        {
           path: 'e-mail-vorlagen',
           name: 'admin-mail-templates',
           component: () => import('./views/admin/AdminMailTemplates.vue'),

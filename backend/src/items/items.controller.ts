@@ -19,6 +19,7 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { and, eq } from 'drizzle-orm';
 import type { Response } from 'express';
+import { simpleParser } from 'mailparser';
 import { z } from 'zod';
 import { CurrentUser } from '../auth/auth.decorators';
 import { appConfig } from '../config';
@@ -26,6 +27,7 @@ import { emailSchema, nullableUuid, ZodPipe } from '../common/zod.pipe';
 import { InjectDb, type Db } from '../db/db.module';
 import { attachments, mailMessages, type User } from '../db/schema';
 import { itemRef } from '../mail/mail-content';
+import { mailView, sendMailAttachment } from '../mail/mail-view';
 import { sendAttachment } from '../storage/attachment-response';
 import { StorageService } from '../storage/storage.service';
 import { ChecklistsService } from './checklists.service';
@@ -246,6 +248,38 @@ export class ItemsController {
     @Query('messageId') messageId: string,
     @Res() res: Response,
   ) {
+    const { item, storageKey } = await this.originalMail(number, messageId);
+    res.setHeader('Content-Type', 'message/rfc822');
+    res.setHeader('Content-Disposition', `attachment; filename="${itemRef(item.number)}.eml"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    this.storage
+      .stream(storageKey)
+      .on('error', () => res.status(404).end())
+      .pipe(res);
+  }
+
+  /** Originalmail zum Anschauen: Kopf, bereinigtes HTML (ohne externe Bilder) bzw. Text und Anhänge. */
+  @Get('items/:number/original/view')
+  async originalView(@Param('number', ParseIntPipe) number: number, @Query('messageId') messageId: string) {
+    const { item, storageKey } = await this.originalMail(number, messageId);
+    const query = `?messageId=${encodeURIComponent(messageId)}`;
+    return mailView(await this.readStored(storageKey), (index) => `/api/items/${item.number}/original/attachments/${index}${query}`, true);
+  }
+
+  @Get('items/:number/original/attachments/:index')
+  async originalAttachment(
+    @Param('number', ParseIntPipe) number: number,
+    @Param('index', ParseIntPipe) index: number,
+    @Query('messageId') messageId: string,
+    @Res() res: Response,
+  ) {
+    const { storageKey } = await this.originalMail(number, messageId);
+    if (!sendMailAttachment(await simpleParser(await this.readStored(storageKey)), index, res)) {
+      throw new NotFoundException('Anhang nicht gefunden');
+    }
+  }
+
+  private async originalMail(number: number, messageId: string | undefined) {
     const item = await this.items.byNumber(number);
     const [row] = await this.db
       .select()
@@ -253,13 +287,18 @@ export class ItemsController {
       .where(and(eq(mailMessages.itemId, item.id), eq(mailMessages.messageId, messageId ?? '')))
       .limit(1);
     if (!row?.storageKey) throw new NotFoundException('Originalmail nicht gefunden');
-    res.setHeader('Content-Type', 'message/rfc822');
-    res.setHeader('Content-Disposition', `attachment; filename="${itemRef(item.number)}.eml"`);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    this.storage
-      .stream(row.storageKey)
-      .on('error', () => res.status(404).end())
-      .pipe(res);
+    return { item, storageKey: row.storageKey };
+  }
+
+  private async readStored(storageKey: string): Promise<Buffer> {
+    try {
+      return await this.storage.read(storageKey);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new NotFoundException('Die Originalmail ist nicht mehr vorhanden (Datei fehlt in der Ablage)');
+      }
+      throw err;
+    }
   }
 
   @Get('attachments/:id')

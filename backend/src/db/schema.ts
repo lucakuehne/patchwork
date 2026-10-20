@@ -158,6 +158,8 @@ export const items = pgTable(
     source: itemSource('source').notNull(),
     /** Typ-Vorschlag des Melders aus dem Portal, bis die IT ihn bestätigt */
     suggestedType: itemType('suggested_type'),
+    /** Aus einer im Testbetrieb simulierten Mail entstanden */
+    simulated: boolean('simulated').notNull().default(false),
     discarded: boolean('discarded').notNull().default(false),
     boardPosition: doublePrecision('board_position').notNull().default(0),
     createdAt: createdAt(),
@@ -333,6 +335,42 @@ export const outgoingMails = pgTable(
   ],
 );
 
+/**
+ * Protokoll der eingehenden Mails (abgeholt oder im Testbetrieb simuliert), vollständig als .eml, mit dem Ergebnis:
+ * created = neuer Vorgang, reply = Antwort, note = interne Notiz (Absender nicht beteiligt), automated = automatische
+ * Antwort (z.B. Abwesenheitsnotiz), ignored = nicht verarbeitet, failed = Fehler. Grund bzw. Fehlermeldung in «reason».
+ */
+export const incomingResult = pgEnum('incoming_result', ['created', 'reply', 'note', 'automated', 'ignored', 'failed']);
+
+export const incomingMails = pgTable(
+  'incoming_mails',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Dieselbe Mail erscheint nur einmal, auch wenn sie erneut abgerufen wird */
+    messageId: text('message_id').notNull().unique(),
+    mailboxId: uuid('mailbox_id').references(() => mailboxes.id, { onDelete: 'set null' }),
+    fromAddress: text('from_address').notNull(),
+    fromName: text('from_name').notNull().default(''),
+    to: jsonb('to').$type<string[]>().notNull(),
+    cc: jsonb('cc').$type<string[]>().notNull(),
+    subject: text('subject').notNull(),
+    /** Datum laut Mail (Kopfzeile «Date») */
+    mailDate: timestamp('mail_date', { withTimezone: true }),
+    result: incomingResult('result').notNull(),
+    reason: text('reason'),
+    itemId: uuid('item_id').references(() => items.id, { onDelete: 'set null' }),
+    entryId: uuid('entry_id').references(() => entries.id, { onDelete: 'set null' }),
+    simulated: boolean('simulated').notNull().default(false),
+    simulatedById: uuid('simulated_by_id').references(() => users.id, { onDelete: 'set null' }),
+    attempts: integer('attempts').notNull().default(1),
+    storageKey: text('storage_key').notNull(),
+    /** Abgerufen bzw. simuliert */
+    createdAt: createdAt(),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+  },
+  (t) => [index('incoming_mails_created_idx').on(t.createdAt), index('incoming_mails_result_idx').on(t.result)],
+);
+
 /** Verknüpfungen zwischen Vorgängen. Bei «relates» ist die Richtung bedeutungslos. */
 export const links = pgTable(
   'links',
@@ -453,6 +491,8 @@ export type Status = typeof statuses.$inferSelect;
 export type Entry = typeof entries.$inferSelect;
 export type Mailbox = typeof mailboxes.$inferSelect;
 export type OutgoingMailRow = typeof outgoingMails.$inferSelect;
+export type IncomingMailRow = typeof incomingMails.$inferSelect;
+export type IncomingResult = (typeof incomingResult.enumValues)[number];
 export type Attachment = typeof attachments.$inferSelect;
 export type Rule = typeof rules.$inferSelect;
 export type Snippet = typeof snippets.$inferSelect;
