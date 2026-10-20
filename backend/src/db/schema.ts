@@ -32,7 +32,7 @@ export const statusCategory = pgEnum('status_category', ['new', 'in_progress', '
 export const priority = pgEnum('priority', ['high', 'normal', 'low']);
 export const itemSource = pgEnum('item_source', ['mail', 'portal', 'internal']);
 export const entryKind = pgEnum('entry_kind', ['reply', 'note', 'status', 'type', 'change']);
-/** oauth2 = App-Zugriff (Client Credentials), microsoft = Anmeldung mit einem Microsoft-Konto (Gerätecode) */
+/** oauth2 = App-Zugriff (Client Credentials), microsoft = Anmeldung mit einem Microsoft-Konto, Abruf und Versand über Microsoft Graph */
 export const mailAuth = pgEnum('mail_auth', ['password', 'oauth2', 'microsoft']);
 export const mailDirection = pgEnum('mail_direction', ['in', 'out']);
 /** relates = bezieht sich auf (beidseitig), fixes = from behebt to, duplicate = from ist Duplikat von to */
@@ -71,6 +71,16 @@ export const settings = pgTable('settings', {
   value: jsonb('value').notNull(),
 });
 
+/** Microsoft Graph: Stand des Abrufs eines Postfachs. Gilt nur für die Einstellungen, aus denen «key» gebildet ist. */
+export interface GraphSync {
+  /** Adresse, Ordner, Startzeitpunkt und angemeldetes Konto beim Abruf */
+  key: string;
+  /** Pfad zum Postfach: «me» oder «users/<adresse>» */
+  user: string;
+  /** Nächster Aufruf der Delta-Abfrage (nächste Seite oder Delta-Link), null = von vorne */
+  link: string | null;
+}
+
 export const mailboxes = pgTable('mailboxes', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
@@ -98,6 +108,10 @@ export const mailboxes = pgTable('mailboxes', {
   oauthAccount: text('oauth_account'),
   /** Mails abholen ab diesem Eingang im Postfach */
   fetchFrom: timestamp('fetch_from', { withTimezone: true }).notNull().defaultNow(),
+  /** Microsoft Graph: gewählter Ordner (ID), null = Posteingang bzw. Pfad aus Anzeigenamen in imapFolder */
+  graphFolderId: text('graph_folder_id'),
+  /** Microsoft Graph: Stand des Abrufs (Delta-Abfrage), null = beim nächsten Abruf von vorne */
+  graphSync: jsonb('graph_sync').$type<GraphSync>(),
   uidValidity: bigint('uid_validity', { mode: 'number' }),
   lastUid: bigint('last_uid', { mode: 'number' }).notNull().default(0),
   lastPollAt: timestamp('last_poll_at', { withTimezone: true }),

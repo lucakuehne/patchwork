@@ -8,6 +8,8 @@ import { attachments, heldMails, mailMessages, type Mailbox } from '../db/schema
 import { BossService, QUEUE_MAIL_SEND } from '../jobs/boss.service';
 import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
+import { GraphMailService } from './graph-mail.service';
+import { explainMailError } from './mail-errors';
 import { MailboxesService } from './mailboxes.service';
 import { MailTransportService } from './mail-transport.service';
 
@@ -33,6 +35,12 @@ export function newMessageId(mailbox: Mailbox): string {
   return `<pw.${randomUUID()}@${domain}>`;
 }
 
+/** Stellt die Mail fertig zusammen (MIME), so wie sie versendet würde. */
+async function buildMime(message: SendMailOptions): Promise<Buffer> {
+  const built = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail(message);
+  return built.message as Buffer;
+}
+
 @Injectable()
 export class MailSenderService implements OnModuleInit {
   private readonly logger = new Logger(MailSenderService.name);
@@ -44,6 +52,7 @@ export class MailSenderService implements OnModuleInit {
     private readonly transport: MailTransportService,
     private readonly storage: StorageService,
     private readonly settings: SettingsService,
+    private readonly graph: GraphMailService,
   ) {}
 
   async onModuleInit() {
@@ -80,8 +89,9 @@ export class MailSenderService implements OnModuleInit {
       ? await this.db.select().from(attachments).where(inArray(attachments.id, mail.attachmentIds))
       : [];
     const { appName } = await this.settings.get('general');
+    const fromName = mailbox.name || appName;
     const message: SendMailOptions = {
-      from: { name: `${mailbox.name || appName}`, address: mailbox.address },
+      from: { name: fromName, address: mailbox.address },
       to: mail.to,
       cc: mail.cc,
       subject: mail.subject,
@@ -105,12 +115,24 @@ export class MailSenderService implements OnModuleInit {
       return;
     }
 
+    // Mit angemeldetem Microsoft-Konto über Microsoft Graph, sonst über SMTP
+    if (mailbox.authType === 'microsoft') {
+      try {
+        await this.graph.send(mailbox, { ...mail, fromName }, await buildMime(message), files);
+        this.logger.log(`Mail «${mail.subject}» an ${[...mail.to, ...mail.cc].join(', ')} über Microsoft Graph gesendet`);
+      } catch (err) {
+        this.logger.error(`Versand von «${mail.subject}» fehlgeschlagen: ${(err as Error).message}`);
+        throw err;
+      }
+      return;
+    }
+
     const transporter = await this.transport.smtpTransport(mailbox);
     try {
       await transporter.sendMail(message);
       this.logger.log(`Mail «${mail.subject}» an ${[...mail.to, ...mail.cc].join(', ')} gesendet`);
     } catch (err) {
-      this.logger.error(`Versand von «${mail.subject}» fehlgeschlagen: ${(err as Error).message}`);
+      this.logger.error(`Versand von «${mail.subject}» fehlgeschlagen: ${explainMailError((err as Error).message, mailbox)}`);
       throw err;
     } finally {
       transporter.close();
@@ -119,8 +141,7 @@ export class MailSenderService implements OnModuleInit {
 
   /** Testbetrieb: Mail fertig zusammenstellen und ablegen statt versenden. */
   private async hold(mail: OutgoingMail, mailbox: Mailbox, message: SendMailOptions) {
-    const built = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail(message);
-    const storageKey = await this.storage.save(built.message as Buffer, 'eml');
+    const storageKey = await this.storage.save(await buildMime(message), 'eml');
     await this.db
       .insert(heldMails)
       .values({

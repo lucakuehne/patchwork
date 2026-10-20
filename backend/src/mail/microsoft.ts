@@ -12,9 +12,11 @@ export const MICROSOFT_LOGIN = 'https://login.microsoftonline.com';
  */
 export const NATIVE_REDIRECT_URI = 'https://login.microsoftonline.com/common/oauth2/nativeclient';
 
-/** Delegierte Rechte für IMAP und SMTP, dazu das Refresh-Token (offline_access) und der Kontoname (openid, profile). */
-export const MICROSOFT_SCOPE =
-  'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access openid profile';
+/**
+ * Die in der App-Registrierung eingetragenen Rechte für Microsoft Graph (Mail.ReadWrite, Mail.Send, User.Read …),
+ * dazu das Refresh-Token (offline_access) und der Kontoname (openid, profile).
+ */
+export const MICROSOFT_SCOPE = 'https://graph.microsoft.com/.default offline_access openid profile';
 
 /** POST mit Formulardaten an einen Endpunkt von Microsoft. */
 export const formPost = (values: Record<string, string>): RequestInit => ({
@@ -87,7 +89,8 @@ const CODE_HINTS: Record<number, string> = {
   70008: 'Die Anmeldung ist abgelaufen. Bitte die Anmeldung neu starten.',
   65001:
     'Für die App fehlt die Zustimmung: In der App-Registrierung unter «API-Berechtigungen» die Administratorzustimmung erteilen oder beim Anmelden als Admin «Im Namen Ihrer Organisation zustimmen» anhaken.',
-  70011: 'Der App-Registrierung fehlen Berechtigungen (IMAP.AccessAsUser.All, SMTP.Send, offline_access, openid, profile).',
+  70011:
+    'Der App-Registrierung fehlen Berechtigungen (Microsoft Graph: Mail.ReadWrite, Mail.Send, User.Read, offline_access, openid, profile).',
   50020: 'Das Konto gehört nicht zum Tenant der App-Registrierung.',
   53003:
     'Eine Richtlinie für bedingten Zugriff blockiert die Anmeldung, z.B. weil die Anmeldung mit Code gesperrt ist. Ausweg: im Browser anmelden, sonst App-Zugriff unter «Erweitert».',

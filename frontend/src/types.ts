@@ -224,6 +224,8 @@ export interface Mailbox {
   imapPort: number;
   imapSecure: boolean;
   imapFolder: string;
+  /** Microsoft Graph: ID des gewählten Ordners, null = Posteingang */
+  graphFolderId: string | null;
   smtpHost: string;
   smtpPort: number;
   smtpSecurity: 'tls' | 'starttls' | 'none';
@@ -243,6 +245,17 @@ export interface Mailbox {
   lastUid: number;
   lastPollAt: string | null;
   lastError: string | null;
+}
+
+/** Ordner eines Postfachs zur Auswahl für den Abruf */
+export interface MailFolder {
+  /** Microsoft Graph: ID des Ordners; IMAP: null */
+  id: string | null;
+  /** Gespeicherter Pfad (IMAP-Pfad bzw. Anzeigenamen mit «/») */
+  path: string;
+  /** Ordnernamen von oben nach unten */
+  names: string[];
+  inbox: boolean;
 }
 
 /** Im Testbetrieb nicht versendete Mail */

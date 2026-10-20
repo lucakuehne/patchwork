@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { api, errorMessage } from '../../api';
 import ModalDialog from '../../components/ModalDialog.vue';
 import { formatDateTime } from '../../format';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
-import type { Mailbox } from '../../types';
+import type { MailFolder, Mailbox } from '../../types';
 
 const session = useSession();
 const toast = useToast();
@@ -29,6 +29,7 @@ interface Draft {
   imapPort: number;
   imapSecure: boolean;
   imapFolder: string;
+  graphFolderId: string | null;
   smtpHost: string;
   smtpPort: number;
   smtpSecurity: 'tls' | 'starttls' | 'none';
@@ -71,6 +72,7 @@ onMounted(() => Promise.all([load(), loadMicrosoft()]));
 
 function create() {
   error.value = '';
+  resetFolders();
   const now = toLocalInput(new Date());
   draft.value = {
     id: null,
@@ -82,6 +84,7 @@ function create() {
     imapPort: 993,
     imapSecure: true,
     imapFolder: 'INBOX',
+    graphFolderId: null,
     smtpHost: '',
     smtpPort: 587,
     smtpSecurity: 'starttls',
@@ -104,6 +107,7 @@ function create() {
 
 function edit(m: Mailbox) {
   error.value = '';
+  resetFolders();
   const tenant = m.oauthTokenUrl?.match(/login\.microsoftonline\.com\/([^/]+)\//)?.[1] ?? '';
   const fetchFrom = toLocalInput(m.fetchFrom);
   draft.value = {
@@ -139,6 +143,102 @@ function applyTenant() {
   }
 }
 
+// ---- Ordner für den Abruf: Auswahl aus den Ordnern des gespeicherten Postfachs ----
+
+const folders = ref<MailFolder[]>([]);
+const foldersLoading = ref(false);
+const foldersError = ref('');
+let foldersRequest = 0;
+/** Wert in der Auswahl für den eingestellten Ordner, wenn er nicht in der Liste steht */
+const CURRENT = '';
+
+const isInbox = (path: string) => !path.trim() || /^inbox$/i.test(path.trim());
+const folderKey = (f: MailFolder) => f.id ?? f.path;
+
+/** Ordner für die Anzeige; bei Microsoft 365 ist «INBOX» der Posteingang. */
+function folderLabel(authType: Mailbox['authType'], path: string): string {
+  if (authType !== 'microsoft') return path;
+  return isInbox(path) ? 'Posteingang' : path.split('/').map((p) => p.trim()).join(' / ');
+}
+
+function resetFolders() {
+  foldersRequest++;
+  folders.value = [];
+  foldersError.value = '';
+  foldersLoading.value = false;
+}
+
+/** Die Liste kommt vom gespeicherten Postfach, bei Microsoft 365 erst nach der Anmeldung. */
+const foldersAvailable = computed(() => {
+  const d = draft.value;
+  const saved = mailboxes.value.find((m) => m.id === d?.id);
+  return !!d && !!saved && saved.authType === d.authType && (d.authType !== 'microsoft' || saved.microsoftConnected);
+});
+
+async function loadFolders() {
+  const id = draft.value?.id;
+  if (!id || !foldersAvailable.value) return;
+  const request = ++foldersRequest;
+  foldersLoading.value = true;
+  foldersError.value = '';
+  try {
+    const list = await api.get<MailFolder[]>(`/admin/mailboxes/${id}/folders`);
+    if (request === foldersRequest) folders.value = list;
+  } catch (err) {
+    if (request === foldersRequest) foldersError.value = errorMessage(err);
+  } finally {
+    if (request === foldersRequest) foldersLoading.value = false;
+  }
+}
+watch(foldersAvailable, (available) => {
+  if (available && !folders.value.length) void loadFolders();
+});
+
+// Wechsel zwischen IMAP und Microsoft 365: Die Ordnerpfade passen nicht zueinander, also wieder der Posteingang
+watch(
+  () => draft.value?.authType,
+  (now, before) => {
+    const d = draft.value;
+    if (!d || !now || !before || (now === 'microsoft') === (before === 'microsoft')) return;
+    d.imapFolder = 'INBOX';
+    d.graphFolderId = null;
+  },
+);
+
+/** Eingestellter Ordner in der Liste: bei Microsoft 365 über die ID, sonst über den Pfad. */
+function currentFolder(d: Draft, list: MailFolder[]): MailFolder | undefined {
+  if (d.authType === 'microsoft' && d.graphFolderId) return list.find((f) => f.id === d.graphFolderId);
+  if (isInbox(d.imapFolder)) return list.find((f) => f.inbox);
+  return list.find((f) => f.path === d.imapFolder);
+}
+
+const folderChoices = computed(() => {
+  const d = draft.value;
+  if (!d) return [];
+  const list = foldersAvailable.value ? folders.value : [];
+  const choices = list.map((f) => ({ key: folderKey(f), label: f.names.join(' / ') }));
+  // Der eingestellte Ordner bleibt sichtbar, auch wenn die Liste fehlt oder ihn nicht (mehr) enthält
+  if (!currentFolder(d, list)) {
+    const label = folderLabel(d.authType, d.imapFolder);
+    choices.unshift({ key: CURRENT, label: list.length ? `${label} (nicht gefunden)` : label });
+  }
+  return choices;
+});
+
+const selectedFolder = computed({
+  get: () => {
+    const d = draft.value;
+    const found = d && currentFolder(d, foldersAvailable.value ? folders.value : []);
+    return found ? folderKey(found) : CURRENT;
+  },
+  set: (key: string) => {
+    const found = folders.value.find((f) => folderKey(f) === key);
+    if (!draft.value || !found) return;
+    draft.value.imapFolder = found.path;
+    draft.value.graphFolderId = found.id;
+  },
+});
+
 async function save() {
   const d = draft.value;
   if (!d) return;
@@ -153,11 +253,13 @@ async function save() {
     address: d.address,
     active: d.active,
     isDefault: d.isDefault,
-    imapHost: d.imapHost,
+    // Bei Microsoft-Konten laufen Abruf und Versand über Microsoft Graph; die Server bleiben nur als Vorgabe stehen
+    imapHost: d.imapHost || (d.authType === 'microsoft' ? 'outlook.office365.com' : ''),
     imapPort: d.imapPort,
     imapSecure: d.imapSecure,
     imapFolder: d.imapFolder,
-    smtpHost: d.smtpHost,
+    graphFolderId: d.authType === 'microsoft' ? d.graphFolderId : null,
+    smtpHost: d.smtpHost || (d.authType === 'microsoft' ? 'smtp.office365.com' : ''),
     smtpPort: d.smtpPort,
     smtpSecurity: d.smtpSecurity,
     authType: d.authType,
@@ -427,7 +529,8 @@ function copyText(text: string): boolean {
       <button class="btn btn-primary" type="button" @click="create">+ Postfach</button>
     </div>
     <p class="muted" style="margin: 0">
-      Neue Mails werden jede Minute per IMAP abgeholt, ab dem beim Postfach eingestellten Zeitpunkt.
+      Neue Mails werden jede Minute abgeholt (per IMAP, bei Microsoft 365 über Microsoft Graph), ab dem beim Postfach
+      eingestellten Zeitpunkt.
       Patchwork verändert das Postfach nicht: Mails bleiben ungelesen und werden weder verschoben noch gelöscht.
       Antworten gehen über das Postfach, in dem der Vorgang angekommen ist; intern erfasste Vorgänge nutzen das Standard-Postfach.
     </p>
@@ -469,15 +572,19 @@ function copyText(text: string): boolean {
         <button class="btn btn-sm btn-danger" type="button" @click="remove(m)">Löschen</button>
       </div>
       <div class="muted small">
-        IMAP {{ m.imapHost }}:{{ m.imapPort }} ({{ m.imapFolder }}) · SMTP {{ m.smtpHost }}:{{ m.smtpPort }} · Mails ab
-        {{ formatDateTime(m.fetchFrom) }} · Letzter Abruf: {{ formatDateTime(m.lastPollAt) }}
+        <template v-if="m.authType === 'microsoft'">Microsoft Graph ({{ folderLabel(m.authType, m.imapFolder) }})</template>
+        <template v-else>
+          IMAP {{ m.imapHost }}:{{ m.imapPort }} ({{ m.imapFolder }}) · SMTP {{ m.smtpHost }}:{{ m.smtpPort }}
+        </template>
+        · Mails ab {{ formatDateTime(m.fetchFrom) }} · Letzter Abruf: {{ formatDateTime(m.lastPollAt) }}
       </div>
       <div v-if="m.authType === 'microsoft'" class="small" :class="m.microsoftConnected ? 'muted' : 'warning-text'">
         {{ m.microsoftConnected ? `Angemeldet als ${m.oauthAccount}` : 'Noch nicht mit Microsoft angemeldet' }}
       </div>
       <div v-if="m.lastError" class="error-box small">Letzter Fehler: {{ m.lastError }}</div>
       <div v-if="testResult[m.id]" class="small" :class="testResult[m.id]!.ok ? 'ok-box' : 'error-box'">
-        IMAP: {{ testResult[m.id]!.imap }}<br />SMTP: {{ testResult[m.id]!.smtp }}
+        {{ m.authType === 'microsoft' ? 'Abruf' : 'IMAP' }}: {{ testResult[m.id]!.imap }}<br />
+        {{ m.authType === 'microsoft' ? 'Versand' : 'SMTP' }}: {{ testResult[m.id]!.smtp }}
       </div>
     </div>
 
@@ -501,22 +608,46 @@ function copyText(text: string): boolean {
         <label class="checkbox"><input v-model="draft.isDefault" type="checkbox" /> Standard-Postfach</label>
       </div>
 
-      <h3>IMAP (Eingang)</h3>
-      <div class="grid-3">
-        <div class="field">
-          <label for="mb-imap-host">Server</label>
-          <input id="mb-imap-host" v-model="draft.imapHost" class="input" />
+      <template v-if="draft.authType === 'microsoft'">
+        <h3>Abruf und Versand</h3>
+        <span class="hint">Über Microsoft Graph mit dem angemeldeten Microsoft-Konto, ohne IMAP und SMTP.</span>
+      </template>
+      <template v-else>
+        <h3>IMAP (Eingang)</h3>
+        <div class="grid-server">
+          <div class="field">
+            <label for="mb-imap-host">Server</label>
+            <input id="mb-imap-host" v-model="draft.imapHost" class="input" />
+          </div>
+          <div class="field">
+            <label for="mb-imap-port">Port</label>
+            <input id="mb-imap-port" v-model.number="draft.imapPort" class="input" type="number" />
+          </div>
         </div>
-        <div class="field">
-          <label for="mb-imap-port">Port</label>
-          <input id="mb-imap-port" v-model.number="draft.imapPort" class="input" type="number" />
+        <label class="checkbox"><input v-model="draft.imapSecure" type="checkbox" /> TLS-Verbindung (üblich bei Port 993)</label>
+      </template>
+      <div class="field">
+        <label for="mb-folder">Ordner</label>
+        <div class="row">
+          <select id="mb-folder" v-model="selectedFolder" class="select folder" :disabled="folderChoices.length < 2">
+            <option v-for="c in folderChoices" :key="c.key" :value="c.key">{{ c.label }}</option>
+          </select>
+          <button v-if="foldersAvailable" class="btn btn-sm" type="button" :disabled="foldersLoading" @click="loadFolders">
+            {{ foldersLoading ? 'Lädt …' : 'Neu laden' }}
+          </button>
         </div>
-        <div class="field">
-          <label for="mb-imap-folder">Ordner</label>
-          <input id="mb-imap-folder" v-model="draft.imapFolder" class="input" />
-        </div>
+        <span v-if="foldersError" class="hint error">{{ foldersError }}</span>
+        <span v-else-if="!foldersAvailable" class="hint">
+          Weitere Ordner sind
+          {{ draft.authType === 'microsoft' ? 'nach dem Speichern und der Anmeldung mit Microsoft' : 'nach dem Speichern' }}
+          wählbar.
+        </span>
+        <span v-else class="hint">
+          Patchwork holt nur Mails aus diesem Ordner. Holt ein anderes System die Mails ab und löscht sie danach (z.B. HelpSpot
+          im Parallelbetrieb), richtet man im Postfach eine Regel ein, die eine Kopie jeder Mail in einen eigenen Ordner legt,
+          und wählt diesen hier.
+        </span>
       </div>
-      <label class="checkbox"><input v-model="draft.imapSecure" type="checkbox" /> TLS-Verbindung (üblich bei Port 993)</label>
       <div class="field">
         <label for="mb-fetch-from">Mails abholen ab</label>
         <input id="mb-fetch-from" v-model="draft.fetchFrom" class="input fetch-from" type="datetime-local" />
@@ -526,25 +657,27 @@ function copyText(text: string): boolean {
         </span>
       </div>
 
-      <h3>SMTP (Ausgang)</h3>
-      <div class="grid-3">
-        <div class="field">
-          <label for="mb-smtp-host">Server</label>
-          <input id="mb-smtp-host" v-model="draft.smtpHost" class="input" />
+      <template v-if="draft.authType !== 'microsoft'">
+        <h3>SMTP (Ausgang)</h3>
+        <div class="grid-3">
+          <div class="field">
+            <label for="mb-smtp-host">Server</label>
+            <input id="mb-smtp-host" v-model="draft.smtpHost" class="input" />
+          </div>
+          <div class="field">
+            <label for="mb-smtp-port">Port</label>
+            <input id="mb-smtp-port" v-model.number="draft.smtpPort" class="input" type="number" />
+          </div>
+          <div class="field">
+            <label for="mb-smtp-sec">Verschlüsselung</label>
+            <select id="mb-smtp-sec" v-model="draft.smtpSecurity" class="select">
+              <option value="starttls">STARTTLS (Port 587)</option>
+              <option value="tls">TLS (Port 465)</option>
+              <option value="none">keine</option>
+            </select>
+          </div>
         </div>
-        <div class="field">
-          <label for="mb-smtp-port">Port</label>
-          <input id="mb-smtp-port" v-model.number="draft.smtpPort" class="input" type="number" />
-        </div>
-        <div class="field">
-          <label for="mb-smtp-sec">Verschlüsselung</label>
-          <select id="mb-smtp-sec" v-model="draft.smtpSecurity" class="select">
-            <option value="starttls">STARTTLS (Port 587)</option>
-            <option value="tls">TLS (Port 465)</option>
-            <option value="none">keine</option>
-          </select>
-        </div>
-      </div>
+      </template>
 
       <h3>Anmeldung</h3>
       <div class="grid-2">
@@ -714,9 +847,11 @@ function copyText(text: string): boolean {
         </li>
         <li>
           Unter <strong>API-Berechtigungen</strong> (API permissions) → <strong>Berechtigung hinzufügen</strong> →
-          <strong>Microsoft Graph</strong> → <strong>Delegierte Berechtigungen</strong> diese fünf auswählen (über das Suchfeld):
-          <code>IMAP.AccessAsUser.All</code>, <code>SMTP.Send</code>, <code>offline_access</code>, <code>openid</code> und
-          <code>profile</code>. Danach <strong>Administratorzustimmung für … erteilen</strong> (Grant admin consent).
+          <strong>Microsoft Graph</strong> → <strong>Delegierte Berechtigungen</strong> diese auswählen (über das Suchfeld):
+          <code>Mail.ReadWrite</code>, <code>Mail.Send</code>, <code>offline_access</code>, <code>openid</code> und
+          <code>profile</code> (<code>User.Read</code> ist meist schon eingetragen). Meldet sich bei einem freigegebenen Postfach
+          ein anderes Konto an, zusätzlich <code>Mail.ReadWrite.Shared</code> und <code>Mail.Send.Shared</code>. Danach
+          <strong>Administratorzustimmung für … erteilen</strong> (Grant admin consent).
         </li>
         <li>Unter <strong>Übersicht</strong> (Overview) die <strong>Anwendungs-ID (Client)</strong> kopieren und hier einfügen:</li>
       </ol>
@@ -731,9 +866,10 @@ function copyText(text: string): boolean {
         />
       </div>
       <span class="hint faint">
-        Bittet Microsoft beim ersten Anmelden eines Postfachs trotzdem um Zustimmung, als Admin «Im Namen Ihrer Organisation
-        zustimmen» anhaken. Im Postfach müssen IMAP und – für den Versand – «Authentifiziertes SMTP» erlaubt sein (Microsoft 365
-        Admin Center → Benutzer → Postfach → E-Mail-Apps verwalten). Im Testbetrieb wird nichts versendet.
+        Patchwork holt und versendet über Microsoft Graph, IMAP und SMTP braucht es nicht. Es liest die Mails nur und ändert oder
+        löscht nichts. «Mail.ReadWrite» ist nötig, weil Microsoft Mails mit Anhängen über 3 MB nur über einen Entwurf versenden
+        lässt. Bittet Microsoft beim ersten Anmelden trotzdem um Zustimmung, als Admin «Im Namen Ihrer Organisation zustimmen»
+        anhaken. Im Testbetrieb wird nichts versendet.
       </span>
       <div v-if="setupError" class="error-box">{{ setupError }}</div>
       <template #footer>
@@ -760,6 +896,17 @@ function copyText(text: string): boolean {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr;
   gap: 12px;
+}
+.grid-server {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: 12px;
+}
+.folder {
+  max-width: 420px;
+}
+.hint.error {
+  color: var(--danger);
 }
 .ok-box {
   padding: 10px 12px;

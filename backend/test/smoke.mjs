@@ -156,9 +156,13 @@ await step('Postfach anlegen und testen', async () => {
   assert.equal(mb.isDefault, true, 'erstes Postfach wird Standard');
   assert.equal(mb.passwordEnc, undefined, 'Passwort wird nicht ausgeliefert');
   assert.equal(mb.oauthRefreshTokenEnc, undefined, 'Refresh-Token wird nicht ausgeliefert');
+  assert.equal(mb.graphSync, undefined, 'Stand des Graph-Abrufs wird nicht ausgeliefert');
   assert.ok(Math.abs(Date.now() - new Date(mb.fetchFrom).getTime()) < 60_000, 'Mails abholen ab: beim Anlegen jetzt');
   const test = await api('POST', `/admin/mailboxes/${mailboxId}/test`);
   assert.equal(test.ok, true, JSON.stringify(test));
+  // Ordner zur Auswahl für den Abruf
+  const folders = await api('GET', `/admin/mailboxes/${mailboxId}/folders`);
+  assert.deepEqual(folders[0], { id: null, path: 'INBOX', names: ['INBOX'], inbox: true }, JSON.stringify(folders));
   await poll(); // Startpunkt setzen
 });
 

@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { asc, eq, ne } from 'drizzle-orm';
 import { encryptSecret } from '../common/crypto';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
-import { mailboxes, type Mailbox } from '../db/schema';
+import { mailboxes, type GraphSync, type Mailbox } from '../db/schema';
 
 export interface MailboxInput {
   name: string;
@@ -13,6 +13,8 @@ export interface MailboxInput {
   imapPort: number;
   imapSecure: boolean;
   imapFolder: string;
+  /** Microsoft Graph: ID des gewählten Ordners, null = Posteingang; undefined = unverändert */
+  graphFolderId?: string | null;
   smtpHost: string;
   smtpPort: number;
   smtpSecurity: 'tls' | 'starttls' | 'none';
@@ -32,7 +34,7 @@ export interface MailboxInput {
 
 /** Postfach ohne Geheimnisse, für die Oberfläche. */
 export function toPublicMailbox(m: Mailbox) {
-  const { passwordEnc, oauthClientSecretEnc, oauthRefreshTokenEnc, uidValidity: _uv, ...rest } = m;
+  const { passwordEnc, oauthClientSecretEnc, oauthRefreshTokenEnc, uidValidity: _uv, graphSync: _gs, ...rest } = m;
   return {
     ...rest,
     hasPassword: !!passwordEnc,
@@ -106,6 +108,7 @@ export class MailboxesService {
       const connectionChanged =
         values.imapHost !== current.imapHost ||
         values.imapFolder !== current.imapFolder ||
+        values.graphFolderId !== current.graphFolderId ||
         values.username !== current.username ||
         values.fetchFrom!.getTime() !== wholeSecond(current.fetchFrom).getTime();
       if (values.isDefault) await tx.update(mailboxes).set({ isDefault: false }).where(ne(mailboxes.id, id));
@@ -113,9 +116,9 @@ export class MailboxesService {
         .update(mailboxes)
         .set({
           ...values,
-          // Anderer Server/Ordner oder anderer Startzeitpunkt: Abruf beginnt neu ab dem Startzeitpunkt,
+          // Anderer Server/Ordner/Adresse oder anderer Startzeitpunkt: Abruf beginnt neu ab dem Startzeitpunkt,
           // schon übernommene Mails erkennt die Message-ID
-          ...(connectionChanged ? { uidValidity: null, lastUid: 0 } : {}),
+          ...(connectionChanged ? { uidValidity: null, lastUid: 0, graphSync: null } : {}),
           // Die Anmeldung mit Microsoft gilt nur für dieses Verfahren
           ...(values.authType !== 'microsoft' ? { oauthRefreshTokenEnc: null, oauthAccount: null } : {}),
           lastError: null,
@@ -148,8 +151,18 @@ export class MailboxesService {
         oauthScope: null,
         oauthRefreshTokenEnc: login.refreshTokenEnc,
         oauthAccount: login.account,
+        // Beim nächsten Abruf neu ermitteln, ob das angemeldete Konto selbst das Postfach ist
+        graphSync: null,
         lastError: null,
       })
+      .where(eq(mailboxes.id, id));
+  }
+
+  /** Microsoft Graph: Stand des Abrufs (Pfad zum Postfach und Delta-Abfrage). */
+  async recordGraphPoll(id: string, state: { sync: GraphSync | null; error: string | null }) {
+    await this.db
+      .update(mailboxes)
+      .set({ lastPollAt: new Date(), lastError: state.error, graphSync: state.sync })
       .where(eq(mailboxes.id, id));
   }
 
@@ -208,6 +221,11 @@ export class MailboxesService {
       imapPort: input.imapPort,
       imapSecure: input.imapSecure,
       imapFolder: input.imapFolder.trim() || 'INBOX',
+      graphFolderId: microsoft
+        ? input.graphFolderId === undefined
+          ? (current?.graphFolderId ?? null)
+          : input.graphFolderId?.trim() || null
+        : null,
       smtpHost: input.smtpHost.trim(),
       smtpPort: input.smtpPort,
       smtpSecurity: input.smtpSecurity,

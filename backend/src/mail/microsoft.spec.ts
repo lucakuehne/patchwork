@@ -87,7 +87,7 @@ describe('Anmeldung im Browser', () => {
     expect(params.get('response_type')).toBe('code');
     expect(params.get('redirect_uri')).toBe('https://login.microsoftonline.com/common/oauth2/nativeclient');
     expect(params.get('code_challenge_method')).toBe('S256');
-    expect(params.get('scope')).toContain('https://outlook.office.com/SMTP.Send');
+    expect(params.get('scope')).toBe('https://graph.microsoft.com/.default offline_access openid profile');
 
     const pasted = `https://login.microsoftonline.com/common/oauth2/nativeclient?code=abc-123&state=${params.get('state')}&session_state=x`;
     expect(await auth.finishBrowser(mailbox, ` ${pasted} `)).toEqual({ status: 'done', account: 'luca@firma.ch' });
@@ -143,7 +143,7 @@ describe('Anmeldung mit Code', () => {
       interval: 5,
     });
     expect(calls[1]!.form.get('client_id')).toBe('app-id');
-    expect(calls[1]!.form.get('scope')).toContain('https://outlook.office.com/IMAP.AccessAsUser.All');
+    expect(calls[1]!.form.get('scope')).toBe('https://graph.microsoft.com/.default offline_access openid profile');
 
     expect(await auth.check(mailbox)).toEqual({ status: 'pending' });
     expect(await auth.check(mailbox)).toEqual({ status: 'done', account: 'luca@firma.ch' });
@@ -194,17 +194,20 @@ describe('Verbindung mit angemeldetem Konto', () => {
       oauthAccount: 'luca@firma.ch',
     } as Mailbox;
 
-    await transport.imapClient(mailbox);
-    await transport.imapClient(mailbox);
+    expect(await transport.graphToken(mailbox)).toBe('at');
+    expect(await transport.graphToken(mailbox)).toBe('at');
     expect(calls).toHaveLength(1);
     expect(calls[0]!.form.get('grant_type')).toBe('refresh_token');
     expect(calls[0]!.form.get('refresh_token')).toBe('rt');
+    expect(calls[0]!.form.get('scope')).toBe('https://graph.microsoft.com/.default offline_access openid profile');
+    // IMAP und SMTP gibt es für Postfächer mit Microsoft-Konto nicht mehr
+    await expect(transport.imapClient(mailbox)).rejects.toThrow(/Microsoft Graph/);
     expect(decryptSecret(mailboxes.storeRefreshToken.mock.calls[0]![1])).toBe('rt2');
   });
 
   it('meldet eine fehlende Anmeldung verständlich', async () => {
     const transport = new MailTransportService({} as never);
-    await expect(transport.imapClient({ id: 'm2', authType: 'microsoft' } as Mailbox)).rejects.toThrow(
+    await expect(transport.graphToken({ id: 'm2', authType: 'microsoft' } as Mailbox)).rejects.toThrow(
       /Noch nicht mit Microsoft angemeldet/,
     );
   });

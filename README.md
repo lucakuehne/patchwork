@@ -8,10 +8,11 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 - **Ein Vorgang, zwei Typen:** Störung oder Aufgabe, Typwechsel mit einem Klick. Verlauf, Kommentare und Anhänge bleiben erhalten.
 - **Tabs:** Eingang (Mails ohne Typ), Störungen (Liste, dringend zuerst; Ansicht «Gelöst»), Aufgaben (Board mit Drag & Drop; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge und hat den Filter «Nur meine».
 - **Status pro Typ** in der Verwaltung bearbeitbar. Die Kategorie (Neu, In Arbeit, Wartend, Erledigt, Abgelehnt) steuert das Verhalten.
-- **E-Mail rein und raus:** mehrere Postfächer (IMAP/SMTP, Passwort oder Anmeldung mit Microsoft 365), die Patchwork nur liest (Mails bleiben ungelesen im Postfach), Abruf ab einem einstellbaren Zeitpunkt, Zuordnung von Antworten über Mail-Header oder `[PW-1234]` im Betreff, Eingangsbestätigung, öffentliche Antworten an Melder und CC-Beteiligte, interne Notizen, Benachrichtigungen an Zuständige, Stummschalten pro Vorgang.
+- **E-Mail rein und raus:** mehrere Postfächer (IMAP/SMTP mit Passwort, Microsoft 365 über Microsoft Graph mit Anmeldung), die Patchwork nur liest (Mails bleiben ungelesen im Postfach), Abruf aus einem wählbaren Ordner ab einem einstellbaren Zeitpunkt, Zuordnung von Antworten über Mail-Header oder `[PW-1234]` im Betreff, Eingangsbestätigung, öffentliche Antworten an Melder und CC-Beteiligte, interne Notizen, Benachrichtigungen an Zuständige, Stummschalten pro Vorgang.
 - **Login:** lokale Benutzer und LDAP/AD (Rolle über AD-Gruppen). Erster Admin über den Einrichtungs-Assistenten.
 - **Volltextsuche** über Titel, Beschreibung und Timeline (PostgreSQL).
 - **Testbetrieb** (Verwaltung → Allgemein): Patchwork stellt alle Mails zusammen, versendet sie aber nicht. Sie stehen unter Verwaltung → Nicht versendete Mails, öffentliche Antworten tragen in der Timeline den Vermerk «nicht versendet». Alle Benutzer sehen oben einen Hinweis.
+- **Parallelbetrieb** mit einem System, das die Mails abholt und danach löscht (z.B. HelpSpot): Eine Regel im Postfach legt eine Kopie jeder eingehenden Mail in einen eigenen Ordner, den man beim Postfach in Patchwork wählt. Bei der Umstellung die Regel löschen und wieder den Posteingang wählen.
 
 ## Etappe 2
 
@@ -197,19 +198,28 @@ Mailserver, Name und Logo werden in der Oberfläche unter **Verwaltung** eingeri
 
 ### Microsoft 365
 
-Postfächer in Microsoft 365 meldet man mit einem Microsoft-Konto an (OAuth 2.0, delegierte Rechte, ohne Client Secret):
+Postfächer in Microsoft 365 meldet man mit einem Microsoft-Konto an (OAuth 2.0, delegierte Rechte, ohne Client Secret).
+Abruf und Versand laufen über Microsoft Graph, IMAP und SMTP AUTH braucht es dafür nicht:
 
 1. **Einmalig für die ganze Instanz:** eine App-Registrierung in Entra ID. Die Anleitung steht in Patchwork unter
    Verwaltung → Postfächer → Microsoft 365 → «Einrichten»: einzelner Mandant, Umleitungs-URI «Öffentlicher Client/nativ»
    mit `https://login.microsoftonline.com/common/oauth2/nativeclient`, «Öffentliche Clientflows zulassen», delegierte Rechte
-   `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid` und `profile` (alle unter Microsoft Graph),
-   Administratorzustimmung. Am Schluss die Anwendungs-ID dort eintragen.
+   unter Microsoft Graph `Mail.ReadWrite`, `Mail.Send`, `User.Read`, `offline_access`, `openid` und `profile` (für
+   freigegebene Postfächer mit einem anderen angemeldeten Konto zusätzlich `Mail.ReadWrite.Shared` und `Mail.Send.Shared`),
+   Administratorzustimmung. Am Schluss die Anwendungs-ID dort eintragen. Patchwork fordert genau die eingetragenen Rechte an
+   (`https://graph.microsoft.com/.default`).
 2. **Pro Postfach:** Vorlage «Microsoft 365» wählen, speichern und «Mit Microsoft anmelden». Standard ist die Anmeldung im
    Browser (Autorisierungscode mit PKCE): Patchwork öffnet die Anmeldeseite von Microsoft in einem neuen Tab, danach fügt man
    die Adresse der leeren Seite in Patchwork ein. Alternativ «Stattdessen mit Code anmelden» (Gerätecode), sofern der Tenant
    das nicht per bedingtem Zugriff sperrt. Anmelden kann sich das Konto des Postfachs oder ein Konto mit Vollzugriff
    (bei einem freigegebenen Postfach zusätzlich «Senden als»). Den Tenant ermittelt Patchwork aus der Mail-Domain.
-3. Im Postfach müssen IMAP und für den Versand «Authentifiziertes SMTP» erlaubt sein.
+3. Den Ordner wählt man nach der Anmeldung beim Postfach aus der Liste der Ordner; Patchwork merkt sich dessen ID, ein
+   Umbenennen stört also nicht.
+4. Patchwork liest nur: Mails bleiben ungelesen, nichts wird verschoben oder gelöscht. Abgeholt wird über die
+   Delta-Abfrage des Ordners: jede Mail, die neu im Ordner liegt und ab «Mails abholen ab» eingegangen ist
+   (`receivedDateTime`), auch wenn sie erst später hineinverschoben wurde. Versendet wird die fertige Mail im MIME-Format
+   (`sendMail`), sie landet in «Gesendete Elemente». Mails über 3 MB gehen über einen Entwurf mit einzeln hochgeladenen
+   Anhängen; dafür braucht es `Mail.ReadWrite`.
 
 Eine Rückleitung zu Patchwork selbst (ohne das Einfügen der Adresse) erlaubt Microsoft nur über HTTPS. Unter «Erweitert» bleibt der App-Zugriff ohne
 angemeldetes Konto möglich (Client Credentials: `IMAP.AccessAsApp`, `SMTP.SendAsApp`, Service Principal in Exchange
@@ -222,7 +232,7 @@ Online, Client Secret). Anleitung von Microsoft:
 backend/
   src/auth/        Anmeldung (lokal, LDAP), Sitzungen, Einrichtung
   src/items/       Vorgänge: Ansichten, Typwechsel, Status, Timeline
-  src/mail/        Postfächer, Abruf (IMAP), Versand (SMTP), Benachrichtigungen
+  src/mail/        Postfächer, Abruf und Versand (IMAP/SMTP, Microsoft Graph), Benachrichtigungen
   src/statuses/    Status pro Typ und Kategorie-Regeln
   src/db/          Schema und Migrationen (drizzle/)
   test/smoke.mjs   End-to-End-Test

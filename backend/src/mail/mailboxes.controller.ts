@@ -1,8 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { z } from 'zod';
 import { AdminOnly } from '../auth/auth.decorators';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
+import { GraphMailService } from './graph-mail.service';
+import { explainMailError } from './mail-errors';
 import { MailFetcherService } from './mail-fetcher.service';
+import { imapFolders, type MailFolder } from './mail-folders';
 import { MailTransportService } from './mail-transport.service';
 import { MailboxesService, toPublicMailbox } from './mailboxes.service';
 import { MicrosoftAuthService } from './microsoft-auth.service';
@@ -18,7 +21,9 @@ const mailboxSchema = z.object({
   imapHost: z.string().trim().min(1, 'IMAP-Server fehlt').max(255),
   imapPort: port,
   imapSecure: z.boolean(),
-  imapFolder: z.string().trim().max(255).default('INBOX'),
+  imapFolder: z.string().trim().max(1000).default('INBOX'),
+  /** Microsoft Graph: ID des gewählten Ordners, null = Posteingang; fehlt = unverändert */
+  graphFolderId: z.string().trim().max(1000).nullable().optional(),
   smtpHost: z.string().trim().min(1, 'SMTP-Server fehlt').max(255),
   smtpPort: port,
   smtpSecurity: z.enum(['tls', 'starttls', 'none']),
@@ -60,6 +65,7 @@ export class MailboxesController {
     private readonly transport: MailTransportService,
     private readonly fetcher: MailFetcherService,
     private readonly microsoft: MicrosoftAuthService,
+    private readonly graph: GraphMailService,
   ) {}
 
   @Get()
@@ -91,6 +97,11 @@ export class MailboxesController {
   @HttpCode(200)
   async test(@Param('id', ParseUUIDPipe) id: string) {
     const mailbox = await this.mailboxes.get(id);
+    if (mailbox.authType === 'microsoft') {
+      // Abruf und Versand über Microsoft Graph
+      const graph = await this.graph.test(mailbox);
+      return { imap: graph.incoming, smtp: graph.outgoing, ok: graph.ok };
+    }
     const result = { imap: '', smtp: '', ok: true };
     try {
       const client = await this.transport.imapClient(mailbox);
@@ -100,7 +111,8 @@ export class MailboxesController {
       result.imap = `OK – Ordner «${mailbox.imapFolder}»: ${status.messages ?? 0} Mails, ${status.unseen ?? 0} ungelesen`;
     } catch (err) {
       result.ok = false;
-      result.imap = `Fehler: ${(err as Error & { responseText?: string }).responseText ?? (err as Error).message}`;
+      const message = (err as Error & { responseText?: string }).responseText ?? (err as Error).message;
+      result.imap = `Fehler: ${explainMailError(message, mailbox)}`;
     }
     try {
       const transporter = await this.transport.smtpTransport(mailbox);
@@ -109,9 +121,34 @@ export class MailboxesController {
       result.smtp = 'OK';
     } catch (err) {
       result.ok = false;
-      result.smtp = `Fehler: ${(err as Error).message}`;
+      result.smtp = `Fehler: ${explainMailError((err as Error).message, mailbox)}`;
     }
     return result;
+  }
+
+  /** Ordner des gespeicherten Postfachs zur Auswahl für den Abruf. */
+  @Get(':id/folders')
+  async folders(@Param('id', ParseUUIDPipe) id: string): Promise<MailFolder[]> {
+    const mailbox = await this.mailboxes.get(id);
+    if (mailbox.authType === 'microsoft') {
+      try {
+        return await this.graph.folders(mailbox);
+      } catch (err) {
+        throw new BadRequestException(`Ordner konnten nicht geladen werden: ${(err as Error).message}`);
+      }
+    }
+    let client;
+    try {
+      client = await this.transport.imapClient(mailbox);
+      await client.connect();
+      const folders = await imapFolders(client);
+      await client.logout();
+      return folders;
+    } catch (err) {
+      client?.close();
+      const message = (err as Error & { responseText?: string }).responseText ?? (err as Error).message;
+      throw new BadRequestException(`Ordner konnten nicht geladen werden: ${explainMailError(message, mailbox)}`);
+    }
   }
 
   /** Ruft das Postfach sofort ab. */

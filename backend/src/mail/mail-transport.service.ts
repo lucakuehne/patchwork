@@ -10,9 +10,8 @@ import { formPost, MICROSOFT_SCOPE, microsoftError, type MicrosoftTokenResponse 
 export const M365_SCOPE = 'https://outlook.office365.com/.default';
 
 /**
- * Baut IMAP- und SMTP-Verbindungen für ein Postfach: mit Passwort, mit App-Zugriff (Client Credentials)
- * oder mit einem angemeldeten Microsoft-Konto (Refresh-Token). Bei einem freigegebenen Postfach meldet sich
- * ein Konto mit Zugriff an, verbunden wird mit der Adresse des Postfachs.
+ * Baut IMAP- und SMTP-Verbindungen für ein Postfach (mit Passwort oder mit App-Zugriff über Client Credentials)
+ * und liefert die Tokens für Microsoft Graph, wenn ein Microsoft-Konto angemeldet ist (Refresh-Token).
  */
 @Injectable()
 export class MailTransportService {
@@ -20,7 +19,13 @@ export class MailTransportService {
 
   constructor(private readonly mailboxes: MailboxesService) {}
 
+  /** Access-Token für Microsoft Graph eines Postfachs mit angemeldetem Microsoft-Konto. */
+  graphToken(mailbox: Mailbox): Promise<string> {
+    return this.accessToken(mailbox);
+  }
+
   async imapClient(mailbox: Mailbox): Promise<ImapFlow> {
+    if (mailbox.authType === 'microsoft') throw new Error('Postfächer mit Microsoft-Konto laufen über Microsoft Graph, nicht IMAP');
     const auth =
       mailbox.authType === 'password'
         ? { user: mailbox.username, pass: decryptSecret(mailbox.passwordEnc ?? '') }
@@ -36,6 +41,7 @@ export class MailTransportService {
   }
 
   async smtpTransport(mailbox: Mailbox): Promise<Transporter> {
+    if (mailbox.authType === 'microsoft') throw new Error('Postfächer mit Microsoft-Konto laufen über Microsoft Graph, nicht SMTP');
     const auth =
       mailbox.authType === 'password'
         ? { user: mailbox.username, pass: decryptSecret(mailbox.passwordEnc ?? '') }

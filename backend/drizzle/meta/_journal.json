@@ -78,6 +78,13 @@
       "when": 1792407843496,
       "tag": "0010_testbetrieb_abruf_microsoft",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792475711991,
+      "tag": "0011_graph_abruf",
+      "breakpoints": true
     }
   ]
 }
