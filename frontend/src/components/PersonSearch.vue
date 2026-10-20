@@ -2,14 +2,22 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { useDebounced } from '../composables';
+import { ROLE_LABELS } from '../format';
 import type { PersonHit, PersonPick } from '../types';
 
 /**
  * Personensuche für Melder und Beteiligte: Benutzer und Kontakte aus Patchwork (Name, E-Mail) und
  * Konten aus dem AD (Name, Benutzername, E-Mail). Eine unbekannte E-Mail-Adresse lässt sich als neuer
  * Kontakt wählen. Bedienung auch mit Pfeiltasten und Enter.
+ * «directoryOnly»: nur Konten aus dem AD, ohne neue Kontakte (Benutzer vorab anlegen).
  */
-const props = defineProps<{ placeholder?: string; exclude?: string[]; floating?: boolean; autofocus?: boolean }>();
+const props = defineProps<{
+  placeholder?: string;
+  exclude?: string[];
+  floating?: boolean;
+  autofocus?: boolean;
+  directoryOnly?: boolean;
+}>();
 const emit = defineEmits<{ pick: [person: PersonPick] }>();
 
 const input = ref<HTMLInputElement | null>(null);
@@ -43,7 +51,7 @@ watch(debounced, async (value) => {
   loading.value = true;
   try {
     const result = await api.get<{ people: PersonHit[]; directoryError: string | null }>(
-      `/people/search?q=${encodeURIComponent(q)}`,
+      `/people/search?q=${encodeURIComponent(q)}${props.directoryOnly ? '&scope=directory' : ''}`,
     );
     if (no !== requestNo) return; // inzwischen wurde weiter getippt
     hits.value = result.people;
@@ -62,7 +70,8 @@ const excluded = computed(() => new Set((props.exclude ?? []).map((e) => e.toLow
 const visibleHits = computed(() => hits.value.filter((h) => !excluded.value.has(h.email)));
 const newEmail = computed(() => {
   const typed = query.value.trim().toLowerCase();
-  return isEmail(typed) && !hits.value.some((h) => h.email === typed) && !excluded.value.has(typed) ? typed : null;
+  return !props.directoryOnly &&
+    isEmail(typed) && !hits.value.some((h) => h.email === typed) && !excluded.value.has(typed) ? typed : null;
 });
 const options = computed<{ key: string; pick: PersonPick; hit: PersonHit | null }[]>(() => [
   ...visibleHits.value.map((hit) => ({
@@ -121,7 +130,10 @@ function pickHighlighted() {
         <template v-if="option.hit">
           <span class="line">
             <span class="name">{{ option.hit.name }}</span>
-            <span v-if="option.hit.source === 'directory'" class="badge-ad" title="Aus dem AD, noch nicht in Patchwork">AD</span>
+            <span v-if="option.hit.source === 'directory' && !directoryOnly" class="badge-ad" title="Aus dem AD, noch nicht in Patchwork">AD</span>
+            <span v-if="option.hit.source === 'patchwork' && option.hit.role && directoryOnly" class="sub">
+              in Patchwork: {{ ROLE_LABELS[option.hit.role] }}
+            </span>
           </span>
           <span class="sub">
             {{ option.hit.email }}<template v-if="option.hit.username"> · {{ option.hit.username }}</template>
@@ -131,6 +143,9 @@ function pickHighlighted() {
       </button>
       <div v-if="loading && !options.length" class="hint">Suche …</div>
       <div v-else-if="searchedFor && !options.length && hits.length" class="hint">Bereits eingetragen</div>
+      <div v-else-if="searchedFor && !options.length && directoryOnly" class="hint">
+        {{ searchedFor.length < 2 ? 'Bitte mindestens 2 Zeichen eingeben.' : 'Keine Treffer im AD.' }}
+      </div>
       <div v-else-if="searchedFor && !options.length" class="hint">
         Keine Treffer. Für eine neue Person die E-Mail-Adresse eingeben.
       </div>

@@ -1,7 +1,20 @@
-import { Body, Controller, Get, Logger, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Logger,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { AdminOnly } from '../auth/auth.decorators';
-import { LdapService, type DirectoryPerson } from '../auth/ldap.service';
+import { LdapService, type DirectoryPerson, type LdapIdentity } from '../auth/ldap.service';
 import { SessionService } from '../auth/session.service';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import type { UserRole } from '../db/schema';
@@ -17,10 +30,18 @@ const createSchema = z.object({
   password: z.string().max(500).optional(),
 });
 
+/** «auto» = Rolle aus den AD-Gruppen (nur AD-Konten), sonst von Hand festgelegt */
+const roleChoiceSchema = z.enum(['auto', 'admin', 'it', 'standard']);
+
+const directorySchema = z.object({
+  email: emailSchema,
+  role: roleChoiceSchema,
+});
+
 const updateSchema = z.object({
   name: z.string().trim().min(1, 'Name fehlt').max(200).optional(),
   email: emailSchema.optional(),
-  role: roleSchema.optional(),
+  role: roleChoiceSchema.optional(),
   active: z.boolean().optional(),
   /** '' = Passwort entfernen */
   password: z.string().max(500).optional(),
@@ -64,13 +85,20 @@ export class UsersController {
    * LDAP-Anmeldung aktiv ist, Konten aus dem Verzeichnis (Name, Anmeldename, E-Mail; ab 2 Zeichen).
    */
   @Get('people/search')
-  async searchPeople(@Query('q') q = ''): Promise<{ people: PersonHit[]; directoryError: string | null }> {
+  async searchPeople(
+    @Query('q') q = '',
+    @Query('scope') scope?: string,
+  ): Promise<{ people: PersonHit[]; directoryError: string | null }> {
     const query = q.trim().slice(0, 100);
     if (!query) return { people: [], directoryError: null };
+    // scope=directory: nur Konten aus dem AD (Benutzer vorab anlegen), bekannte als Benutzer aus Patchwork
+    const directoryOnly = scope === 'directory';
 
     const hits = new Map<string, PersonHit>();
-    for (const u of await this.users.search(query)) {
-      hits.set(u.email, { ...toPublicUser(u), username: null, source: 'patchwork' });
+    if (!directoryOnly) {
+      for (const u of await this.users.search(query)) {
+        hits.set(u.email, { ...toPublicUser(u), username: null, source: 'patchwork' });
+      }
     }
 
     let directory: DirectoryPerson[] = [];
@@ -114,14 +142,64 @@ export class UsersController {
     return toAdminUser(await this.users.create(body));
   }
 
+  /** Person im AD mit der Rolle aus den AD-Gruppen (Vorschlag beim Anlegen und Bearbeiten). */
+  @AdminOnly()
+  @Get('admin/users/directory')
+  async directoryPerson(@Query('email') email = ''): Promise<LdapIdentity> {
+    return this.lookup(email);
+  }
+
+  /** Legt eine Person aus dem AD an, bevor sie sich zum ersten Mal anmeldet. */
+  @AdminOnly()
+  @Post('admin/users/directory')
+  async createFromDirectory(@Body(new ZodPipe(directorySchema)) body: z.infer<typeof directorySchema>) {
+    const person = await this.lookup(body.email);
+    return toAdminUser(await this.users.createFromDirectory(person, body.role === 'auto' ? null : body.role));
+  }
+
   @AdminOnly()
   @Patch('admin/users/:id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodPipe(updateSchema)) body: z.infer<typeof updateSchema>,
   ) {
-    const updated = await this.users.update(id, body);
+    const { role, ...rest } = body;
+    const user = await this.users.getById(id);
+    let roleChange: { role?: UserRole; roleManual?: boolean } = {};
+    if (role === 'auto') {
+      if (user.authSource !== 'ldap') throw new BadRequestException('«Aus AD-Gruppen» gibt es nur für AD-Konten.');
+      if (user.roleManual) {
+        // Zurück von «von Hand»: Ohne Rolle aus dem AD geht das nicht
+        roleChange = { role: (await this.lookup(user.email)).role, roleManual: false };
+      } else {
+        // Schon «Aus AD-Gruppen»: aktuelle Rolle nachziehen (z.B. vorab angelegt, Gruppe seither geändert);
+        // ist das AD nicht erreichbar, bleibt die gespeicherte Rolle bis zur nächsten Anmeldung
+        const current = await this.lookup(user.email).catch(() => null);
+        if (current) roleChange = { role: current.role };
+      }
+    } else if (role !== undefined) {
+      roleChange = { role, roleManual: user.authSource === 'ldap' };
+    }
+    const updated = await this.users.update(id, { ...rest, ...roleChange });
     if (body.active === false || body.password !== undefined) await this.sessions.destroyAllForUser(id);
     return toAdminUser(updated);
+  }
+
+  private async lookup(email: string): Promise<LdapIdentity> {
+    const cfg = await this.settings.get('ldap');
+    if (!cfg.enabled) throw new BadRequestException('Die Anmeldung über LDAP/AD ist ausgeschaltet.');
+    let person: LdapIdentity | null;
+    try {
+      person = await this.ldap.lookupPerson(cfg, email);
+    } catch (err) {
+      this.logger.warn(`Abfrage im Verzeichnis fehlgeschlagen: ${this.ldap.explain(err)}`);
+      throw new ServiceUnavailableException('Das Verzeichnis (AD) ist zurzeit nicht erreichbar.');
+    }
+    if (!person) {
+      throw new NotFoundException(
+        'Diese Person ist im AD nicht zu finden, deaktiviert oder nicht eindeutig (mehrere Konten mit dieser E-Mail).',
+      );
+    }
+    return person;
   }
 }

@@ -44,6 +44,8 @@ export const users = pgTable('users', {
   /** Immer in Kleinbuchstaben gespeichert. */
   email: text('email').notNull().unique(),
   role: userRole('role').notNull().default('standard'),
+  /** LDAP: Rolle von Hand festgelegt, gilt statt der AD-Gruppen auch bei der Anmeldung */
+  roleManual: boolean('role_manual').notNull().default(false),
   authSource: authSource('auth_source').notNull().default('local'),
   passwordHash: text('password_hash'),
   ldapDn: text('ldap_dn'),

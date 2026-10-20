@@ -61,6 +61,11 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
 - Im MVP melden sich nur Admin und IT an. Standard-Benutzer laufen nur über Mail.
 - Der erste Admin wird über einen **Einrichtungs-Assistenten** im Browser erstellt.
 - LDAP/AD: Benutzer wird beim ersten Login angelegt. Je eine konfigurierbare AD-Gruppe für Admin und für IT, alle anderen werden Standard.
+- AD-Konten vorab anlegen (bestätigt am 20.10.2026): Unter Verwaltung → Benutzer lässt sich eine Person aus dem AD anlegen, bevor sie sich zum ersten Mal anmeldet, z.B. um ihr schon Vorgänge zuzuweisen. Kein Passwort nötig.
+  - Im Dialog «+ Benutzer» sucht man im AD nach Name, Benutzername oder E-Mail. Name und E-Mail kommen aus dem AD, das Konto ist sofort ein LDAP-Konto.
+  - Rolle: Das Feld bietet zuerst «Aus AD-Gruppen (zurzeit: …)», vorbelegt, bestimmt wie bei der Anmeldung. Wer eine Rolle von Hand wählt, legt sie dauerhaft fest: Sie bleibt bei jeder Anmeldung, bis man wieder «Aus AD-Gruppen» wählt.
+  - Dasselbe Rollen-Feld gilt beim Bearbeiten bestehender AD-Konten. Bestehende Konten bleiben nach dem Update auf «Aus AD-Gruppen».
+  - Umgesetzt am 20.10.2026, Details: Die Rolle «Aus AD-Gruppen» wird beim Speichern sofort im AD bestimmt, auch wenn das Konto schon auf «Aus AD-Gruppen» stand (z.B. vorab angelegt, Gruppe seither geändert). Ist das AD dabei nicht erreichbar, bleibt die gespeicherte Rolle bis zur nächsten Anmeldung; nur der Wechsel von «von Hand» zurück verlangt das AD und meldet sonst einen Fehler. Gibt es die Person schon als Kontakt (aus Mails, ohne Login), wird dieser übernommen, wie beim ersten Login. Konten mit Login (LDAP oder lokal mit Passwort) lassen sich nicht doppelt anlegen. Deaktivierte AD-Konten erscheinen nicht. In der Liste steht bei von Hand festgelegten Rollen «von Hand».
 - LDAP/AD-Anmeldung über Simple Bind. Bei Domain Controllern mit LDAP-Signierungspflicht nur über eine verschlüsselte Verbindung: **STARTTLS** (empfohlen, bleibt Port 389) oder LDAPS. Dafür braucht der DC ein Zertifikat. Eine eigene Zertifizierungsstelle kann als CA-Zertifikat hinterlegt werden. LDAP-Signierung per SASL (Kerberos/NTLM) wird nicht unterstützt (Entscheid vom 15.10.2026).
 
 ## Mail

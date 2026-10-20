@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "role_manual" boolean DEFAULT false NOT NULL;

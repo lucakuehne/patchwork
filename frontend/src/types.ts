@@ -30,8 +30,18 @@ export interface PersonPick {
   role: Role | null;
 }
 
+/** Person im AD mit der Rolle aus den AD-Gruppen */
+export interface DirectoryPerson {
+  dn: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
 export interface AdminUser extends User {
   authSource: 'local' | 'ldap' | 'oidc';
+  /** AD-Konto mit von Hand festgelegter Rolle (gilt auch bei der Anmeldung) */
+  roleManual: boolean;
   active: boolean;
   hasPassword: boolean;
   lastLoginAt: string | null;

@@ -11,6 +11,7 @@ import { InjectDb, type Db } from '../db/db.module';
 import { users, type User } from '../db/schema';
 import { PORTAL_REFUSED, PortalAccessService } from '../portal/portal-access.service';
 import { SettingsService } from '../settings/settings.service';
+import { roleAtLogin } from '../users/user-roles';
 import { hashPassword, MIN_PASSWORD_LENGTH, UsersService, verifyPassword } from '../users/users.service';
 import { LdapAccountStateError, LdapService } from './ldap.service';
 
@@ -73,11 +74,12 @@ export class AuthService {
       throw new ForbiddenException('Für diese E-Mail-Adresse besteht bereits ein lokales Konto.');
     }
 
-    // Anlegen bzw. mit dem Kontakt aus Mails (gleiche E-Mail) zusammenführen; Rolle aus den AD-Gruppen
+    // Anlegen bzw. mit dem Kontakt aus Mails (gleiche E-Mail) zusammenführen; Rolle aus den AD-Gruppen,
+    // ausser sie ist von Hand festgelegt
     const values = {
       name: identity.name,
       email: identity.email,
-      role: identity.role,
+      role: roleAtLogin(existing, identity.role),
       authSource: 'ldap' as const,
       ldapDn: identity.dn,
       passwordHash: null,

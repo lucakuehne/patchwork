@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { hash, verify } from '@node-rs/argon2';
 import { and, asc, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm';
+import type { LdapIdentity } from '../auth/ldap.service';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import { users, type User, type UserRole } from '../db/schema';
+import { directoryConflict } from './user-roles';
 
 export interface PublicUser {
   id: string;
@@ -13,6 +15,8 @@ export interface PublicUser {
 
 export interface AdminUser extends PublicUser {
   authSource: User['authSource'];
+  /** AD-Konto mit von Hand festgelegter Rolle */
+  roleManual: boolean;
   active: boolean;
   hasPassword: boolean;
   lastLoginAt: Date | null;
@@ -24,6 +28,7 @@ export const toPublicUser = (u: User): PublicUser => ({ id: u.id, name: u.name, 
 export const toAdminUser = (u: User): AdminUser => ({
   ...toPublicUser(u),
   authSource: u.authSource,
+  roleManual: u.roleManual,
   active: u.active,
   hasPassword: !!u.passwordHash,
   lastLoginAt: u.lastLoginAt,
@@ -143,9 +148,41 @@ export class UsersService {
     return created!;
   }
 
+  /**
+   * Legt ein AD-Konto an, bevor sich die Person zum ersten Mal anmeldet, bzw. übernimmt den Kontakt mit derselben
+   * E-Mail. «manualRole» null = Rolle aus den AD-Gruppen, sonst von Hand festgelegt.
+   */
+  async createFromDirectory(person: LdapIdentity, manualRole: UserRole | null): Promise<User> {
+    return this.db.transaction(async (tx) => {
+      const existing = await this.findByEmail(person.email, tx);
+      const conflict = directoryConflict(existing);
+      if (conflict) throw new ConflictException(conflict);
+      const values = {
+        name: person.name,
+        email: person.email,
+        role: manualRole ?? person.role,
+        roleManual: manualRole !== null,
+        authSource: 'ldap' as const,
+        ldapDn: person.dn,
+        passwordHash: null,
+      };
+      const [saved] = existing
+        ? await tx.update(users).set(values).where(eq(users.id, existing.id)).returning()
+        : await tx.insert(users).values(values).returning();
+      return saved!;
+    });
+  }
+
   async update(
     id: string,
-    input: { name?: string; email?: string; role?: UserRole; active?: boolean; password?: string | null },
+    input: {
+      name?: string;
+      email?: string;
+      role?: UserRole;
+      roleManual?: boolean;
+      active?: boolean;
+      password?: string | null;
+    },
   ): Promise<User> {
     return this.db.transaction(async (tx) => {
       const user = await this.getById(id, tx);
@@ -160,6 +197,7 @@ export class UsersService {
         changes.email = email;
       }
       if (input.role !== undefined) changes.role = input.role;
+      if (input.roleManual !== undefined) changes.roleManual = input.roleManual;
       if (input.active !== undefined) changes.active = input.active;
       if (input.password !== undefined) {
         if (user.authSource !== 'local') {

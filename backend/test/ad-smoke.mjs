@@ -208,6 +208,40 @@ await step('Personensuche im AD: Name und Benutzername, ohne deaktivierte Konten
   );
 });
 
+await step('Aus dem AD vorab anlegen: Rolle aus den Gruppen oder von Hand, gilt bei der Anmeldung', async () => {
+  await call(admin, 'PUT', '/settings/ldap', settings);
+  // Suche nur im AD
+  const { people } = (await call(admin, 'GET', '/people/search?q=nina&scope=directory')).data;
+  assert.deepEqual(people.map((p) => [p.email, p.source]), [['nina@test.patchwork', 'directory']]);
+  // Vorschlag: nina ist über die verschachtelte Gruppe IT
+  const nina = (await call(admin, 'GET', '/admin/users/directory?email=nina@test.patchwork')).data;
+  assert.equal(nina.role, 'it');
+  assert.equal(nina.name, 'Nina Nested');
+  const created = (await call(admin, 'POST', '/admin/users/directory', { email: 'nina@test.patchwork', role: 'auto' })).data;
+  assert.equal(created.authSource, 'ldap');
+  assert.equal(created.role, 'it');
+  assert.equal(created.roleManual, false);
+  assert.equal(created.lastLoginAt, null);
+  const staff = (await call(admin, 'GET', '/users/staff')).data;
+  assert.ok(staff.some((u) => u.email === 'nina@test.patchwork'), 'sofort bei «Zuständig»');
+  await call(admin, 'POST', '/admin/users/directory', { email: 'nina@test.patchwork', role: 'auto' }, [409]);
+  await call(admin, 'GET', '/admin/users/directory?email=dora@test.patchwork', undefined, [404]);
+  // sam (Standard im AD) als Kontakt aus einer Mail, dann von Hand als IT: Kontakt wird übernommen, Rolle bleibt beim Login
+  const contact = (await call(admin, 'POST', '/users/contacts', { email: 'sam@test.patchwork', name: 'sam' })).data;
+  const sam = (await call(admin, 'POST', '/admin/users/directory', { email: 'sam@test.patchwork', role: 'it' })).data;
+  assert.equal(sam.id, contact.id, 'Kontakt übernommen');
+  assert.equal(sam.name, 'Sam Standard');
+  assert.deepEqual([sam.role, sam.roleManual], ['it', true]);
+  assert.equal((await login('sam', 'Sam-Passw0rd!')).data.role, 'it', 'von Hand festgelegt');
+  // Zurück auf «Aus AD-Gruppen»: Rolle sofort aus dem AD
+  const back = (await call(admin, 'PATCH', `/admin/users/${sam.id}`, { role: 'auto' })).data;
+  assert.deepEqual([back.role, back.roleManual], ['standard', false]);
+  assert.equal((await login('sam', 'Sam-Passw0rd!')).data.role, 'standard');
+  // Lokale Konten kennen «Aus AD-Gruppen» nicht
+  const local = (await call(admin, 'GET', '/admin/users')).data.find((u) => u.email === adminEmail);
+  await call(admin, 'PATCH', `/admin/users/${local.id}`, { role: 'auto' }, [400]);
+});
+
 await step('Anmeldungen über AD (gespeicherte Einstellungen)', async () => {
   await call(admin, 'PUT', '/settings/ldap', settings);
   assert.equal((await login('lena', 'Lena-Passw0rd!')).data.role, 'it');
@@ -218,6 +252,17 @@ await step('Anmeldungen über AD (gespeicherte Einstellungen)', async () => {
   await login('nomail', 'Nomail-Passw0rd!', [401]);
   const disabled = await login('dora', 'Dora-Passw0rd!', [403]);
   assert.match(JSON.stringify(disabled.data), /deaktiviert/);
+});
+
+await step('Bestehendes AD-Konto: Rolle von Hand bleibt bei der Anmeldung', async () => {
+  const otto = (await call(admin, 'GET', '/admin/users')).data.find((u) => u.email === 'otto@test.patchwork');
+  assert.deepEqual([otto.role, otto.roleManual], ['admin', false]);
+  // Bisherige Werte beim Speichern ohne Änderung der Rolle: bleibt «Aus AD-Gruppen»
+  assert.equal((await call(admin, 'PATCH', `/admin/users/${otto.id}`, { name: otto.name, role: 'auto' })).data.roleManual, false);
+  await call(admin, 'PATCH', `/admin/users/${otto.id}`, { role: 'it' });
+  assert.equal((await login('otto', 'Otto-Passw0rd!')).data.role, 'it');
+  await call(admin, 'PATCH', `/admin/users/${otto.id}`, { role: 'auto' });
+  assert.equal((await login('otto', 'Otto-Passw0rd!')).data.role, 'admin');
 });
 
 await step('Portal nur für ausgewählte: Mitglieder der Portal-Gruppe ja, andere nicht, IT immer', async () => {

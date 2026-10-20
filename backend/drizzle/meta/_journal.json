@@ -148,6 +148,13 @@
       "when": 1792490056881,
       "tag": "0020_status_farben",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792493367581,
+      "tag": "0021_ad_rolle",
+      "breakpoints": true
     }
   ]
 }

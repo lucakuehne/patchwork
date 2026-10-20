@@ -51,6 +51,9 @@ interface DirectoryInfo {
 export const AD_USER_FILTER =
   '(&(objectClass=user)(objectCategory=person)(|(sAMAccountName={{username}})(userPrincipalName={{username}})(mail={{username}})))';
 
+/** Active Directory: nur Konten, die nicht deaktiviert sind */
+const AD_ENABLED_ONLY = '(!(userAccountControl:1.2.840.113556.1.4.803:=2))';
+
 /** Maskiert Werte für LDAP-Filter (RFC 4515). */
 export function escapeFilterValue(value: string): string {
   return value.replace(/[\\*()\0]/g, (c) => `\\${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
@@ -82,7 +85,7 @@ export function peopleFilter(
   const accounts = cfg.userFilter.split('{{username}}').join('*');
   const attributes = [...new Set([cfg.nameAttribute, cfg.mailAttribute, ...loginAttributes(cfg.userFilter)])];
   const matches = words.map((w) => `(|${attributes.map((a) => `(${a}=*${escapeFilterValue(w)}*)`).join('')})`).join('');
-  const enabled = isAd ? '(!(userAccountControl:1.2.840.113556.1.4.803:=2))' : '';
+  const enabled = isAd ? AD_ENABLED_ONLY : '';
   return `(&${accounts}(${cfg.mailAttribute}=*)${enabled}${matches})`;
 }
 
@@ -247,6 +250,33 @@ export class LdapService {
           .slice(0, limit);
       }
       return [];
+    } finally {
+      await client.unbind().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Konto zu einer E-Mail-Adresse mit der Rolle aus den AD-Gruppen, wie bei der Anmeldung, aber ohne Passwort
+   * (Benutzer vorab anlegen, Rolle «Aus AD-Gruppen»). null = nicht gefunden, nicht eindeutig oder deaktiviert.
+   */
+  async lookupPerson(cfg: LdapSettings, email: string): Promise<LdapIdentity | null> {
+    const client = await openClient(cfg);
+    try {
+      await this.bindServiceAccount(client, cfg);
+      const isAd = (await this.readRootDse(client))?.isAd ?? false;
+      const accounts = cfg.userFilter.split('{{username}}').join('*');
+      const filter = `(&${accounts}(${cfg.mailAttribute}=${escapeFilterValue(email.trim())})${isAd ? AD_ENABLED_ONLY : ''})`;
+      const attributes = ['dn', cfg.nameAttribute, cfg.mailAttribute, 'memberOf'];
+      const { entries, more } = await this.searchLimited(client, cfg.baseDn, filter, attributes, 1);
+      const entry = entries[0];
+      if (!entry || more) return null;
+      const found = firstValue(entry, cfg.mailAttribute).trim().toLowerCase();
+      return {
+        dn: entry.dn,
+        email: found,
+        name: firstValue(entry, cfg.nameAttribute).trim() || found,
+        role: await this.resolveRole(client, cfg, entry),
+      };
     } finally {
       await client.unbind().catch(() => undefined);
     }
