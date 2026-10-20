@@ -1,7 +1,20 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { appConfig } from '../config';
 
 const key = createHash('sha256').update(appConfig.appSecret).digest();
+/** Eigener Schlüssel für Signaturen, nicht derselbe wie für die Verschlüsselung */
+const signingKey = Buffer.from(hkdfSync('sha256', appConfig.appSecret, '', 'patchwork-signatur', 32));
+
+/** Signatur für Adressen ohne Anmeldung (z.B. Bilder aus Mails in voller Grösse); «purpose» trennt die Verwendungen. */
+export function sign(purpose: string, value: string): string {
+  return createHmac('sha256', signingKey).update(`${purpose}:${value}`).digest('base64url');
+}
+
+export function verifySignature(purpose: string, value: string, signature: string): boolean {
+  const expected = Buffer.from(sign(purpose, value));
+  const given = Buffer.from(signature);
+  return expected.length === given.length && timingSafeEqual(expected, given);
+}
 
 /** Verschlüsselt ein Geheimnis (z.B. Postfach-Passwort) für die Ablage in der Datenbank. */
 export function encryptSecret(plain: string): string {

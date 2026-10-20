@@ -1,16 +1,28 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { formatSize } from '../format';
+import { imagesInText } from '../markdown';
 import type { Attachment } from '../types';
 
-/** base: Adresse der Anhänge, im Portal «/api/portal/attachments» */
-withDefaults(defineProps<{ attachments: Attachment[]; base?: string }>(), { base: '/api/attachments' });
+/**
+ * base: Adresse der Anhänge, im Portal «/api/portal/attachments».
+ * text: Markdown des Eintrags; Bilder, die dort im Text stehen, erscheinen nicht noch einmal als Anhang.
+ */
+const props = withDefaults(defineProps<{ attachments: Attachment[]; base?: string; text?: string }>(), {
+  base: '/api/attachments',
+  text: '',
+});
+const listed = computed(() => {
+  const inText = imagesInText(props.text);
+  return props.attachments.filter((a) => !inText.has(a.id));
+});
 const isImage = (a: Attachment) => /^image\/(png|jpe?g|gif|webp|bmp)$/i.test(a.contentType);
 </script>
 
 <template>
-  <div v-if="attachments.length" class="attachments">
+  <div v-if="listed.length" class="attachments">
     <a
-      v-for="a in attachments"
+      v-for="a in listed"
       :key="a.id"
       class="attachment"
       :href="`${base}/${a.id}`"

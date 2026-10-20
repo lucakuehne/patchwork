@@ -27,6 +27,7 @@ const assigneeId = ref('');
 const statusId = ref('');
 const files = ref<File[]>([]);
 const saving = ref(false);
+const uploading = ref(false);
 const error = ref('');
 
 const statusOptions = computed(() => session.statusesOf(type.value).filter((s) => s.category !== 'rejected'));
@@ -71,7 +72,13 @@ async function save() {
     </div>
     <div class="field">
       <span class="label">Beschreibung</span>
-      <MarkdownEditor v-model="description" :min-height="140" placeholder="Was ist passiert bzw. was soll gemacht werden?" @submit="save" />
+      <MarkdownEditor
+        v-model="description"
+        v-model:uploading="uploading"
+        :min-height="140"
+        placeholder="Was ist passiert bzw. was soll gemacht werden?"
+        @submit="save"
+      />
     </div>
     <div class="grid-2">
       <div class="field">
@@ -106,7 +113,7 @@ async function save() {
     <div v-if="error" class="error-box">{{ error }}</div>
     <template #footer>
       <button class="btn" type="button" @click="emit('close')">Abbrechen</button>
-      <button class="btn btn-primary" type="button" :disabled="saving" @click="save">Erfassen</button>
+      <button class="btn btn-primary" type="button" :disabled="saving || uploading" @click="save">Erfassen</button>
     </template>
   </ModalDialog>
 </template>

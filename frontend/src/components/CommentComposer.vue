@@ -15,6 +15,7 @@ const kind = ref<'reply' | 'note'>('reply');
 const body = ref('');
 const files = ref<File[]>([]);
 const sending = ref(false);
+const uploading = ref(false);
 const error = ref('');
 const session = useSession();
 const editor = ref<InstanceType<typeof MarkdownEditor> | null>(null);
@@ -37,7 +38,7 @@ const recipients = computed(() => {
   return { to, cc };
 });
 
-const canSend = computed(() => !sending.value && (!!body.value.trim() || files.value.length > 0));
+const canSend = computed(() => !sending.value && !uploading.value && (!!body.value.trim() || files.value.length > 0));
 
 async function send() {
   if (!canSend.value) return;
@@ -90,6 +91,7 @@ async function send() {
     <MarkdownEditor
       ref="editor"
       v-model="body"
+      v-model:uploading="uploading"
       :min-height="110"
       :placeholder="kind === 'reply' ? 'Antwort an den Melder …' : 'Interne Notiz …'"
       @submit="send"

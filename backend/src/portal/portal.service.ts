@@ -13,6 +13,7 @@ import {
   type User,
 } from '../db/schema';
 import { duplicateRedirect } from '../items/duplicates';
+import { visibleInPortal } from './portal-visibility';
 
 const OPEN: StatusCategory[] = ['new', 'in_progress', 'waiting'];
 const CLOSED: StatusCategory[] = ['done', 'rejected'];
@@ -140,16 +141,19 @@ export class PortalService {
     };
   }
 
-  /** Anhang, sofern er zu einem eigenen Vorgang gehört und öffentlich ist (Meldung oder öffentliche Antwort). */
+  /**
+   * Anhang, sofern er zu einem eigenen Vorgang gehört und öffentlich ist: Meldung, öffentliche Antwort oder Begründung
+   * einer Ablehnung, über die der Melder informiert wurde (Bilder im Text).
+   */
   async attachment(user: User, attachmentId: string): Promise<Attachment> {
     const [row] = await this.db
-      .select({ att: attachments, entryKind: entries.kind })
+      .select({ att: attachments, entryKind: entries.kind, entryMeta: entries.meta })
       .from(attachments)
       .innerJoin(items, eq(items.id, attachments.itemId))
       .leftJoin(entries, eq(entries.id, attachments.entryId))
       .where(and(eq(attachments.id, attachmentId), eq(items.reporterId, user.id), eq(items.discarded, false)))
       .limit(1);
-    if (!row || (row.att.entryId && row.entryKind !== 'reply')) throw new NotFoundException('Anhang nicht gefunden');
+    if (!row || !visibleInPortal(row.att.entryId, row.entryKind, row.entryMeta)) throw new NotFoundException('Anhang nicht gefunden');
     return row.att;
   }
 }

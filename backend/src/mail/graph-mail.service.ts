@@ -231,16 +231,19 @@ export class GraphMailService {
     try {
       for (const file of files) {
         const content = await this.storage.read(file.storageKey);
+        // Bilder im Text eingebettet (Content-ID), übrige als Anhang
+        const inline = file.contentId ? { isInline: true, contentId: file.contentId } : {};
         if (content.length < SMALL_ATTACHMENT) {
           await this.json(token, mailbox, `${draftUrl}/attachments`, 'POST', {
             '@odata.type': '#microsoft.graph.fileAttachment',
             name: file.filename,
             contentType: file.contentType,
             contentBytes: content.toString('base64'),
+            ...inline,
           });
         } else {
           const session: { uploadUrl: string } = await this.json(token, mailbox, `${draftUrl}/attachments/createUploadSession`, 'POST', {
-            AttachmentItem: { attachmentType: 'file', name: file.filename, size: content.length, contentType: file.contentType },
+            AttachmentItem: { attachmentType: 'file', name: file.filename, size: content.length, contentType: file.contentType, ...inline },
           });
           await this.upload(session.uploadUrl, content);
         }

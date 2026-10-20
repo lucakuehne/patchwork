@@ -15,6 +15,7 @@ const title = ref('');
 const description = ref('');
 const files = ref<File[]>([]);
 const sending = ref(false);
+const uploading = ref(false);
 const error = ref('');
 
 const choices = [
@@ -80,6 +81,8 @@ async function submit() {
         <span class="label">Beschreibung</span>
         <MarkdownEditor
           v-model="description"
+          v-model:uploading="uploading"
+          context="portal"
           :min-height="160"
           placeholder="Was ist passiert bzw. was brauchen Sie? Seit wann? Welche Fehlermeldung?"
           @submit="submit"
@@ -93,7 +96,7 @@ async function submit() {
       <div class="row">
         <RouterLink to="/portal" class="btn">Abbrechen</RouterLink>
         <div class="spacer" />
-        <button class="btn btn-primary" type="button" :disabled="sending" @click="submit">Meldung senden</button>
+        <button class="btn btn-primary" type="button" :disabled="sending || uploading" @click="submit">Meldung senden</button>
       </div>
     </div>
   </div>

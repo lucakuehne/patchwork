@@ -11,6 +11,7 @@ const emit = defineEmits<{ close: []; done: [] }>();
 const reason = ref('');
 const notify = ref(false);
 const saving = ref(false);
+const uploading = ref(false);
 const error = ref('');
 
 async function submit() {
@@ -36,7 +37,7 @@ async function submit() {
     <p class="muted" style="margin: 0">{{ title }}</p>
     <div class="field">
       <span class="label">Begründung</span>
-      <MarkdownEditor v-model="reason" :min-height="110" autofocus @submit="submit" />
+      <MarkdownEditor v-model="reason" v-model:uploading="uploading" :min-height="110" autofocus @submit="submit" />
     </div>
     <label class="checkbox">
       <input v-model="notify" type="checkbox" />
@@ -45,7 +46,7 @@ async function submit() {
     <div v-if="error" class="error-box">{{ error }}</div>
     <template #footer>
       <button class="btn" type="button" @click="emit('close')">Abbrechen</button>
-      <button class="btn btn-danger" type="button" :disabled="saving" @click="submit">Ablehnen</button>
+      <button class="btn btn-danger" type="button" :disabled="saving || uploading" @click="submit">Ablehnen</button>
     </template>
   </ModalDialog>
 </template>

@@ -116,10 +116,12 @@ export class MailSenderService implements OnModuleInit {
       inReplyTo: mail.inReplyTo ?? undefined,
       references: mail.references?.length ? mail.references : undefined,
       headers: mail.automated ? { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' } : {},
+      // Bilder im Text (mit Content-ID) gehen eingebettet mit, nicht als Anhang
       attachments: files.map((f) => ({
         filename: f.filename,
         contentType: f.contentType,
         content: this.storage.stream(f.storageKey),
+        ...(f.contentId ? { cid: f.contentId } : {}),
       })),
       disableFileAccess: true,
       disableUrlAccess: true,

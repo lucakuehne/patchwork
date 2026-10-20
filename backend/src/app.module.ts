@@ -41,6 +41,9 @@ import { StatusesService } from './statuses/statuses.service';
 import { StorageService } from './storage/storage.service';
 import { TlsController } from './tls/tls.controller';
 import { TlsService } from './tls/tls.service';
+import { PublicImagesController } from './uploads/public-images.controller';
+import { UploadsController } from './uploads/uploads.controller';
+import { UploadsService } from './uploads/uploads.service';
 import { UsersController } from './users/users.controller';
 import { UsersService } from './users/users.service';
 
@@ -64,6 +67,8 @@ import { UsersService } from './users/users.service';
     SnippetsController,
     ReportsController,
     TlsController,
+    UploadsController,
+    PublicImagesController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
@@ -93,6 +98,7 @@ import { UsersService } from './users/users.service';
     SnippetsService,
     ReportsService,
     TlsService,
+    UploadsService,
   ],
 })
 export class AppModule {}

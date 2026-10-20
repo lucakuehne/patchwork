@@ -226,6 +226,26 @@ export const attachments = pgTable(
   (t) => [index('attachments_item_idx').on(t.itemId), index('attachments_entry_idx').on(t.entryId)],
 );
 
+/**
+ * Bilder, die jemand im Editor eingefügt, aber noch nicht gespeichert hat. Im Text stehen sie als «upload:<id>»;
+ * beim Speichern werden sie zu eingebetteten Anhängen des Vorgangs. Liegengebliebene löscht die Wartung.
+ */
+export const uploads = pgTable(
+  'uploads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    storageKey: text('storage_key').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('uploads_created_idx').on(t.createdAt)],
+);
+
 export const participants = pgTable(
   'participants',
   {

@@ -76,6 +76,7 @@ onBeforeUnmount(() => window.clearTimeout(timer));
 const editing = ref(false);
 const draft = ref('');
 const saving = ref(false);
+const uploading = ref(false);
 const error = ref('');
 
 function startEdit() {
@@ -132,16 +133,16 @@ async function save() {
       <span v-if="deliveryBadge" class="badge" :class="deliveryBadge.kind" :title="deliveryBadge.title">{{ deliveryBadge.text }}</span>
     </div>
     <div v-if="editing" class="stack">
-      <MarkdownEditor v-model="draft" :min-height="90" autofocus @submit="save" />
+      <MarkdownEditor v-model="draft" v-model:uploading="uploading" :min-height="90" autofocus @submit="save" />
       <div v-if="error" class="error-box">{{ error }}</div>
       <div class="row">
-        <button class="btn btn-sm btn-note" type="button" :disabled="saving" @click="save">Speichern</button>
+        <button class="btn btn-sm btn-note" type="button" :disabled="saving || uploading" @click="save">Speichern</button>
         <button class="btn btn-sm" type="button" :disabled="saving" @click="editing = false">Abbrechen</button>
       </div>
     </div>
     <template v-else>
       <div class="prose msg-body" :class="{ 'mail-html': !!entry.bodyHtml }" v-html="html" />
-      <AttachmentList :attachments="entry.attachments" />
+      <AttachmentList :attachments="entry.attachments" :text="entry.body" />
     </template>
   </div>
 </template>

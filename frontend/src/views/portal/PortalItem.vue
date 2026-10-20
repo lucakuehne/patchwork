@@ -20,6 +20,7 @@ const notFound = ref(false);
 const body = ref('');
 const files = ref<File[]>([]);
 const sending = ref(false);
+const uploading = ref(false);
 const error = ref('');
 
 async function load() {
@@ -38,12 +39,13 @@ const entriesNewestFirst = computed(() => (item.value ? [...item.value.entries].
 const descriptionHtml = computed(() => {
   if (!item.value) return '';
   if (item.value.descriptionHtml) return renderMailHtml(item.value.descriptionHtml);
-  return item.value.description ? renderMarkdown(item.value.description) : '';
+  return item.value.description ? renderMarkdown(item.value.description, 'portal') : '';
 });
-const entryHtml = (e: PortalItemDetail['entries'][number]) => (e.bodyHtml ? renderMailHtml(e.bodyHtml) : renderMarkdown(e.body));
+const entryHtml = (e: PortalItemDetail['entries'][number]) =>
+  e.bodyHtml ? renderMailHtml(e.bodyHtml) : renderMarkdown(e.body, 'portal');
 
 async function send() {
-  if (!body.value.trim() && files.value.length === 0) return;
+  if ((!body.value.trim() && files.value.length === 0) || uploading.value) return;
   sending.value = true;
   error.value = '';
   try {
@@ -86,13 +88,25 @@ async function send() {
 
     <div v-else class="card composer">
       <div class="label">Nachricht an die IT</div>
-      <MarkdownEditor v-model="body" :min-height="100" placeholder="Ergänzung oder Antwort …" @submit="send" />
+      <MarkdownEditor
+        v-model="body"
+        v-model:uploading="uploading"
+        context="portal"
+        :min-height="100"
+        placeholder="Ergänzung oder Antwort …"
+        @submit="send"
+      />
       <FilePicker v-model="files" compact />
       <div v-if="error" class="error-box">{{ error }}</div>
       <div class="row">
         <span class="faint small">Ctrl+Enter sendet</span>
         <div class="spacer" />
-        <button class="btn btn-primary" type="button" :disabled="sending || (!body.trim() && !files.length)" @click="send">
+        <button
+          class="btn btn-primary"
+          type="button"
+          :disabled="sending || uploading || (!body.trim() && !files.length)"
+          @click="send"
+        >
           Senden
         </button>
       </div>
@@ -108,7 +122,7 @@ async function send() {
         </div>
         <div v-if="e.kind === 'rejected'" class="faint small">Begründung:</div>
         <div class="prose" :class="{ 'mail-html': !!e.bodyHtml }" v-html="entryHtml(e)" />
-        <AttachmentList :attachments="e.attachments" base="/api/portal/attachments" />
+        <AttachmentList :attachments="e.attachments" base="/api/portal/attachments" :text="e.bodyHtml ? '' : e.body" />
       </div>
     </div>
 
@@ -119,7 +133,11 @@ async function send() {
       </div>
       <div v-if="descriptionHtml" class="prose" :class="{ 'mail-html': !!item.descriptionHtml }" v-html="descriptionHtml" />
       <div v-else class="faint">Keine Beschreibung</div>
-      <AttachmentList :attachments="item.attachments" base="/api/portal/attachments" />
+      <AttachmentList
+        :attachments="item.attachments"
+        base="/api/portal/attachments"
+        :text="item.descriptionHtml ? '' : item.description"
+      />
     </section>
   </div>
 </template>

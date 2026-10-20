@@ -43,10 +43,17 @@ export class OutgoingMailsController {
   async detail(@Param('id', ParseUUIDPipe) id: string) {
     const { mail, number, title } = await this.get(id);
     const parsed = await simpleParser(await this.read(mail));
+    // Eingebettete Bilder («cid:») über die Anhänge der gespeicherten Mail anzeigen
+    const byCid = new Map(parsed.attachments.map((a, index) => [a.cid ?? '', index]));
+    const html = parsed.html
+      ? parsed.html.replace(/src="cid:([^"]+)"/g, (all, cid: string) =>
+          byCid.has(cid) ? `src="/api/admin/outgoing-mails/${mail.id}/attachments/${byCid.get(cid)}"` : all,
+        )
+      : null;
     return {
       ...this.summary(mail, number, title),
       text: parsed.text ?? '',
-      html: parsed.html || null,
+      html,
       attachments: parsed.attachments.map((a, index) => ({
         index,
         filename: a.filename ?? `Anhang ${index + 1}`,

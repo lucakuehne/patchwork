@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { and, asc, eq, inArray } from 'drizzle-orm';
+import { sign } from '../common/crypto';
 import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
-import { mailMessages, mutes, participants, statuses, users, type Item, type User } from '../db/schema';
+import { attachments, mailMessages, mutes, participants, statuses, users, type Item, type User } from '../db/schema';
+import { embedImageTags, imagesAsText, imageSize, type EmbeddedImage } from '../items/inline-images';
 import { SettingsService } from '../settings/settings.service';
+import { StorageService } from '../storage/storage.service';
 import { itemRef, subjectFor } from './mail-content';
 import { composeMail, fill, type TemplateKey } from './mail-templates';
 import { MailTemplatesService } from './mail-templates.service';
@@ -41,6 +44,7 @@ export class NotificationsService {
     private readonly sender: MailSenderService,
     private readonly settings: SettingsService,
     private readonly templates: MailTemplatesService,
+    private readonly storage: StorageService,
   ) {}
 
   /** Eingangsbestätigung an den Melder. */
@@ -102,7 +106,8 @@ export class NotificationsService {
     await this.sendToStaff(item, assignee, 'inboundReply', {
       Absender: author.name,
       'Absender E-Mail': author.email,
-      Text: text,
+      // Bilder sieht der Zuständige in Patchwork; in der Benachrichtigung nur ihr Name
+      Text: imagesAsText(text),
     });
   }
 
@@ -203,9 +208,12 @@ export class NotificationsService {
       this.templates.get('reporterLink'),
       this.templates.get('reporterFooter'),
     ]);
-    const { text, html } = composeMail(
-      { body: mail.written ?? template.body ?? '', link: link.body ?? '', footer: footer.body ?? '', written: mail.written !== undefined },
-      values,
+    const { text, html, inline } = await this.embedImages(
+      item,
+      composeMail(
+        { body: mail.written ?? template.body ?? '', link: link.body ?? '', footer: footer.body ?? '', written: mail.written !== undefined },
+        values,
+      ),
     );
     await this.sender.enqueue({
       mailboxId: mailbox.id,
@@ -219,9 +227,38 @@ export class NotificationsService {
       messageId: newMessageId(mailbox),
       inReplyTo: lastInbound,
       references: previous.slice(-20).map((m) => m.messageId),
-      attachmentIds: mail.attachmentIds ?? [],
+      attachmentIds: [...(mail.attachmentIds ?? []), ...inline],
       automated: mail.automated,
     });
+  }
+
+  /**
+   * Bilder im Text: im HTML eingebettet («cid:», die Bilder gehen als eingebettete Teile mit), auf Textbreite verkleinert
+   * und mit Link auf die volle Grösse. Im Text als «[Bild: Name]». Nur Bilder dieses Vorgangs; fremde fallen weg.
+   */
+  private async embedImages(item: Item, mail: { text: string; html: string }): Promise<{ text: string; html: string; inline: string[] }> {
+    const ids = [...new Set([...mail.html.matchAll(/src="attachment:([0-9a-f-]{36})"/g)].map((m) => m[1]!))];
+    const rows = ids.length
+      ? await this.db
+          .select()
+          .from(attachments)
+          .where(and(eq(attachments.itemId, item.id), inArray(attachments.id, ids)))
+      : [];
+    const images = new Map<string, EmbeddedImage>();
+    for (const row of rows) {
+      if (!row.contentId) continue;
+      const size = await this.storage
+        .read(row.storageKey)
+        .then(imageSize)
+        .catch(() => null);
+      images.set(row.id, {
+        cid: row.contentId,
+        url: `${appConfig.publicUrl}/api/public/images/${row.id}?s=${sign('image', row.id)}`,
+        width: size?.width ?? null,
+        height: size?.height ?? null,
+      });
+    }
+    return { text: imagesAsText(mail.text), html: embedImageTags(mail.html, images), inline: [...images.keys()] };
   }
 
   private async sendToStaff(item: Item, recipient: User, key: TemplateKey, extra: Record<string, string>) {
@@ -244,7 +281,8 @@ export class NotificationsService {
       cc: [],
       subject: this.subject(item, template.subject, values),
       text,
-      html,
+      // Bilder (nur aus einer bearbeiteten Vorlage möglich) werden nicht geladen
+      html: embedImageTags(html, new Map()),
       messageId: newMessageId(mailbox),
       automated: true,
     });

@@ -2,8 +2,9 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
-import { attachments, items, links, participants, statuses, users, type Item } from '../db/schema';
+import { attachments, entries, items, links, participants, statuses, users, type Item } from '../db/schema';
 import { itemRef } from '../mail/mail-content';
+import { replaceImages } from './inline-images';
 import { NotificationsService } from '../mail/notifications.service';
 import { firstOfCategory, isClosedCategory } from '../statuses/status-rules';
 import { StatusesService } from '../statuses/statuses.service';
@@ -162,17 +163,26 @@ export class LinksService {
           { bodyHtml: duplicate.descriptionHtml },
         );
         if (files.length > 0) {
-          await tx.insert(attachments).values(
-            files.map((f) => ({
-              itemId: original.id,
-              entryId: entry.id,
-              filename: f.filename,
-              contentType: f.contentType,
-              size: f.size,
-              storageKey: f.storageKey,
-              contentId: f.contentId,
-            })),
+          const copies = await tx
+            .insert(attachments)
+            .values(
+              files.map((f) => ({
+                itemId: original.id,
+                entryId: entry.id,
+                filename: f.filename,
+                contentType: f.contentType,
+                size: f.size,
+                storageKey: f.storageKey,
+                contentId: f.contentId,
+              })),
+            )
+            .returning({ id: attachments.id });
+          // Bilder im Text zeigen auf die Kopien im Original
+          const copyOf = new Map(files.map((f, i) => [f.id, copies[i]!.id]));
+          const body = replaceImages(entry.body, (ref) =>
+            ref.kind === 'attachment' && copyOf.has(ref.id) ? `![${ref.alt}](attachment:${copyOf.get(ref.id)})` : null,
           );
+          if (body !== entry.body) await tx.update(entries).set({ body }).where(eq(entries.id, entry.id));
         }
       }
     }

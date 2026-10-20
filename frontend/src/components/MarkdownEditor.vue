@@ -3,18 +3,31 @@ import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
-import { onBeforeUnmount, watch } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
+import { api, errorMessage } from '../api';
+import type { ImageContext } from '../markdown';
+import { clipboardHasText, imageAlt, textImage } from '../text-image';
 
 /**
  * WYSIWYG-Editor mit Toolbar. Gespeichert wird Markdown.
+ * Bilder im Text («images»): über den Knopf «Bild», aus der Zwischenablage (Ctrl+V) oder per Hineinziehen. Sie werden
+ * sofort hochgeladen und stehen im Text als «upload:<id>», bis der Text gespeichert ist. «context»: Portal oder IT.
  */
-const props = withDefaults(defineProps<{ placeholder?: string; minHeight?: number; autofocus?: boolean }>(), {
-  placeholder: '',
-  minHeight: 120,
-  autofocus: false,
-});
+const props = withDefaults(
+  defineProps<{ placeholder?: string; minHeight?: number; autofocus?: boolean; images?: boolean; context?: ImageContext }>(),
+  { placeholder: '', minHeight: 120, autofocus: false, images: true, context: 'staff' },
+);
 const model = defineModel<string>({ required: true });
+/** Solange ein Bild hochgeladen wird, wartet das Senden */
+const uploading = defineModel<boolean>('uploading', { default: false });
 const emit = defineEmits<{ submit: [] }>();
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const pending = ref(0);
+const imageError = ref('');
+const fileInput = ref<HTMLInputElement | null>(null);
+watch(pending, (count) => (uploading.value = count > 0));
 
 const editor = useEditor({
   content: model.value,
@@ -30,15 +43,32 @@ const editor = useEditor({
     }),
     Markdown.configure({ markedOptions: { gfm: true, breaks: true } }),
     Placeholder.configure({ placeholder: () => props.placeholder }),
+    ...(props.images ? [textImage({ context: () => props.context, origin: window.location.origin })] : []),
   ],
   editorProps: {
     attributes: { class: 'prose md-content', spellcheck: 'true' },
     handleKeyDown: (_view, event) => {
       if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-        emit('submit');
+        // Erst senden, wenn alle Bilder hochgeladen sind
+        if (pending.value === 0) emit('submit');
         return true;
       }
       return false;
+    },
+    handlePaste: (_view, event) => {
+      const data = event.clipboardData;
+      if (!props.images || !data || data.files.length === 0 || clipboardHasText(data)) return false;
+      void addImages(Array.from(data.files));
+      return true;
+    },
+    handleDrop: (view, event, _slice, moved) => {
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (!props.images || moved || files.length === 0) return false;
+      event.preventDefault();
+      const target = view.posAtCoords({ left: event.clientX, top: event.clientY });
+      if (target) editor.value?.commands.setTextSelection(target.pos);
+      void addImages(files);
+      return true;
     },
   },
   onUpdate: ({ editor: e }) => {
@@ -64,6 +94,44 @@ watch(
 );
 
 onBeforeUnmount(() => editor.value?.destroy());
+
+/** Lädt Bilder hoch und fügt sie nacheinander an der Cursorposition ein, jedes in einem eigenen Absatz. */
+async function addImages(files: File[]) {
+  imageError.value = '';
+  const images = files.filter((f) => IMAGE_TYPES.includes(f.type));
+  if (images.length < files.length) {
+    imageError.value = 'Im Text gehen nur Bilder (PNG, JPEG, GIF, WebP). Andere Dateien bitte als Anhang hinzufügen.';
+  }
+  for (const file of images) {
+    if (file.size > MAX_IMAGE_BYTES) {
+      imageError.value = `«${file.name}» ist grösser als 10 MB. Grössere Bilder bitte als Anhang hinzufügen.`;
+      continue;
+    }
+    pending.value++;
+    try {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      const uploaded = await api.post<{ id: string; ref: string }>('/uploads/images', form);
+      const e = editor.value;
+      if (!e || e.isDestroyed) return;
+      e.chain()
+        .focus()
+        .insertContent({ type: 'paragraph', content: [{ type: 'image', attrs: { src: uploaded.ref, alt: imageAlt(file.name) } }] })
+        .run();
+    } catch (err) {
+      imageError.value = errorMessage(err);
+    } finally {
+      pending.value--;
+    }
+  }
+}
+
+function onPick(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  input.value = '';
+  void addImages(files);
+}
 
 /** Fügt Markdown an der Cursorposition ein (z.B. Textbausteine). */
 function insertMarkdown(markdown: string) {
@@ -94,8 +162,8 @@ interface Tool {
   action: () => void;
   active?: () => boolean;
   class?: string;
-  /** Symbol statt Beschriftung: drei Punkte bzw. drei Nummern untereinander */
-  icon?: 'bulletList' | 'orderedList';
+  /** Symbol statt Beschriftung: drei Punkte bzw. drei Nummern untereinander, Bild */
+  icon?: 'bulletList' | 'orderedList' | 'image';
 }
 
 const tools = (): (Tool | 'sep')[] => {
@@ -115,6 +183,9 @@ const tools = (): (Tool | 'sep')[] => {
     { label: '</>', title: 'Code', class: 'mono', action: () => e.chain().focus().toggleCode().run(), active: () => e.isActive('code') },
     { label: '{ }', title: 'Codeblock', class: 'mono', action: () => e.chain().focus().toggleCodeBlock().run(), active: () => e.isActive('codeBlock') },
     { label: 'Link', title: 'Link', action: setLink, active: () => e.isActive('link') },
+    ...(props.images
+      ? [{ label: '', icon: 'image' as const, title: 'Bild einfügen (auch mit Ctrl+V oder per Hineinziehen)', action: () => fileInput.value?.click() }]
+      : []),
     'sep',
     { label: '↶', title: 'Rückgängig (Ctrl+Z)', action: () => e.chain().focus().undo().run() },
     { label: '↷', title: 'Wiederholen (Ctrl+Y)', action: () => e.chain().focus().redo().run() },
@@ -156,11 +227,30 @@ defineExpose({ focus, insertMarkdown, insertText });
             <text x="0.6" y="14.2">3</text>
             <path d="M6 3.5h8.5M6 8h8.5M6 12.5h8.5" />
           </svg>
+          <svg v-else-if="tool.icon === 'image'" class="icon" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+            <circle cx="5.5" cy="6.3" r="1.3" />
+            <path d="M2 12.5l4-4 3 3 2-2 3.5 3.5" />
+          </svg>
           <template v-else>{{ tool.label }}</template>
         </button>
       </template>
+      <input
+        v-if="images"
+        ref="fileInput"
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        multiple
+        hidden
+        @change="onPick"
+      />
     </div>
     <EditorContent :editor="editor" class="content" />
+    <div v-if="pending" class="image-status">Bild wird hochgeladen …</div>
+    <div v-if="imageError" class="image-status error">
+      <span>{{ imageError }}</span>
+      <button type="button" class="dismiss" aria-label="Meldung schliessen" @click="imageError = ''">✕</button>
+    </div>
   </div>
 </template>
 
@@ -226,11 +316,13 @@ defineExpose({ focus, insertMarkdown, insertText });
   vertical-align: -3px;
   fill: currentColor;
 }
-.icon path {
+.icon path,
+.icon rect {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.4;
   stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .icon text {
   font-family: var(--font);
@@ -271,5 +363,35 @@ defineExpose({ focus, insertMarkdown, insertText });
 .content :deep(.md-content a) {
   color: var(--accent);
   text-decoration: underline;
+}
+.content :deep(.md-content img) {
+  display: inline-block;
+  vertical-align: bottom;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.content :deep(.md-content img.ProseMirror-selectednode) {
+  outline: 2px solid var(--accent);
+}
+.image-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.image-status.error {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.dismiss {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
 }
 </style>

@@ -1,21 +1,15 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { initials } from '../format';
 import { useSession } from '../stores/session';
-import { useToast } from '../stores/toast';
-
-// Erst beim Öffnen laden (enthält den Editor)
-const NewItemDialog = defineAsyncComponent(() => import('./NewItemDialog.vue'));
 
 const session = useSession();
-const toast = useToast();
 const route = useRoute();
 const router = useRouter();
 
 const search = ref(typeof route.query.q === 'string' ? route.query.q : '');
 const menuOpen = ref(false);
-const newOpen = ref(false);
 
 const tabs = computed(() => [
   { to: '/eingang', label: 'Eingang', count: session.counts.inbox, prefix: '/eingang' },
@@ -55,12 +49,6 @@ function closeMenu(e: MouseEvent) {
 }
 onMounted(() => document.addEventListener('click', closeMenu));
 onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
-
-function onCreated(number: number) {
-  newOpen.value = false;
-  toast.success('Vorgang erfasst');
-  void router.push({ name: 'item', params: { number } });
-}
 </script>
 
 <template>
@@ -92,8 +80,6 @@ function onCreated(number: number) {
       <input v-model="search" class="input" type="search" placeholder="Suchen (Text oder PW-Nummer)" />
     </form>
 
-    <button class="btn btn-primary" type="button" @click="newOpen = true">+ Neu</button>
-
     <div class="user-menu">
       <button class="btn btn-ghost user-btn" type="button" @click="menuOpen = !menuOpen">
         <span class="avatar">{{ initials(session.user?.name ?? '') }}</span>
@@ -109,8 +95,6 @@ function onCreated(number: number) {
       </div>
     </div>
   </header>
-
-  <NewItemDialog v-if="newOpen" @close="newOpen = false" @created="onCreated" />
 </template>
 
 <style scoped>

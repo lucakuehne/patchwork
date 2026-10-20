@@ -85,6 +85,11 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 - Neue Meldung: Auswahl «Etwas funktioniert nicht» / «Ich brauche etwas», Titel, Beschreibung, Anhänge, keine Priorität. Die Meldung landet im Eingang mit dem Vorschlag des Melders, die IT bestätigt mit einem Klick oder wählt den anderen Typ. Eingangsbestätigung per Mail.
 - Der Melder sieht Nummer, Titel, Beschreibung, öffentliche Antworten und Anhänge sowie den Status vereinfacht nach Kategorie («Eingegangen», «In Bearbeitung», «Wartet auf Ihre Rückmeldung», «Erledigt», «Abgelehnt»). Nicht sichtbar: interne Notizen, interne Statusnamen, Typ, Zuständiger, Beteiligte. Verworfene Vorgänge erscheinen nicht. Den Ablehnungsgrund sieht er nur, wenn «Melder informieren» gewählt war.
 - Der Melder kann nur antworten (mit Anhängen), das wirkt wie eine Antwort per Mail. Keine Statusänderung, kein Zurückziehen, kein Bearbeiten.
+- Portal freischalten (gewünscht am 20.10.2026, **noch zu bestätigen**): ganz aus, nur für ausgewählte Personen oder für alle.
+  - Vorschlag: Karte «Portal» unter Verwaltung → Allgemein; Auswahl der Personen über die Personensuche wie beim Testbetrieb.
+  - Ohne Zugang wird die Anmeldung mit einem Hinweis abgelehnt, für IT und Admins ändert sich nichts.
+  - In Mails an Melder ohne Zugang entfällt die Link-Zeile zum Portal.
+  - Nach dem Update bleibt das Portal für alle offen wie bisher.
 
 ### Verknüpfungen
 
@@ -169,6 +174,21 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - Farben in der Timeline: interne Notizen orange, öffentliche Nachrichten blau, ursprüngliche Meldung weiss. Gilt auch im Portal.
 - Antwortfeld: Feld, Umschalter und Senden-Knopf sind im Modus «Öffentliche Antwort» blau, im Modus «Interne Notiz» orange.
 - Editor (gewünscht am 20.10.2026): Die Knöpfe für Listen zeigen drei Punkte bzw. drei Nummern untereinander. Eine Trennlinie gibt es im Editor nicht.
+- Knopf «+ Neu» (gewünscht am 20.10.2026): steht im Eingang rechts neben «Nur meine», wie «+ Störung» und «+ Aufgabe» in den anderen Ansichten, nicht mehr in der Kopfzeile. Er öffnet wie bisher «Neuer Vorgang» mit Auswahl des Typs.
+
+## Bilder im Text (bestätigt am 20.10.2026)
+
+- Bilder lassen sich überall einfügen, wo man Text mit dem Editor schreibt: öffentliche Antwort, interne Notiz, Beschreibung, Begründung einer Ablehnung, neuer Vorgang und im Portal (Meldung und Antwort).
+  - Textbausteine vorerst ohne Bilder (**noch zu bestätigen**): Bilder in Bausteinen bräuchten eine eigene Ablage, weil hochgeladene Bilder nach einem Tag verfallen, wenn sie zu keinem Vorgang gehören.
+- Drei Wege: Knopf «Bild» in der Toolbar, aus der Zwischenablage (Ctrl+V, z.B. ein Screenshot) und per Hineinziehen. Enthält die Zwischenablage auch Text (z.B. aus Excel oder Word), gilt der Text.
+- PNG, JPEG, GIF und WebP bis 10 MB pro Bild. Grössere Bilder und andere Dateien gehen als Anhang. Gesendet wird erst, wenn alle Bilder hochgeladen sind.
+- In Timeline, Portal und Mail wird das Bild auf die Textbreite verkleinert, ein Klick öffnet es in voller Grösse. In der Mail ist es eingebettet, nicht angehängt; die Textfassung der Mail nennt «[Bild: Name]». Bilder im Text erscheinen nicht noch einmal in der Liste der Anhänge.
+- Technisch (entschieden am 20.10.2026):
+  - Das Bild wird beim Einfügen hochgeladen und steht im Markdown als `![Name](upload:<id>)`. Beim Speichern wird es ein Anhang des Eintrags (mit Content-ID für die Mail), im Text steht dann `![Name](attachment:<id>)`. Nicht gespeicherte Bilder löscht die Wartung nach einem Tag.
+  - Ein aus einem anderen Eintrag oder Vorgang kopiertes Bild wird ein eigener Anhang des neuen Eintrags (dieselbe Datei), damit Mail und Portal es zeigen. Melder können nur Bilder übernehmen, die sie selbst im Portal sehen.
+  - Den Link auf die volle Grösse in der Mail öffnet man ohne Anmeldung, auch als Beteiligter ohne Portal: Die Adresse ist mit `APP_SECRET` signiert und gilt nur für eingebettete Bilder, die die Mail ohnehin enthält.
+  - Breite Bilder erhalten in der Mail zusätzlich `width` und `height`, weil Outlook `max-width` nicht kennt.
+  - Fremde Bilder (Adressen aus dem Internet) lädt Patchwork weder in der Anzeige noch in Mails. Sie erscheinen als Link bzw. als «[Bild: Name]».
 
 ## Rückmeldungen vom 15.10.2026
 
@@ -262,6 +282,17 @@ Bestätigt am 19.10.2026:
     - Markdown mit Platzhaltern wie bei den Textbausteinen; zu jeder Vorlage steht, welche Platzhalter es gibt.
     - Liste nach Empfänger gruppiert, Editor mit Vorschau mit Beispieldaten und «Auf Standard zurücksetzen».
     - Das Aussehen der Mail (Rahmen, Schrift) bleibt fest, kein Logo.
+17. Bestätigt am 20.10.2026: **Antworten simulieren** im Testbetrieb:
+    - Knopf «Antwort simulieren» in der Ansicht einer Mail unter Verwaltung → Ausgehende Mails, bei jedem Status (versendet, teilweise, zurückgehalten, fehlgeschlagen). Nur für Admins und nur, solange der Testbetrieb aktiv ist.
+    - Formular: Absender aus den Empfängern der Mail oder eine freie Adresse (z.B. für eine unbeteiligte Person), Text, Anhänge und ein Häkchen «Als Abwesenheitsnotiz». Die ursprüngliche Mail wird unten zitiert wie in Outlook, damit auch das Entfernen des Zitats geprüft wird.
+    - Verarbeitung genau wie bei einer echten Mail: Zuordnung, Regeln, Wiedereröffnen und Benachrichtigung der IT (für die wiederum der Testbetrieb gilt). Die Mail landet nicht im echten Postfach, HelpSpot bekommt nichts davon mit. In Timeline und Portal steht «simuliert».
+    - Zusätzlich «Neue Mail simulieren» ohne Bezug, z.B. um Regeln für neue Vorgänge zu testen, ohne dass in HelpSpot ein Ticket entsteht.
+18. Bestätigt am 20.10.2026: **Protokoll der eingehenden Mails** (Verwaltung → Eingehende Mails, nur Admin):
+    - Gleich aufgebaut wie «Ausgehende Mails»: Liste mit Filter nach Ergebnis und echt/simuliert, vollständige Ansicht mit Anhängen und .eml, Link zum Vorgang.
+    - Ergebnisse: neuer Vorgang, Antwort, interne Notiz (Absender nicht beteiligt), automatische Antwort, ignoriert (mit Grund, z.B. eigene Adresse), Fehler.
+    - Im Protokoll steht jede abgerufene Mail, auch die ignorierten. Wird dieselbe Mail ein zweites Mal abgerufen (z.B. nach einem Neustart des Abrufs), erscheint sie nicht doppelt. Kein Löschen.
+    - Schlägt die Verarbeitung fehl, wird die Mail nicht mehr übersprungen: Sie steht als «Fehler» mit Meldung im Protokoll, mit «Erneut verarbeiten».
+    - Die bisher abgerufenen Mails (neue Vorgänge und Antworten, die Originale sind gespeichert) werden nachgetragen. Früher ignorierte Mails lassen sich nicht nachtragen.
 
 Zum Vergleich: HelpSpot bietet einen eigenen, im Internet betriebenen Anmeldedienst mit zentraler App (Schlüssel wird zurückkopiert) und als Alternative eine eigene App-Registrierung mit Client Secret und HTTPS-Rücksprungadresse. Es nutzt Microsoft Graph statt IMAP/SMTP.
 

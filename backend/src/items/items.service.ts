@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, isNotNull, max, ne, sql } from 'drizzle-orm';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import {
@@ -14,7 +15,9 @@ import {
   outgoingMails,
   participants,
   statuses,
+  uploads,
   users,
+  type Attachment,
   type Entry,
   type Item,
   type ItemType,
@@ -24,11 +27,13 @@ import {
 } from '../db/schema';
 import { MailboxesService } from '../mail/mailboxes.service';
 import { NotificationsService } from '../mail/notifications.service';
+import { visibleInPortal } from '../portal/portal-visibility';
 import { firstOfCategory, isClosedCategory, mapStatusForTypeChange } from '../statuses/status-rules';
 import { StatusesService } from '../statuses/statuses.service';
 import { StorageService } from '../storage/storage.service';
 import { toPublicUser, UsersService } from '../users/users.service';
 import { duplicateRedirect } from './duplicates';
+import { imageRefs, replaceImages, TEXT_IMAGE_TYPES } from './inline-images';
 import { noteEditRefusal } from './note-rules';
 import type { RuleRun } from '../rules/rules.service';
 import { assigneeUser, reporterUser, searchCondition, summaryColumns, viewQuery, type View } from './item-views';
@@ -277,6 +282,7 @@ export class ItemsService {
         })
         .returning();
       await this.saveFiles(tx, created!.id, null, files);
+      await this.claimDescriptionImages(tx, actor, created!);
 
       if (reporterId !== actor.id) pending.push(() => this.notifications.confirmation(created!));
       if (created!.assigneeId) pending.push(() => this.notifications.assigned(created!, actor.id));
@@ -311,7 +317,7 @@ export class ItemsService {
         log.push({ field: 'title', from: item.title, to: changes.title });
       }
       if (patch.description !== undefined && patch.description !== item.description) {
-        changes.description = patch.description;
+        changes.description = await this.claimImages(tx, actor, item.id, null, patch.description);
         // Nach dem Bearbeiten gilt der Markdown-Text, nicht mehr das HTML der Mail
         changes.descriptionHtml = null;
         log.push({ field: 'description' });
@@ -507,14 +513,15 @@ export class ItemsService {
         .set({ statusId: target.id, closedAt: this.closedAtFor(item, current, target), updatedAt: new Date() })
         .where(eq(items.id, item.id))
         .returning();
-      await this.addEntry(tx, item.id, actor.id, 'status', reason, {
+      const entry = await this.addEntry(tx, item.id, actor.id, 'status', reason, {
         from: current?.label ?? null,
         to: target.label,
         toCategory: target.category,
         rejected: true,
         notified: notify,
       });
-      if (notify) pending.push(() => this.notifications.rejected(updated!, actor.id, reason));
+      const text = await this.claimEntryImages(tx, actor, entry);
+      if (notify) pending.push(() => this.notifications.rejected(updated!, actor.id, text));
     });
     await this.flush(pending);
   }
@@ -546,6 +553,7 @@ export class ItemsService {
         if (hasRecipients) throw new BadRequestException('Es ist kein aktives Postfach für den Versand eingerichtet');
       }
       const entry = await this.addEntry(tx, item.id, actor.id, kind, body, null);
+      const text = await this.claimEntryImages(tx, actor, entry);
       const saved = await this.saveFiles(tx, item.id, entry.id, files);
       const [updated] = await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, item.id)).returning();
       if (kind === 'reply') {
@@ -553,7 +561,7 @@ export class ItemsService {
           this.notifications.publicReply(
             updated!,
             actor.id,
-            body,
+            text,
             entry.id,
             saved.map((a) => a.id),
           ),
@@ -573,7 +581,8 @@ export class ItemsService {
       if (refusal?.reason === 'expired') throw new BadRequestException(refusal.message);
       if (refusal) throw new ForbiddenException(refusal.message);
       if (entry.body === body) return;
-      await tx.update(entries).set({ body, editedAt: new Date() }).where(eq(entries.id, entry.id));
+      const text = await this.claimImages(tx, actor, entry.itemId, entry.id, body);
+      await tx.update(entries).set({ body: text, editedAt: new Date() }).where(eq(entries.id, entry.id));
       await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, entry.itemId));
     });
   }
@@ -640,6 +649,7 @@ export class ItemsService {
         })
         .returning();
       await this.saveFiles(tx, created!.id, null, files);
+      await this.claimDescriptionImages(tx, reporter, created!);
       await rules?.apply(tx, created!);
       return created!;
     });
@@ -655,6 +665,7 @@ export class ItemsService {
   async portalReply(reporter: User, number: number, body: string, files: UploadedFile[], rules?: RuleRun): Promise<void> {
     if (!body.trim() && files.length === 0) throw new BadRequestException('Der Text ist leer');
     let updated: Item | undefined;
+    let text = body;
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, number);
       if (item.reporterId !== reporter.id || item.discarded) throw new NotFoundException('Vorgang nicht gefunden');
@@ -665,6 +676,7 @@ export class ItemsService {
         );
       }
       const entry = await this.addEntry(tx, item.id, reporter.id, 'reply', body, { source: 'portal' });
+      text = await this.claimEntryImages(tx, reporter, entry);
       await this.saveFiles(tx, item.id, entry.id, files);
       await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, item.id));
       await this.reopenAfterReply(tx, item, 'portal');
@@ -672,7 +684,7 @@ export class ItemsService {
       updated = item;
     });
     await rules?.afterCommit();
-    if (updated) await this.notifications.inboundReply(updated, reporter, body);
+    if (updated) await this.notifications.inboundReply(updated, reporter, text);
   }
 
   // ---------------------------------------------------------------- Mail-Eingang
@@ -731,6 +743,98 @@ export class ItemsService {
       })
       .returning();
     return entry!;
+  }
+
+  /** Bilder im Text eines neuen Eintrags übernehmen; liefert den gespeicherten Text. */
+  private async claimEntryImages(tx: Tx, actor: User, entry: Entry): Promise<string> {
+    const text = await this.claimImages(tx, actor, entry.itemId, entry.id, entry.body);
+    if (text !== entry.body) await tx.update(entries).set({ body: text }).where(eq(entries.id, entry.id));
+    return text;
+  }
+
+  /** Bilder in der Beschreibung eines neuen Vorgangs übernehmen. */
+  private async claimDescriptionImages(tx: Tx, actor: User, item: Item): Promise<void> {
+    const text = await this.claimImages(tx, actor, item.id, null, item.description);
+    if (text !== item.description) {
+      await tx.update(items).set({ description: text }).where(eq(items.id, item.id));
+      item.description = text;
+    }
+  }
+
+  /**
+   * Bilder im Text gehören zu dem Eintrag bzw. der Beschreibung, in deren Text sie stehen. Frisch hochgeladene
+   * («upload:») werden zu eingebetteten Anhängen («attachment:»). Aus einem anderen Eintrag oder Vorgang kopierte Bilder
+   * werden übernommen (dieselbe Datei), damit Mail und Portal sie zeigen. Fremde, abgelaufene oder für die Person nicht
+   * sichtbare Bilder fallen weg, nur ihr Name bleibt stehen.
+   */
+  async claimImages(tx: Tx, actor: User, itemId: string, entryId: string | null, markdown: string): Promise<string> {
+    const refs = imageRefs(markdown);
+    if (refs.length === 0) return markdown;
+    const ids = (kind: 'upload' | 'attachment') => [...new Set(refs.filter((r) => r.kind === kind).map((r) => r.id))];
+    // Bilder, die neu zu diesem Text gehören, je Referenz «upload:<id>» bzw. «attachment:<id>»
+    const sources = new Map<string, { filename: string; contentType: string; size: number; storageKey: string }>();
+    const kept = new Set<string>();
+
+    const uploadIds = ids('upload');
+    if (uploadIds.length > 0) {
+      const rows = await tx
+        .select()
+        .from(uploads)
+        .where(and(inArray(uploads.id, uploadIds), eq(uploads.userId, actor.id)));
+      for (const upload of rows) sources.set(`upload:${upload.id}`, upload);
+      if (rows.length > 0) await tx.delete(uploads).where(inArray(uploads.id, rows.map((r) => r.id)));
+    }
+
+    const attachmentIds = ids('attachment');
+    if (attachmentIds.length > 0) {
+      const rows = await tx
+        .select({ att: attachments, item: items, entryKind: entries.kind, entryMeta: entries.meta })
+        .from(attachments)
+        .innerJoin(items, eq(items.id, attachments.itemId))
+        .leftJoin(entries, eq(entries.id, attachments.entryId))
+        .where(inArray(attachments.id, attachmentIds));
+      for (const { att, item, entryKind, entryMeta } of rows) {
+        if (att.itemId === itemId && att.entryId === entryId) kept.add(att.id);
+        else if (TEXT_IMAGE_TYPES.has(att.contentType) && this.canSeeAttachment(actor, item, att, entryKind, entryMeta)) {
+          sources.set(`attachment:${att.id}`, att);
+        }
+      }
+    }
+
+    const claimed = new Map<string, string>();
+    for (const [ref, file] of sources) {
+      const [attachment] = await tx
+        .insert(attachments)
+        .values({
+          itemId,
+          entryId,
+          filename: file.filename,
+          contentType: file.contentType,
+          size: file.size,
+          storageKey: file.storageKey,
+          // Content-ID für das Einbetten in Mails; markiert den Anhang zugleich als Bild im Text
+          contentId: `${randomUUID()}@patchwork`,
+        })
+        .returning();
+      claimed.set(ref, attachment!.id);
+    }
+    return replaceImages(markdown, (ref) => {
+      if (ref.kind === 'attachment' && kept.has(ref.id)) return null;
+      const id = claimed.get(`${ref.kind}:${ref.id}`);
+      return id ? `![${ref.alt}](attachment:${id})` : ref.alt;
+    });
+  }
+
+  /** IT sieht alle Anhänge, ein Melder nur die öffentlichen seiner eigenen Vorgänge (wie im Portal). */
+  private canSeeAttachment(
+    actor: User,
+    item: Item,
+    att: Attachment,
+    entryKind: Entry['kind'] | null,
+    entryMeta: Entry['meta'] | null,
+  ): boolean {
+    if (actor.role === 'admin' || actor.role === 'it') return true;
+    return item.reporterId === actor.id && !item.discarded && visibleInPortal(att.entryId, entryKind, entryMeta);
   }
 
   async saveFiles(tx: Tx, itemId: string, entryId: string | null, files: UploadedFile[]) {

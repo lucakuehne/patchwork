@@ -19,6 +19,7 @@ const props = defineProps<{
 
 const editing = ref(false);
 const draft = ref('');
+const uploading = ref(false);
 
 const html = computed(() => {
   if (props.item.descriptionHtml) return renderMailHtml(props.item.descriptionHtml);
@@ -57,18 +58,18 @@ async function submit() {
       <button v-if="!editing" class="btn btn-sm btn-ghost" type="button" @click="start">Bearbeiten</button>
     </div>
     <div v-if="editing" class="stack">
-      <MarkdownEditor v-model="draft" :min-height="200" autofocus @submit="submit" />
+      <MarkdownEditor v-model="draft" v-model:uploading="uploading" :min-height="200" autofocus @submit="submit" />
       <span v-if="item.descriptionHtml" class="faint small">
         Nach dem Speichern wird der Text als Markdown angezeigt, die Formatierung der ursprünglichen Mail entfällt.
       </span>
       <div class="row">
-        <button class="btn btn-primary" type="button" :disabled="busy" @click="submit">Speichern</button>
+        <button class="btn btn-primary" type="button" :disabled="busy || uploading" @click="submit">Speichern</button>
         <button class="btn" type="button" @click="editing = false">Abbrechen</button>
       </div>
     </div>
     <div v-else-if="html" class="prose" :class="{ 'mail-html': !!item.descriptionHtml }" v-html="html" />
     <div v-else class="faint">Keine Beschreibung</div>
-    <AttachmentList :attachments="item.attachments" />
+    <AttachmentList :attachments="item.attachments" :text="item.descriptionHtml ? '' : item.description" />
   </section>
 </template>
 

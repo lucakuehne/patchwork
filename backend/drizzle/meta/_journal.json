@@ -106,6 +106,13 @@
       "when": 1792480355704,
       "tag": "0014_zurueckgehaltene_entfernen",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792482244815,
+      "tag": "0015_bilder_im_text",
+      "breakpoints": true
     }
   ]
 }

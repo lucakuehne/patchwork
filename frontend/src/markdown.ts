@@ -1,7 +1,7 @@
 import DOMPurify from 'dompurify';
-import MarkdownIt from 'markdown-it';
+import { markdownToHtml, type ImageContext } from './markdown-html';
 
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
+export { imageRef, imagesInText, imageUrl, type ImageContext } from './markdown-html';
 
 // Links in neuem Tab öffnen
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
@@ -11,8 +11,9 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
-export function renderMarkdown(source: string): string {
-  return DOMPurify.sanitize(md.render(source));
+/** Markdown als bereinigtes HTML; «context» bestimmt die Adressen der Bilder im Text. */
+export function renderMarkdown(source: string, context: ImageContext = 'staff'): string {
+  return DOMPurify.sanitize(markdownToHtml(source, context));
 }
 
 /** HTML aus Mails (serverseitig bereits bereinigt) zusätzlich im Browser bereinigen. */

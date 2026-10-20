@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { defineAsyncComponent, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { api } from '../api';
 import ItemTable from '../components/ItemTable.vue';
 import MineToggle from '../components/MineToggle.vue';
@@ -9,12 +10,23 @@ import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import type { ItemSummary, ItemType } from '../types';
 
+// Erst beim Öffnen laden (enthält den Editor)
+const NewItemDialog = defineAsyncComponent(() => import('../components/NewItemDialog.vue'));
+
 const session = useSession();
 const toast = useToast();
+const router = useRouter();
 const mine = useMineFilter('inbox');
 const items = ref<ItemSummary[]>([]);
 const loading = ref(true);
 const busy = ref<number | null>(null);
+const newOpen = ref(false);
+
+function onCreated(number: number) {
+  newOpen.value = false;
+  toast.success('Vorgang erfasst');
+  void router.push({ name: 'item', params: { number } });
+}
 
 async function load() {
   try {
@@ -61,6 +73,7 @@ async function discard(item: ItemSummary) {
       <span class="muted">Vorgänge aus E-Mail und Portal ohne Typ</span>
       <div class="spacer" />
       <MineToggle v-model="mine" />
+      <button class="btn" type="button" @click="newOpen = true">+ Neu</button>
     </div>
     <ItemTable v-if="!loading" :items="items" empty-text="Der Eingang ist leer.">
       <template #actions="{ item }">
@@ -97,4 +110,6 @@ async function discard(item: ItemSummary) {
       </template>
     </ItemTable>
   </div>
+
+  <NewItemDialog v-if="newOpen" @close="newOpen = false" @created="onCreated" />
 </template>

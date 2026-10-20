@@ -104,7 +104,14 @@ async function remove(s: Snippet) {
       </div>
       <div class="field">
         <span class="label">Text</span>
-        <MarkdownEditor ref="editor" v-model="draft.body" :min-height="180" placeholder="Guten Tag {{Melder}} …" @submit="save" />
+        <MarkdownEditor
+          ref="editor"
+          v-model="draft.body"
+          :images="false"
+          :min-height="180"
+          placeholder="Guten Tag {{Melder}} …"
+          @submit="save"
+        />
         <div class="placeholders">
           <span class="hint">Platzhalter einfügen:</span>
           <button

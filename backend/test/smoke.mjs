@@ -1284,6 +1284,84 @@ await step('E-Mail-Vorlagen: angepasste Eingangsbestätigung, Vorschau und zurü
   await api('PUT', '/admin/mail-templates/gibtsnicht', { subject: 'x', body: 'x' }, { expect: [404] });
 });
 
+// PNG mit 1×1 Pixel
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+const uploadImage = (name, data = PNG) => {
+  const form = new FormData();
+  form.append('file', new Blob([data], { type: 'image/png' }), name);
+  return api('POST', '/uploads/images', form, { expect: [201, 400] });
+};
+const reply = async (path, body, kind) => {
+  const form = new FormData();
+  if (kind) form.append('kind', kind);
+  form.append('body', body);
+  await api('POST', path, form);
+};
+const entryStartingWith = async (n, start) => (await detail(n)).entries.find((e) => e.body.startsWith(start));
+
+await step('Bilder im Text: hochladen, in der Antwort eingebettet, in der Mail eingebettet mit Link auf die volle Grösse', async () => {
+  assert.match((await uploadImage('text.png', Buffer.from('kein Bild'))).message, /PNG, JPEG, GIF oder WebP/);
+  assert.match((await uploadImage('gross.png', Buffer.concat([PNG, Buffer.alloc(10 * 1024 * 1024)]))).message, /10 MB/);
+  const uploaded = await uploadImage('Fehler.png');
+  assert.equal(uploaded.ref, `upload:${uploaded.id}`);
+  const preview = await fetch(`${BASE}/uploads/${uploaded.id}`, { headers: { cookie } });
+  assert.equal(preview.status, 200);
+  assert.equal(preview.headers.get('content-type'), 'image/png');
+
+  const start = `Siehe Bild ${RUN}`;
+  await reply(`/items/${itemNo}/entries`, `${start}:\n\n![Fehler.png](${uploaded.ref})`, 'reply');
+  const entry = await entryStartingWith(itemNo, start);
+  assert.equal(entry.attachments.length, 1);
+  const [image] = entry.attachments;
+  assert.equal(image.inline, true);
+  assert.equal(entry.body, `${start}:\n\n![Fehler.png](attachment:${image.id})`);
+  await api('GET', `/uploads/${uploaded.id}`, undefined, { expect: [404], raw: true });
+
+  const mail = await waitForMail(ANNA, (m) => m.text.includes(start), 'Antwort mit Bild im Text');
+  // Ohne keepCidLinks ersetzt mailparser die «cid:»-Verweise durch data:-Adressen
+  const parsed = await simpleParser(mail.source, { keepCidLinks: true });
+  assert.ok(parsed.text.includes('[Bild: Fehler.png]'), 'Textfassung nennt das Bild');
+  const embedded = parsed.attachments.find((a) => a.filename === 'Fehler.png');
+  assert.ok(embedded?.related, 'eingebettet, nicht als Anhang');
+  assert.ok(parsed.html.includes(`src="cid:${embedded.cid}"`));
+  // Link auf die volle Grösse: ohne Anmeldung, nur mit gültiger Signatur
+  const link = new URL(/href="([^"]*\/api\/public\/images\/[^"]+)"/.exec(parsed.html)[1]);
+  const origin = new URL(BASE).origin;
+  const full = await fetch(`${origin}${link.pathname}${link.search}`);
+  assert.equal(full.status, 200);
+  assert.deepEqual(Buffer.from(await full.arrayBuffer()), PNG);
+  assert.equal((await fetch(`${origin}${link.pathname}?s=falsch`)).status, 404);
+});
+
+await step('Bilder im Text: kopiert aus einer internen Notiz, im Portal sichtbar, fremde Bilder nur für die IT', async () => {
+  // Bild in einer internen Notiz eines anderen Vorgangs
+  const noteStart = `Notiz mit Bild ${RUN}`;
+  await reply(`/items/${task}/entries`, `${noteStart} ![Intern.png](${(await uploadImage('Intern.png')).ref})`, 'note');
+  const internal = (await entryStartingWith(task, noteStart)).attachments[0];
+
+  // Die IT kopiert es in eine öffentliche Antwort: Es wird ein eigenes Bild der Antwort
+  const copyStart = `Kopiertes Bild ${RUN}`;
+  await reply(`/items/${itemNo}/entries`, `${copyStart} ![Intern.png](attachment:${internal.id})`, 'reply');
+  const copy = (await entryStartingWith(itemNo, copyStart)).attachments[0];
+  assert.notEqual(copy.id, internal.id);
+
+  await loginAs(ANNA, 'anna-passwort-1');
+  const portal = await api('GET', `/portal/items/${itemNo}`);
+  assert.ok(portal.entries.find((e) => e.body.startsWith(copyStart)).body.includes(`attachment:${copy.id}`));
+  assert.equal((await fetch(`${BASE}/portal/attachments/${copy.id}/inline`, { headers: { cookie } })).status, 200);
+  await api('GET', `/portal/attachments/${internal.id}/inline`, undefined, { expect: [404], raw: true });
+
+  // Melder: eigenes Bild in der Antwort im Portal; das Bild der internen Notiz bleibt draussen
+  const portalStart = `Antwort mit Bild ${RUN}`;
+  const own = await uploadImage('Meldung.png');
+  await reply(`/portal/items/${itemNo}/replies`, `${portalStart} ![Meldung.png](${own.ref}) ![Fremd](attachment:${internal.id})`);
+  const sent = (await api('GET', `/portal/items/${itemNo}`)).entries.find((e) => e.body.startsWith(portalStart));
+  assert.equal(sent.attachments.length, 1);
+  assert.equal(sent.body, `${portalStart} ![Meldung.png](attachment:${sent.attachments[0].id}) Fremd`);
+  await api('GET', `/uploads/${own.id}`, undefined, { expect: [404], raw: true });
+  await loginAs('ada@test.local', 'geheim-geheim');
+});
+
 await step('HTTPS: Anforderung, signiertes Zertifikat hochladen, Abruf über HTTPS', async () => {
   const host = new URL(BASE).hostname;
   let tls = await api('GET', '/admin/tls');

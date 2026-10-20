@@ -539,6 +539,17 @@ h3 {
   max-width: 100%;
   height: auto;
 }
+/* Bilder im Text: auf Textbreite verkleinert, ein Klick öffnet sie in voller Grösse */
+.prose .text-image-link {
+  display: inline-block;
+  max-width: 100%;
+  cursor: zoom-in;
+}
+.prose img.text-image {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
 .prose table {
   border-collapse: collapse;
 }

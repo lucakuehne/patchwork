@@ -6,7 +6,12 @@ import type { StorageService } from './storage.service';
  * Liefert einen Anhang aus. Inline nur für Bilder (Vorschau, eingebettete Mail-Bilder),
  * alle anderen Typen werden heruntergeladen. Inhalte laufen in einer Sandbox.
  */
-export function sendAttachment(storage: StorageService, att: Attachment, res: Response, inline: boolean) {
+export function sendAttachment(
+  storage: StorageService,
+  att: Pick<Attachment, 'filename' | 'contentType' | 'storageKey'>,
+  res: Response,
+  inline: boolean,
+) {
   const isImage = /^image\/(png|jpe?g|gif|webp|bmp)$/i.test(att.contentType);
   const disposition = inline && isImage ? 'inline' : 'attachment';
   res.setHeader('Content-Type', isImage || !inline ? att.contentType : 'application/octet-stream');
