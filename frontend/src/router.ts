@@ -50,10 +50,12 @@ export const router = createRouter({
         { path: 'benutzer', name: 'admin-users', component: () => import('./views/admin/AdminUsers.vue') },
         { path: 'postfaecher', name: 'admin-mailboxes', component: () => import('./views/admin/AdminMailboxes.vue') },
         {
-          path: 'nicht-versendet',
-          name: 'admin-held-mails',
-          component: () => import('./views/admin/AdminHeldMails.vue'),
+          path: 'ausgehende-mails',
+          name: 'admin-outgoing-mails',
+          component: () => import('./views/admin/AdminOutgoingMails.vue'),
         },
+        // Frühere Seite: nur die nicht versendeten Mails
+        { path: 'nicht-versendet', redirect: { path: '/admin/ausgehende-mails', query: { status: 'nicht-versendet' } } },
         { path: 'status', name: 'admin-statuses', component: () => import('./views/admin/AdminStatuses.vue') },
         { path: 'ldap', name: 'admin-ldap', component: () => import('./views/admin/AdminLdap.vue') },
         { path: 'https', name: 'admin-https', component: () => import('./views/admin/AdminHttps.vue') },

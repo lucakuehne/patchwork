@@ -173,6 +173,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 
 - **Eigene interne Notizen bearbeiten:** 5 Minuten lang nach dem Erfassen («Bearbeiten» bei der Notiz). Danach steht «bearbeitet» bei der Zeit. Nur in Patchwork erfasste Notizen, keine öffentlichen Antworten (die sind schon per Mail verschickt) und keine per Mail eingegangenen.
 - **Änderungen zusammenfassen:** Mehrere Änderungen derselben Person kurz hintereinander (z.B. Status und Priorität) erscheinen als eine Zeile in der Timeline. Gespeichert wird weiterhin jede Änderung einzeln.
+  - Geändert am 20.10.2026: Änderungen stehen in einer grauen Karte, oben Bearbeiter und Zeitpunkt, darunter die Änderungen als Liste. Das gilt für alle Änderungen, auch einzelne, und für Regeln.
 - **Antwort-Postfach:** ein Eintrag pro Postfach, das Standard-Postfach mit dem Zusatz «(Standard)». Ohne eigenes Antwort-Postfach ist das Standard-Postfach gewählt.
 - **Melder und Beteiligte suchen:** nach Name, Benutzername und E-Mail, in Patchwork und im AD (wenn die LDAP-Anmeldung aktiv ist). Eine unbekannte E-Mail-Adresse lässt sich weiterhin als neuer Kontakt eintragen.
 - Details (bestätigt am 15.10.2026):
@@ -222,8 +223,8 @@ Bestätigt am 19.10.2026:
 
 1. Einstellung pro Postfach «Mails abholen ab» (Datum und Uhrzeit), beim Anlegen vorbelegt mit dem aktuellen Zeitpunkt. Sie ersetzt die Regel «beim ersten Abruf nur ungelesene Mails». Übernommen werden alle Mails ab diesem Zeitpunkt, gelesen oder nicht. Massgebend ist der Eingang im Postfach (IMAP INTERNALDATE), nicht das Datum des Absenders.
 2. Wird der Zeitpunkt geändert, holt Patchwork ab dem neuen Zeitpunkt alles, was noch fehlt, ohne doppelte Vorgänge.
-3. Schalter «Testbetrieb: keine Mails versenden» für die ganze Instanz (Verwaltung → Allgemein), mit Hinweis für alle Benutzer (auch im Portal). Er gilt für alle Mails, auch für Benachrichtigungen an Mitarbeitende.
-4. Nicht versendete Mails: Liste unter Verwaltung → «Nicht versendete Mails» (nur Admin) mit vollständiger Ansicht jeder Mail samt Anhängen und .eml, dazu ein Vermerk «nicht versendet» bei öffentlichen Antworten in der Timeline.
+3. Schalter «Testbetrieb: keine Mails versenden» für die ganze Instanz (Verwaltung → Allgemein), mit Hinweis für alle Benutzer (auch im Portal). Er gilt für alle Mails, auch für Benachrichtigungen an Mitarbeitende. Am 20.10.2026 ersetzt durch zwei Empfängerkreise, siehe Punkt 14.
+4. Nicht versendete Mails: Liste unter Verwaltung → «Nicht versendete Mails» (nur Admin) mit vollständiger Ansicht jeder Mail samt Anhängen und .eml, dazu ein Vermerk «nicht versendet» bei öffentlichen Antworten in der Timeline. Am 20.10.2026 erweitert zum Protokoll aller ausgehenden Mails, siehe Punkt 15.
 5. Beim Ausschalten werden zurückgehaltene Mails nicht nachträglich verschickt, die Liste bleibt als Protokoll.
 6. Microsoft 365: Anmeldung pro Postfach mit Gerätecode (microsoft.com/devicelogin): Patchwork zeigt den Code, kopiert ihn und öffnet die Anmeldeseite in einem Popup. Tenant automatisch aus der Mail-Domain, kein Client Secret. Eine Anmeldung mit Weiterleitung zu Patchwork verlangt bei Microsoft HTTPS und folgt erst danach.
    - Ergänzt am 19.10.2026: Im Tenant des Benutzers sperrt eine Richtlinie für bedingten Zugriff die Anmeldung mit Gerätecode. Deshalb zusätzlich die Anmeldung im Browser (Autorisierungscode mit PKCE, ohne Client Secret): Anmeldeseite in einem neuen Tab, Rücksprung auf die leere Seite `https://login.microsoftonline.com/common/oauth2/nativeclient`, deren Adresse man in Patchwork einfügt. Beide Wege bleiben möglich.
@@ -241,6 +242,24 @@ Bestätigt am 19.10.2026:
 12. Bestätigt am 20.10.2026: Den **Ordner für den Abruf wählt man aus einer Aufklappliste**, für IMAP und Microsoft 365, statt ihn einzutippen. Die Liste zeigt alle Mail-Ordner mit Pfad (z.B. «Posteingang / Helpdesk»), den Posteingang zuerst. Patchwork lädt sie beim Öffnen eines gespeicherten Postfachs, bei Microsoft 365 nach der Anmeldung; «Neu laden» holt sie erneut. Ein neues Postfach beginnt mit dem Posteingang, andere Ordner sind nach dem Speichern wählbar. Fehlt der eingestellte Ordner in der Liste, steht er mit «(nicht gefunden)» darin.
     - Technisch: Bei Microsoft 365 speichert Patchwork die ID des Ordners, ein Umbenennen stört deshalb nicht. Bei IMAP den Pfad des Servers. Ältere Einstellungen ohne ID (Pfad aus Ordnernamen) gelten weiter.
 13. Bestätigt am 20.10.2026: **Parallelbetrieb mit HelpSpot.** HelpSpot holt die Mails aus dem Posteingang und löscht sie danach; im Posteingang findet Patchwork deshalb kaum Mails. Eine Regel im Postfach legt eine Kopie jeder eingehenden Mail in den Ordner «Inbox-Patchwork», den Patchwork abholt. HelpSpot bleibt davon unberührt. Bei der Umstellung die Regel löschen und in Patchwork wieder den Posteingang wählen.
+14. Bestätigt am 20.10.2026: **Testbetrieb mit zwei frei kombinierbaren Empfängerkreisen** (ersetzt den Schalter aus Punkt 3, ohne Vorlagen oder Stufen):
+    - «Mails an IT-Mitarbeitende» und «Mails an Melder, Beteiligte und alle übrigen», je «an niemanden», «nur an ausgewählte» oder «an alle». Beide «an alle» ist der normale Betrieb.
+    - IT-Mitarbeitende sind Benutzer mit der Rolle IT oder Admin. Massgebend ist der Empfänger, nicht die Art der Mail.
+    - Auswahl: IT-Mitarbeitende per Häkchen aus der Liste, die übrigen über die Personensuche (Patchwork, AD, freie E-Mail-Adresse).
+    - Geht eine Mail an mehrere Empfänger, von denen nur ein Teil freigegeben ist, erhalten nur diese sie, und im Kopf stehen nur diese (über Microsoft Graph geht es nicht anders). Die vollständige Mail steht im Protokoll mit dem Vermerk, wer sie nicht bekommen hat.
+    - Solange nicht beide Kreise «an alle» sind, sehen alle Benutzer oben einen Hinweis, der sagt, wer Mails bekommt. In der Timeline steht bei öffentlichen Antworten «nicht versendet» bzw. «teilweise versendet».
+    - Bestehende Einstellung: eingeschaltet wird «an niemanden / an niemanden», ausgeschaltet «an alle / an alle».
+15. Bestätigt am 20.10.2026: **Alle ausgehenden Mails werden protokolliert**, nicht nur die im Testbetrieb zurückgehaltenen:
+    - Seite Verwaltung → «Ausgehende Mails» (ersetzt «Nicht versendete Mails», nur Admin) mit Status «versendet», «teilweise versendet», «nicht versendet», «Fehler» oder «wird versendet», Filter nach Status und vollständiger Ansicht (Text, Anhänge, .eml).
+    - Jede Mail wird vollständig gespeichert, ohne automatische Löschung.
+    - Versandfehler: Status «Fehler» mit Meldung, Patchwork versucht es wie bisher bis zu 10-mal; «Erneut senden» bei fehlgeschlagenen Mails. Eine Mail geht nie doppelt hinaus.
+    - In der Timeline nur bei Abweichungen ein Vermerk (nicht oder teilweise versendet, Fehler, wird versendet).
+16. Bestätigt am 20.10.2026: **E-Mail-Vorlagen bearbeiten** (Verwaltung → E-Mail-Vorlagen, nur Admin):
+    - Bearbeitbar sind Betreff und Text aller Mails an Melder (Eingangsbestätigung, Erledigt, Abgelehnt, Duplikat in zwei Varianten, Erinnerung, automatisch geschlossen) und an IT (Zugewiesen, neue Antwort, behebender Vorgang erledigt), dazu Link-Zeile und Fusszeile je für Melder und IT. Bei der öffentlichen Antwort nur Betreff und Rahmen, den Text schreibt der Bearbeiter.
+    - Die Nummer `[PW-123]` setzt Patchwork immer vor den Betreff, damit Antworten zugeordnet werden.
+    - Markdown mit Platzhaltern wie bei den Textbausteinen; zu jeder Vorlage steht, welche Platzhalter es gibt.
+    - Liste nach Empfänger gruppiert, Editor mit Vorschau mit Beispieldaten und «Auf Standard zurücksetzen».
+    - Das Aussehen der Mail (Rahmen, Schrift) bleibt fest, kein Logo.
 
 Zum Vergleich: HelpSpot bietet einen eigenen, im Internet betriebenen Anmeldedienst mit zentraler App (Schlüssel wird zurückkopiert) und als Alternative eine eigene App-Registrierung mit Client Secret und HTTPS-Rücksprungadresse. Es nutzt Microsoft Graph statt IMAP/SMTP.
 

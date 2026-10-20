@@ -52,9 +52,22 @@ export const DEFAULT_LDAP: LdapSettings = {
   nestedGroups: true,
 };
 
+/** Testbetrieb: Wer Mails tatsächlich erhält – niemand, nur ausgewählte oder alle. */
+export type DeliveryScope = 'none' | 'selected' | 'all';
+
+/**
+ * Testbetrieb: Mails an Empfänger ausserhalb der Kreise werden fertig zusammengestellt und abgelegt, aber nicht
+ * versendet. Beide Kreise auf «all» ist der normale Betrieb.
+ */
 export interface MailSettings {
-  /** Testbetrieb: Mails werden fertig zusammengestellt und abgelegt, aber nicht versendet. */
-  testMode: boolean;
+  /** IT-Mitarbeitende (Rolle IT oder Admin) */
+  staff: DeliveryScope;
+  /** Melder, Beteiligte und alle übrigen Empfänger */
+  others: DeliveryScope;
+  /** Ausgewählte IT-Mitarbeitende (E-Mail-Adressen, klein geschrieben) */
+  staffEmails: string[];
+  /** Ausgewählte Melder, Beteiligte und Kunden (E-Mail-Adressen, klein geschrieben) */
+  otherEmails: string[];
 }
 
 export interface MicrosoftSettings {
@@ -74,7 +87,7 @@ const DEFAULTS: SettingsMap = {
   general: { appName: 'Patchwork' },
   logo: null,
   ldap: DEFAULT_LDAP,
-  mail: { testMode: false },
+  mail: { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] },
   microsoft: { clientId: '' },
 };
 

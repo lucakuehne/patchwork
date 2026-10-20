@@ -1,32 +1,40 @@
-import { Controller, Get, NotFoundException, Param, ParseIntPipe, ParseUUIDPipe, Res } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { Controller, Get, HttpCode, NotFoundException, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import { desc, eq, inArray } from 'drizzle-orm';
 import type { Response } from 'express';
 import { simpleParser } from 'mailparser';
 import { AdminOnly } from '../auth/auth.decorators';
 import { InjectDb, type Db } from '../db/db.module';
-import { heldMails, items, type HeldMail } from '../db/schema';
+import { items, outgoingMails, type OutgoingMailRow } from '../db/schema';
 import { StorageService } from '../storage/storage.service';
+import { MailSenderService } from './mail-sender.service';
 
 /** Dateiname für Content-Disposition: ASCII-Ersatz und UTF-8-Variante */
 const disposition = (filename: string) =>
   `attachment; filename="${filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 
-/** Im Testbetrieb zurückgehaltene Mails: Liste, vollständige Ansicht, Originaldatei und Anhänge. */
+const STATUSES = ['queued', 'sent', 'partial', 'held', 'failed'] as const;
+type Status = (typeof STATUSES)[number];
+
+/** Protokoll aller ausgehenden Mails: Liste, vollständige Ansicht, Originaldatei, Anhänge und «Erneut senden». */
 @AdminOnly()
-@Controller('admin/held-mails')
-export class HeldMailsController {
+@Controller('admin/outgoing-mails')
+export class OutgoingMailsController {
   constructor(
     @InjectDb() private readonly db: Db,
     private readonly storage: StorageService,
+    private readonly sender: MailSenderService,
   ) {}
 
+  /** Neueste zuerst; «status» filtert, mehrere mit Komma (z.B. «partial,held»). */
   @Get()
-  async list() {
+  async list(@Query('status') status?: string) {
+    const wanted = (status ?? '').split(',').filter((s): s is Status => (STATUSES as readonly string[]).includes(s));
     const rows = await this.db
-      .select({ mail: heldMails, number: items.number, title: items.title })
-      .from(heldMails)
-      .innerJoin(items, eq(items.id, heldMails.itemId))
-      .orderBy(desc(heldMails.createdAt))
+      .select({ mail: outgoingMails, number: items.number, title: items.title })
+      .from(outgoingMails)
+      .innerJoin(items, eq(items.id, outgoingMails.itemId))
+      .where(wanted.length ? inArray(outgoingMails.status, wanted) : undefined)
+      .orderBy(desc(outgoingMails.createdAt))
       .limit(500);
     return rows.map(({ mail, number, title }) => this.summary(mail, number, title));
   }
@@ -34,7 +42,7 @@ export class HeldMailsController {
   @Get(':id')
   async detail(@Param('id', ParseUUIDPipe) id: string) {
     const { mail, number, title } = await this.get(id);
-    const parsed = await simpleParser(await this.storage.read(mail.storageKey));
+    const parsed = await simpleParser(await this.read(mail));
     return {
       ...this.summary(mail, number, title),
       text: parsed.text ?? '',
@@ -48,7 +56,7 @@ export class HeldMailsController {
     };
   }
 
-  /** Die fertige Mail, wie sie versendet worden wäre. */
+  /** Die vollständige Mail, so wie sie ohne Testbetrieb versendet wird. */
   @Get(':id/eml')
   async eml(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const { mail } = await this.get(id);
@@ -68,7 +76,7 @@ export class HeldMailsController {
     @Res() res: Response,
   ) {
     const { mail } = await this.get(id);
-    const attachment = (await simpleParser(await this.storage.read(mail.storageKey))).attachments[index];
+    const attachment = (await simpleParser(await this.read(mail))).attachments[index];
     if (!attachment) throw new NotFoundException('Anhang nicht gefunden');
     res.setHeader('Content-Type', attachment.contentType || 'application/octet-stream');
     res.setHeader('Content-Disposition', disposition(attachment.filename ?? `Anhang ${index + 1}`));
@@ -77,26 +85,51 @@ export class HeldMailsController {
     res.send(attachment.content);
   }
 
+  /** Fehlgeschlagene Mail noch einmal versenden. */
+  @Post(':id/resend')
+  @HttpCode(204)
+  async resend(@Param('id', ParseUUIDPipe) id: string) {
+    await this.sender.resend(id);
+  }
+
+  /** Die gespeicherte Mail (.eml); fehlt die Datei, eine verständliche Meldung statt Fehler 500. */
+  private async read(mail: OutgoingMailRow): Promise<Buffer> {
+    try {
+      return await this.storage.read(mail.storageKey);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new NotFoundException('Die gespeicherte Mail ist nicht mehr vorhanden (Datei fehlt in der Ablage)');
+      }
+      throw err;
+    }
+  }
+
   private async get(id: string) {
     const [row] = await this.db
-      .select({ mail: heldMails, number: items.number, title: items.title })
-      .from(heldMails)
-      .innerJoin(items, eq(items.id, heldMails.itemId))
-      .where(eq(heldMails.id, id))
+      .select({ mail: outgoingMails, number: items.number, title: items.title })
+      .from(outgoingMails)
+      .innerJoin(items, eq(items.id, outgoingMails.itemId))
+      .where(eq(outgoingMails.id, id))
       .limit(1);
     if (!row) throw new NotFoundException('Mail nicht gefunden');
     return row;
   }
 
-  private summary(mail: HeldMail, number: number, title: string) {
+  private summary(mail: OutgoingMailRow, number: number, title: string) {
     return {
       id: mail.id,
       createdAt: mail.createdAt,
+      sentAt: mail.sentAt,
+      status: mail.status,
       fromAddress: mail.fromAddress,
       to: mail.to,
       cc: mail.cc,
+      /** An diese Empfänger ging die Mail tatsächlich */
+      deliveredTo: mail.deliveredTo,
       subject: mail.subject,
       automated: mail.automated,
+      error: mail.error,
+      attempts: mail.attempts,
       reply: !!mail.entryId,
       item: { number, title },
     };

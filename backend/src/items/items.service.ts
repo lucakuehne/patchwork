@@ -6,12 +6,12 @@ import {
   checklistItems,
   checklists,
   entries,
-  heldMails,
   items,
   links,
   mailboxes,
   mailMessages,
   mutes,
+  outgoingMails,
   participants,
   statuses,
   users,
@@ -122,7 +122,7 @@ export class ItemsService {
         : null,
     ]);
 
-    const [participantRows, entryRows, attachmentRows, muteRows, mailRows, heldRows] = await Promise.all([
+    const [participantRows, entryRows, attachmentRows, muteRows, mailRows, deliveryRows] = await Promise.all([
       this.db
         .select({ user: users })
         .from(participants)
@@ -145,13 +145,32 @@ export class ItemsService {
         .from(mailMessages)
         .where(and(eq(mailMessages.itemId, item.id), eq(mailMessages.direction, 'in'), isNotNull(mailMessages.storageKey)))
         .orderBy(asc(mailMessages.createdAt)),
-      // Im Testbetrieb zurückgehaltene Antworten
+      // Versand der öffentlichen Antworten, nur Abweichungen: nicht oder teilweise versendet, Fehler, noch unterwegs
       this.db
-        .select({ entryId: heldMails.entryId })
-        .from(heldMails)
-        .where(and(eq(heldMails.itemId, item.id), isNotNull(heldMails.entryId))),
+        .select({
+          entryId: outgoingMails.entryId,
+          status: outgoingMails.status,
+          to: outgoingMails.to,
+          cc: outgoingMails.cc,
+          deliveredTo: outgoingMails.deliveredTo,
+          error: outgoingMails.error,
+        })
+        .from(outgoingMails)
+        .where(
+          and(eq(outgoingMails.itemId, item.id), isNotNull(outgoingMails.entryId), ne(outgoingMails.status, 'sent')),
+        ),
     ]);
-    const heldEntries = new Set(heldRows.map((r) => r.entryId));
+    const deliveryByEntry = new Map(
+      deliveryRows.map((r) => [
+        r.entryId!,
+        {
+          status: r.status,
+          deliveredTo: r.deliveredTo,
+          withheld: [...r.to, ...r.cc].filter((a) => !r.deliveredTo.includes(a)),
+          error: r.error,
+        },
+      ]),
+    );
 
     const toAttachment = (a: (typeof attachmentRows)[number]) => ({
       id: a.id,
@@ -196,7 +215,7 @@ export class ItemsService {
         editedAt: entry.editedAt,
         author: author && toPublicUser(author),
         originalMessageId: originalByEntry.get(entry.id) ?? null,
-        held: heldEntries.has(entry.id),
+        delivery: deliveryByEntry.get(entry.id) ?? null,
         attachments: attachmentRows.filter((a) => a.entryId === entry.id).map(toAttachment),
       })),
     };

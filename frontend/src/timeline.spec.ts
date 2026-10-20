@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fillSnippet } from './snippets';
-import { eventPart, groupTimeline } from './timeline';
+import { asListItem, eventPart, groupTimeline } from './timeline';
 import type { Entry } from './types';
 
 const ada = { id: 'ada', name: 'Ada Admin', email: 'ada@test.local', role: 'admin' as const };
@@ -16,7 +16,7 @@ const entry = (minute: number, patch: Partial<Entry> = {}): Entry => ({
   editedAt: null,
   author: ada,
   originalMessageId: null,
-  held: false,
+  delivery: null,
   attachments: [],
   ...patch,
 });
@@ -44,6 +44,15 @@ describe('groupTimeline', () => {
 
   it('Satzteile ohne «hat»', () => {
     expect(eventPart(entry(1)).text).toBe('die Priorität von «Normal» auf «Hoch» geändert');
+  });
+
+  it('Listenpunkte in der Karte ohne Artikel und gross geschrieben', () => {
+    expect(asListItem('die Priorität von «Normal» auf «Hoch» geändert')).toBe('Priorität von «Normal» auf «Hoch» geändert');
+    expect(asListItem('den Status von «Neu» auf «In Arbeit» geändert')).toBe('Status von «Neu» auf «In Arbeit» geändert');
+    expect(asListItem('eine Verknüpfung entfernt: behebt')).toBe('Verknüpfung entfernt: behebt');
+    expect(asListItem('«Luca Kühne» als zuständig gesetzt')).toBe('«Luca Kühne» als zuständig gesetzt');
+    expect(asListItem('keine Eingangsbestätigung verschickt')).toBe('Keine Eingangsbestätigung verschickt');
+    expect(asListItem('abgelehnt (Melder informiert)')).toBe('Abgelehnt (Melder informiert)');
   });
 });
 

@@ -20,10 +20,11 @@ import { AdminOnly, Public } from '../auth/auth.decorators';
 import { AuthService } from '../auth/auth.service';
 import { LdapService } from '../auth/ldap.service';
 import { encryptSecret } from '../common/crypto';
-import { ZodPipe } from '../common/zod.pipe';
+import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import { appConfig } from '../config';
 import type { UploadedFile as UploadedFileData } from '../items/items.service';
 import { callbackUrl } from '../mail/microsoft';
+import { isLive } from '../mail/test-delivery';
 import { StorageService } from '../storage/storage.service';
 import { TlsService } from '../tls/tls.service';
 import { SettingsService, type LdapSettings } from './settings.service';
@@ -31,7 +32,14 @@ import { SettingsService, type LdapSettings } from './settings.service';
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
 
 const generalSchema = z.object({ appName: z.string().trim().min(1, 'Name fehlt').max(100) });
-const mailSchema = z.object({ testMode: z.boolean() });
+const scope = z.enum(['none', 'selected', 'all']);
+const addressList = z
+  .array(emailSchema)
+  .max(1000)
+  .default([])
+  .transform((list) => [...new Set(list)]);
+/** Testbetrieb: Empfängerkreise für IT-Mitarbeitende und alle übrigen (beide «all» = normaler Betrieb) */
+const mailSchema = z.object({ staff: scope, others: scope, staffEmails: addressList, otherEmails: addressList });
 const microsoftSchema = z.object({
   clientId: z
     .string()
@@ -116,7 +124,9 @@ export class SettingsController {
       hasLogo: !!logo,
       logoVersion: logo?.storageKey.slice(-8) ?? null,
       setupRequired,
-      testMode: mail.testMode,
+      // Testbetrieb: Wer bekommt Mails (für den Hinweis oben)?
+      testMode: !isLive(mail),
+      delivery: { staff: mail.staff, others: mail.others },
       // Für den Hinweis an Admins vor Ablauf; das Zertifikat ist ohnehin öffentlich
       certificateExpiresAt: this.tls.expiresAt,
     };
@@ -153,7 +163,7 @@ export class SettingsController {
     return this.settings.get('mail');
   }
 
-  /** Testbetrieb ein/aus. Zurückgehaltene Mails werden beim Ausschalten nicht nachträglich versendet. */
+  /** Testbetrieb: Empfängerkreise. Zurückgehaltene Mails werden später nicht nachträglich versendet. */
   @AdminOnly()
   @Put('settings/mail')
   async updateMail(@Body(new ZodPipe(mailSchema)) body: z.infer<typeof mailSchema>) {

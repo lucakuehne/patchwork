@@ -1,10 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import nodemailer, { type SendMailOptions } from 'nodemailer';
 import type PgBoss from 'pg-boss';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
-import { attachments, heldMails, mailMessages, type Mailbox } from '../db/schema';
+import { attachments, mailMessages, outgoingMails, users, type Attachment, type Mailbox } from '../db/schema';
 import { BossService, QUEUE_MAIL_SEND } from '../jobs/boss.service';
 import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
@@ -12,6 +12,7 @@ import { GraphMailService } from './graph-mail.service';
 import { explainMailError } from './mail-errors';
 import { MailboxesService } from './mailboxes.service';
 import { MailTransportService } from './mail-transport.service';
+import { deliveryFilter, isLive } from './test-delivery';
 
 export interface OutgoingMail {
   mailboxId: string;
@@ -76,6 +77,19 @@ export class MailSenderService implements OnModuleInit {
     for (const job of jobs) await this.send(job.data);
   }
 
+  /** Eine fehlgeschlagene Mail noch einmal in die Versand-Queue stellen. */
+  async resend(id: string): Promise<void> {
+    const [row] = await this.db.select().from(outgoingMails).where(eq(outgoingMails.id, id)).limit(1);
+    if (!row) throw new NotFoundException('Mail nicht gefunden');
+    if (row.status !== 'failed' || !row.payload) throw new BadRequestException('Erneut senden geht nur bei fehlgeschlagenen Mails');
+    await this.db.update(outgoingMails).set({ status: 'queued' }).where(eq(outgoingMails.id, id));
+    await (await this.boss.boss()).send(QUEUE_MAIL_SEND, row.payload, { retryLimit: 10, retryDelay: 30, retryBackoff: true });
+  }
+
+  /**
+   * Versendet eine Mail und hält sie im Protokoll fest: vollständig (.eml), mit Status, Empfängern und Fehlern.
+   * Im Testbetrieb geht sie nur an freigegebene Empfänger; die übrigen stehen dann auch nicht im Kopf.
+   */
   private async send(mail: OutgoingMail) {
     let mailbox: Mailbox;
     try {
@@ -90,10 +104,11 @@ export class MailSenderService implements OnModuleInit {
       : [];
     const { appName } = await this.settings.get('general');
     const fromName = mailbox.name || appName;
-    const message: SendMailOptions = {
+    // Anhänge als Streams: für jede Fassung der Mail neu
+    const build = (to: string[], cc: string[]): SendMailOptions => ({
       from: { name: fromName, address: mailbox.address },
-      to: mail.to,
-      cc: mail.cc,
+      to,
+      cc,
       subject: mail.subject,
       text: mail.text,
       html: mail.html,
@@ -108,42 +123,80 @@ export class MailSenderService implements OnModuleInit {
       })),
       disableFileAccess: true,
       disableUrlAccess: true,
-    };
+    });
 
-    if ((await this.settings.get('mail')).testMode) {
-      await this.hold(mail, mailbox, message);
+    // Testbetrieb: nur an freigegebene Empfänger
+    const delivery = await this.settings.get('mail');
+    const allowed = isLive(delivery)
+      ? () => true
+      : deliveryFilter(delivery, await this.staffAddresses([...mail.to, ...mail.cc]));
+    const to = mail.to.filter(allowed);
+    const cc = mail.cc.filter(allowed);
+    const deliveredTo = [...to, ...cc];
+    const withheld = [...mail.to, ...mail.cc].filter((a) => !deliveredTo.includes(a));
+
+    // Ins Protokoll kommt die vollständige Mail, so wie sie ohne Testbetrieb versendet würde
+    const full = await buildMime(build(mail.to, mail.cc));
+    const logId = await this.log(mail, mailbox, full);
+    if (!logId) return; // schon versendet, z.B. «Erneut senden» und Wiederholung der Queue
+    if (deliveredTo.length === 0) {
+      await this.finish(logId, 'held', []);
+      this.logger.log(`Testbetrieb: Mail «${mail.subject}» an ${withheld.join(', ')} nicht versendet`);
       return;
     }
 
-    // Mit angemeldetem Microsoft-Konto über Microsoft Graph, sonst über SMTP
+    try {
+      const mime = withheld.length === 0 ? full : await buildMime(build(to, cc));
+      await this.deliver(mailbox, { ...mail, to, cc }, mime, files, fromName);
+    } catch (err) {
+      const message = mailbox.authType === 'microsoft' ? (err as Error).message : explainMailError((err as Error).message, mailbox);
+      await this.db.update(outgoingMails).set({ status: 'failed', error: message }).where(eq(outgoingMails.id, logId));
+      this.logger.error(`Versand von «${mail.subject}» fehlgeschlagen: ${message}`);
+      throw err;
+    }
+    await this.finish(logId, withheld.length === 0 ? 'sent' : 'partial', deliveredTo);
+    this.logger.log(
+      withheld.length === 0
+        ? `Mail «${mail.subject}» an ${deliveredTo.join(', ')} gesendet`
+        : `Testbetrieb: Mail «${mail.subject}» nur an ${deliveredTo.join(', ')} versendet, nicht an ${withheld.join(', ')}`,
+    );
+  }
+
+  /** Mit angemeldetem Microsoft-Konto über Microsoft Graph, sonst über SMTP; versendet wird die fertige Mail (MIME). */
+  private async deliver(mailbox: Mailbox, mail: OutgoingMail, mime: Buffer, files: Attachment[], fromName: string) {
     if (mailbox.authType === 'microsoft') {
-      try {
-        await this.graph.send(mailbox, { ...mail, fromName }, await buildMime(message), files);
-        this.logger.log(`Mail «${mail.subject}» an ${[...mail.to, ...mail.cc].join(', ')} über Microsoft Graph gesendet`);
-      } catch (err) {
-        this.logger.error(`Versand von «${mail.subject}» fehlgeschlagen: ${(err as Error).message}`);
-        throw err;
-      }
+      await this.graph.send(mailbox, { ...mail, fromName }, mime, files);
       return;
     }
-
     const transporter = await this.transport.smtpTransport(mailbox);
     try {
-      await transporter.sendMail(message);
-      this.logger.log(`Mail «${mail.subject}» an ${[...mail.to, ...mail.cc].join(', ')} gesendet`);
-    } catch (err) {
-      this.logger.error(`Versand von «${mail.subject}» fehlgeschlagen: ${explainMailError((err as Error).message, mailbox)}`);
-      throw err;
+      await transporter.sendMail({ envelope: { from: mailbox.address, to: [...mail.to, ...mail.cc] }, raw: mime });
     } finally {
       transporter.close();
     }
   }
 
-  /** Testbetrieb: Mail fertig zusammenstellen und ablegen statt versenden. */
-  private async hold(mail: OutgoingMail, mailbox: Mailbox, message: SendMailOptions) {
-    const storageKey = await this.storage.save(await buildMime(message), 'eml');
-    await this.db
-      .insert(heldMails)
+  /**
+   * Hält die Mail im Protokoll fest (beim ersten Versuch mit .eml) und zählt die Versuche.
+   * null = schon versendet oder im Testbetrieb abgelegt, nichts mehr zu tun.
+   */
+  private async log(mail: OutgoingMail, mailbox: Mailbox, full: Buffer): Promise<string | null> {
+    const [existing] = await this.db
+      .select({ id: outgoingMails.id, status: outgoingMails.status })
+      .from(outgoingMails)
+      .where(eq(outgoingMails.messageId, mail.messageId))
+      .limit(1);
+    if (existing) {
+      if (existing.status === 'sent' || existing.status === 'partial' || existing.status === 'held') return null;
+      await this.db
+        .update(outgoingMails)
+        .set({ status: 'queued', attempts: sql`${outgoingMails.attempts} + 1` })
+        .where(eq(outgoingMails.id, existing.id));
+      return existing.id;
+    }
+    const storageKey = await this.storage.save(full, 'eml');
+    const [row] = await this.db
+      .insert(outgoingMails)
       .values({
         messageId: mail.messageId,
         itemId: mail.itemId,
@@ -154,9 +207,30 @@ export class MailSenderService implements OnModuleInit {
         cc: mail.cc,
         subject: mail.subject,
         automated: mail.automated,
+        status: 'queued',
+        attempts: 1,
+        payload: mail as unknown as Record<string, unknown>,
         storageKey,
       })
-      .onConflictDoNothing();
-    this.logger.log(`Testbetrieb: Mail «${mail.subject}» an ${[...mail.to, ...mail.cc].join(', ')} nicht versendet`);
+      .returning({ id: outgoingMails.id });
+    return row!.id;
+  }
+
+  private async finish(id: string, status: 'sent' | 'partial' | 'held', deliveredTo: string[]) {
+    await this.db
+      .update(outgoingMails)
+      .set({ status, deliveredTo, error: null, sentAt: status === 'held' ? null : new Date() })
+      .where(eq(outgoingMails.id, id));
+  }
+
+  /** Adressen von IT-Mitarbeitenden (Rolle IT oder Admin) unter den Empfängern. */
+  private async staffAddresses(addresses: string[]): Promise<Set<string>> {
+    const normalized = [...new Set(addresses.map((a) => a.trim().toLowerCase()))];
+    if (normalized.length === 0) return new Set();
+    const rows = await this.db
+      .select({ email: users.email })
+      .from(users)
+      .where(and(inArray(users.email, normalized), inArray(users.role, ['it', 'admin'])));
+    return new Set(rows.map((r) => r.email));
   }
 }

@@ -17,6 +17,25 @@ const session = useSession();
 const meta = computed(() => (props.entry.meta ?? {}) as Record<string, unknown>);
 const author = computed(() => props.entry.author?.name ?? 'System');
 const fromMail = computed(() => meta.value.source === 'mail');
+// Versand der Antwort, nur bei Abweichungen: Testbetrieb, Fehler, noch unterwegs
+const deliveryBadge = computed(() => {
+  const d = props.entry.delivery;
+  if (!d) return null;
+  switch (d.status) {
+    case 'partial':
+      return {
+        text: 'teilweise versendet',
+        title: `Im Testbetrieb nur an ${d.deliveredTo.join(', ')} versendet, nicht an ${d.withheld.join(', ')}`,
+        kind: 'held',
+      };
+    case 'held':
+      return { text: 'nicht versendet', title: `Im Testbetrieb zusammengestellt, aber nicht versendet (an ${d.withheld.join(', ')})`, kind: 'held' };
+    case 'failed':
+      return { text: 'Versand fehlgeschlagen', title: d.error ?? '', kind: 'failed' };
+    default:
+      return { text: 'wird versendet', title: 'Die Mail ist in der Versand-Queue', kind: 'queued' };
+  }
+});
 
 const html = computed(() => {
   if (props.entry.bodyHtml) return renderMailHtml(props.entry.bodyHtml);
@@ -110,7 +129,7 @@ async function save() {
       </a>
       <span class="faint small">{{ formatDateTime(entry.createdAt) }}</span>
       <span v-if="entry.editedAt" class="faint small" :title="`Bearbeitet am ${formatDateTime(entry.editedAt)}`">· bearbeitet</span>
-      <span v-if="entry.held" class="badge held" title="Im Testbetrieb zusammengestellt, aber nicht versendet">nicht versendet</span>
+      <span v-if="deliveryBadge" class="badge" :class="deliveryBadge.kind" :title="deliveryBadge.title">{{ deliveryBadge.text }}</span>
     </div>
     <div v-if="editing" class="stack">
       <MarkdownEditor v-model="draft" :min-height="90" autofocus @submit="save" />
@@ -176,5 +195,13 @@ async function save() {
 .badge.held {
   background: var(--warning-soft);
   color: var(--warning);
+}
+.badge.failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.badge.queued {
+  background: var(--surface-2);
+  color: var(--text-muted);
 }
 </style>

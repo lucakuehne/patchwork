@@ -271,9 +271,15 @@ export const mailMessages = pgTable(
   (t) => [index('mail_messages_item_idx').on(t.itemId, t.createdAt)],
 );
 
-/** Im Testbetrieb zurückgehaltene Mails: fertig zusammengestellt (.eml), aber nicht versendet. */
-export const heldMails = pgTable(
-  'held_mails',
+/**
+ * Protokoll aller ausgehenden Mails, vollständig als .eml (so wie sie ohne Testbetrieb versendet worden wären).
+ * queued = wird versendet, sent = an alle, partial = im Testbetrieb nur an «deliveredTo» (nur diese im Kopf),
+ * held = im Testbetrieb an niemanden, failed = Versand fehlgeschlagen (wird bis zum letzten Versuch wiederholt).
+ */
+export const outgoingStatus = pgEnum('outgoing_status', ['queued', 'sent', 'partial', 'held', 'failed']);
+
+export const outgoingMails = pgTable(
+  'outgoing_mails',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     messageId: text('message_id').notNull().unique(),
@@ -288,10 +294,23 @@ export const heldMails = pgTable(
     cc: jsonb('cc').$type<string[]>().notNull(),
     subject: text('subject').notNull(),
     automated: boolean('automated').notNull(),
+    status: outgoingStatus('status').notNull(),
+    /** Empfänger, an die die Mail tatsächlich ging */
+    deliveredTo: jsonb('delivered_to').$type<string[]>().notNull().default([]),
+    /** Letzter Fehler beim Versand */
+    error: text('error'),
+    attempts: integer('attempts').notNull().default(0),
+    /** Angaben zur Mail für «Erneut senden» */
+    payload: jsonb('payload').$type<Record<string, unknown>>(),
     storageKey: text('storage_key').notNull(),
     createdAt: createdAt(),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
   },
-  (t) => [index('held_mails_created_idx').on(t.createdAt), index('held_mails_item_idx').on(t.itemId)],
+  (t) => [
+    index('outgoing_mails_created_idx').on(t.createdAt),
+    index('outgoing_mails_item_idx').on(t.itemId),
+    index('outgoing_mails_status_idx').on(t.status),
+  ],
 );
 
 /** Verknüpfungen zwischen Vorgängen. Bei «relates» ist die Richtung bedeutungslos. */
@@ -413,7 +432,7 @@ export type Item = typeof items.$inferSelect;
 export type Status = typeof statuses.$inferSelect;
 export type Entry = typeof entries.$inferSelect;
 export type Mailbox = typeof mailboxes.$inferSelect;
-export type HeldMail = typeof heldMails.$inferSelect;
+export type OutgoingMailRow = typeof outgoingMails.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
 export type Rule = typeof rules.$inferSelect;
 export type Snippet = typeof snippets.$inferSelect;

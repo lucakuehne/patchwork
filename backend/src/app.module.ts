@@ -15,7 +15,7 @@ import { LinksService } from './items/links.service';
 import { BossService } from './jobs/boss.service';
 import { MaintenanceService } from './jobs/maintenance.service';
 import { GraphMailService } from './mail/graph-mail.service';
-import { HeldMailsController } from './mail/held-mails.controller';
+import { OutgoingMailsController } from './mail/outgoing-mails.controller';
 import { MailFetcherService } from './mail/mail-fetcher.service';
 import { MailSenderService } from './mail/mail-sender.service';
 import { MailTransportService } from './mail/mail-transport.service';
@@ -56,7 +56,7 @@ import { UsersService } from './users/users.service';
     MailboxesController,
     MailboxOptionsController,
     MicrosoftCallbackController,
-    HeldMailsController,
+    OutgoingMailsController,
     RulesController,
     SnippetsController,
     ReportsController,

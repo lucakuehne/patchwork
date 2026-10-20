@@ -80,6 +80,12 @@ export function automaticStatusText(e: Entry): string | null {
   return null;
 }
 
+/** Satzteil als Listenpunkt: ohne einleitenden Artikel und gross geschrieben, z.B. «Status von «Neu» auf «In Arbeit» geändert». */
+export function asListItem(text: string): string {
+  const stripped = text.replace(/^(den|die|das|dem|der|eine|einen|ein)\s+/, '');
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
 /** Beschreibung einer Status-, Typ- oder Feldänderung als Satzteil nach «hat». */
 export function eventPart(e: Entry): EventPart {
   const m = e.meta ?? {};

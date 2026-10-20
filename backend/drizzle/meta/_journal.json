@@ -85,6 +85,27 @@
       "when": 1792475711991,
       "tag": "0011_graph_abruf",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792480323006,
+      "tag": "0012_ausgehende_mails",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792480332375,
+      "tag": "0013_ausgehende_mails_daten",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792480355704,
+      "tag": "0014_zurueckgehaltene_entfernen",
+      "breakpoints": true
     }
   ]
 }

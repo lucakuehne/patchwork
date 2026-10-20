@@ -38,13 +38,28 @@ export interface AdminUser extends User {
   createdAt: string;
 }
 
+/** Testbetrieb: Wer Mails tatsächlich erhält – niemand, nur ausgewählte oder alle */
+export type DeliveryScope = 'none' | 'selected' | 'all';
+
+/** Testbetrieb (Verwaltung → Allgemein) */
+export interface MailSettings {
+  /** IT-Mitarbeitende (Rolle IT oder Admin) */
+  staff: DeliveryScope;
+  /** Melder, Beteiligte und alle übrigen Empfänger */
+  others: DeliveryScope;
+  staffEmails: string[];
+  otherEmails: string[];
+}
+
 export interface PublicInfo {
   appName: string;
   hasLogo: boolean;
   logoVersion: string | null;
   setupRequired: boolean;
-  /** Testbetrieb: Patchwork versendet keine Mails */
+  /** Testbetrieb: Patchwork versendet nicht alle Mails */
   testMode: boolean;
+  /** Testbetrieb: Empfängerkreise (beide «all» = normaler Betrieb) */
+  delivery: { staff: DeliveryScope; others: DeliveryScope };
   /** Ablauf des HTTPS-Zertifikats, null ohne HTTPS */
   certificateExpiresAt: string | null;
 }
@@ -170,8 +185,13 @@ export interface Entry {
   editedAt: string | null;
   author: User | null;
   originalMessageId: string | null;
-  /** Öffentliche Antwort, die im Testbetrieb nicht versendet wurde */
-  held: boolean;
+  /** Versand einer öffentlichen Antwort, nur bei Abweichungen (sonst null = normal versendet) */
+  delivery: {
+    status: Exclude<OutgoingStatus, 'sent'>;
+    deliveredTo: string[];
+    withheld: string[];
+    error: string | null;
+  } | null;
   attachments: Attachment[];
 }
 
@@ -281,21 +301,33 @@ export interface MailFolder {
   inbox: boolean;
 }
 
-/** Im Testbetrieb nicht versendete Mail */
-export interface HeldMail {
+/**
+ * Status einer ausgehenden Mail: queued = wird versendet, sent = an alle, partial = im Testbetrieb nur an einen Teil,
+ * held = im Testbetrieb an niemanden, failed = Versand fehlgeschlagen
+ */
+export type OutgoingStatus = 'queued' | 'sent' | 'partial' | 'held' | 'failed';
+
+/** Ausgehende Mail im Protokoll */
+export interface OutgoingMail {
   id: string;
   createdAt: string;
+  sentAt: string | null;
+  status: OutgoingStatus;
   fromAddress: string;
   to: string[];
   cc: string[];
+  /** An diese Empfänger ging die Mail tatsächlich */
+  deliveredTo: string[];
   subject: string;
   automated: boolean;
+  error: string | null;
+  attempts: number;
   /** Öffentliche Antwort aus der Timeline (sonst Bestätigung oder Benachrichtigung) */
   reply: boolean;
   item: { number: number; title: string };
 }
 
-export interface HeldMailDetail extends HeldMail {
+export interface OutgoingMailDetail extends OutgoingMail {
   text: string;
   html: string | null;
   attachments: { index: number; filename: string; contentType: string; size: number }[];

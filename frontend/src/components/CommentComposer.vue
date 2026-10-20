@@ -76,7 +76,14 @@ async function send() {
           </template>
         </template>
         <template v-else>Kein Mail-Empfänger (du bist selbst Melder)</template>
-        <strong v-if="session.info?.testMode" class="test-mode"> · Testbetrieb: wird nicht versendet</strong>
+        <strong v-if="session.info?.testMode" class="test-mode">
+          · Testbetrieb:
+          {{
+            session.info.delivery.staff === 'none' && session.info.delivery.others === 'none'
+              ? 'wird nicht versendet'
+              : 'geht nur an freigegebene Empfänger'
+          }}
+        </strong>
       </span>
       <span v-else class="faint small">Nur für die IT sichtbar, keine Mail</span>
     </div>

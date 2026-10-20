@@ -1172,9 +1172,23 @@ await step('Mails abholen ab: nur Mails ab dem Startzeitpunkt, nach Vorverlegen 
   await api('DELETE', `/admin/mailboxes/${mb.id}`);
 });
 
+await step('Protokoll: versendete Mails stehen vollständig unter «Ausgehende Mails»', async () => {
+  const sent = await api('GET', '/admin/outgoing-mails?status=sent');
+  const confirmation = sent.find((m) => !m.reply && m.item.number === itemNo && m.to.includes(ANNA));
+  assert.ok(confirmation, 'Eingangsbestätigung an den Melder im Protokoll');
+  assert.equal(confirmation.status, 'sent');
+  assert.deepEqual(confirmation.deliveredTo, [ANNA]);
+  assert.ok(confirmation.sentAt);
+  const eml = await fetch(`${BASE}/admin/outgoing-mails/${confirmation.id}/eml`, { headers: { cookie } });
+  assert.match(await eml.text(), /^Message-ID: <pw\./im);
+  assert.ok((await api('GET', '/admin/outgoing-mails')).length >= sent.length, 'ohne Filter alle Mails');
+});
+
 await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet worden wäre', async () => {
-  await api('PUT', '/settings/mail', { testMode: true });
-  assert.equal((await api('GET', '/public/info')).testMode, true);
+  await api('PUT', '/settings/mail', { staff: 'none', others: 'none' });
+  const info = await api('GET', '/public/info');
+  assert.equal(info.testMode, true);
+  assert.deepEqual(info.delivery, { staff: 'none', others: 'none' });
   const text = `Antwort im Testbetrieb ${RUN}`;
   const form = new FormData();
   form.append('kind', 'reply');
@@ -1184,30 +1198,62 @@ await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet wo
 
   let held;
   for (let i = 0; i < 30 && !held; i++) {
-    held = (await api('GET', '/admin/held-mails')).find((m) => m.reply && m.item.number === itemNo);
+    held = (await api('GET', '/admin/outgoing-mails?status=held,partial')).find((m) => m.reply && m.item.number === itemNo);
     if (!held) await sleep(1000);
   }
   assert.ok(held, 'Antwort steht in der Liste der nicht versendeten Mails');
+  assert.equal(held.status, 'held');
   assert.deepEqual(held.to, [ANNA]);
   assert.ok(held.cc.includes(CARLA), 'Beteiligte in CC');
   assert.equal(held.subject, `[PW-${itemNo}] VPN verbindet nicht`);
-  const full = await api('GET', `/admin/held-mails/${held.id}`);
+  const full = await api('GET', `/admin/outgoing-mails/${held.id}`);
   assert.ok(full.text.includes(text));
   assert.deepEqual(full.attachments.map((a) => a.filename), ['Beilage.txt']);
-  const attachment = await fetch(`${BASE}/admin/held-mails/${held.id}/attachments/0`, { headers: { cookie } });
+  const attachment = await fetch(`${BASE}/admin/outgoing-mails/${held.id}/attachments/0`, { headers: { cookie } });
   assert.equal(await attachment.text(), 'Inhalt');
-  const eml = await fetch(`${BASE}/admin/held-mails/${held.id}/eml`, { headers: { cookie } });
+  const eml = await fetch(`${BASE}/admin/outgoing-mails/${held.id}/eml`, { headers: { cookie } });
   assert.equal(eml.status, 200);
   assert.match(await eml.text(), /^Message-ID: <pw\./im);
-  assert.equal((await detail(itemNo)).entries.find((e) => e.body === text).held, true, 'Vermerk in der Timeline');
+  assert.deepEqual(held.deliveredTo, []);
+  const vermerk = (await detail(itemNo)).entries.find((e) => e.body === text).delivery;
+  assert.equal(vermerk.status, 'held', 'Vermerk in der Timeline');
+  assert.ok(vermerk.withheld.includes(ANNA));
+  await api('POST', `/admin/outgoing-mails/${held.id}/resend`, undefined, { expect: [400] });
   await sleep(1500);
   assert.ok(!(await inbox(ANNA)).some((m) => m.text.includes(text)), 'Mail ist nicht beim Melder angekommen');
 
   await loginAs(IVAN, 'geheim-geheim');
-  await api('GET', '/admin/held-mails', undefined, { expect: [403] });
-  await api('PUT', '/settings/mail', { testMode: false }, { expect: [403] });
+  await api('GET', '/admin/outgoing-mails', undefined, { expect: [403] });
+  await api('PUT', '/settings/mail', { staff: 'all', others: 'all' }, { expect: [403] });
   await loginAs('ada@test.local', 'geheim-geheim');
-  await api('PUT', '/settings/mail', { testMode: false });
+});
+
+await step('Testbetrieb teilweise: nur freigegebene Empfänger erhalten die Mail, ohne die übrigen im Kopf', async () => {
+  await api('PUT', '/settings/mail', { staff: 'all', others: 'selected', otherEmails: [CARLA.toUpperCase()] });
+  const settings = await api('GET', '/settings/mail');
+  assert.deepEqual(settings.otherEmails, [CARLA], 'Adressen klein geschrieben');
+  assert.deepEqual((await api('GET', '/public/info')).delivery, { staff: 'all', others: 'selected' });
+
+  const text = `Teilweise versendet ${RUN}`;
+  const form = new FormData();
+  form.append('kind', 'reply');
+  form.append('body', text);
+  await api('POST', `/items/${itemNo}/entries`, form);
+
+  const received = await waitForMail(CARLA, (m) => m.text.includes(text), 'Antwort an die freigegebene Beteiligte');
+  assert.deepEqual(received.to, [], 'Der Melder steht nicht im Kopf');
+  assert.deepEqual(received.cc, [CARLA]);
+  const partial = (await api('GET', '/admin/outgoing-mails?status=partial')).find((m) => m.reply && m.deliveredTo.includes(CARLA));
+  assert.ok(partial, 'Vollständige Mail in der Liste');
+  assert.deepEqual(partial.to, [ANNA]);
+  const vermerk = (await detail(itemNo)).entries.find((e) => e.body === text).delivery;
+  assert.equal(vermerk.status, 'partial');
+  assert.deepEqual(vermerk.deliveredTo, [CARLA]);
+  assert.ok(vermerk.withheld.includes(ANNA));
+  await sleep(1500);
+  assert.ok(!(await inbox(ANNA)).some((m) => m.text.includes(text)), 'Melder hat die Mail nicht erhalten');
+
+  await api('PUT', '/settings/mail', { staff: 'all', others: 'all' });
   assert.equal((await api('GET', '/public/info')).testMode, false);
 });
 
