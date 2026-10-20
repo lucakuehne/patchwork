@@ -6,9 +6,11 @@ import cookieParser from 'cookie-parser';
 import type { NextFunction, Request, Response } from 'express';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import type { TLSSocket } from 'node:tls';
 import { appConfig } from './config';
 import { migrateDatabase } from './db/migrate';
 import { AppModule } from './app.module';
+import { TlsService } from './tls/tls.service';
 
 async function bootstrap() {
   const logger = new Logger('Patchwork');
@@ -17,6 +19,15 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
   app.set('trust proxy', 'loopback, linklocal, uniquelocal');
   app.disable('x-powered-by');
+
+  // Läuft HTTPS und steht PUBLIC_URL auf https://, gehen Anfragen über http:// auf die öffentliche Adresse.
+  // Massgebend ist die Verbindung selbst, nicht X-Forwarded-Proto.
+  const tls = app.get(TlsService);
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (!tls.redirects || (req.socket as TLSSocket).encrypted) return next();
+    res.redirect(307, appConfig.publicUrl + req.originalUrl);
+  });
+
   app.use(cookieParser());
   app.setGlobalPrefix('api');
   app.enableShutdownHooks();
@@ -37,6 +48,8 @@ async function bootstrap() {
 
   await app.listen(appConfig.port);
   logger.log(`Patchwork läuft auf Port ${appConfig.port} (${appConfig.publicUrl})`);
+  // HTTPS mit dem Zertifikat aus Verwaltung → HTTPS, falls eingerichtet
+  await tls.start();
 }
 
 void bootstrap();

@@ -45,6 +45,8 @@ export interface PublicInfo {
   setupRequired: boolean;
   /** Testbetrieb: Patchwork versendet keine Mails */
   testMode: boolean;
+  /** Ablauf des HTTPS-Zertifikats, null ohne HTTPS */
+  certificateExpiresAt: string | null;
 }
 
 export interface Status {
@@ -245,6 +247,27 @@ export interface Mailbox {
   lastUid: number;
   lastPollAt: string | null;
   lastError: string | null;
+}
+
+/** Angaben zu einem Zertifikat */
+export interface CertificateInfo {
+  names: string[];
+  issuer: string;
+  validFrom: string;
+  validTo: string;
+}
+
+/** HTTPS: Zertifikat und offene Anforderung (Verwaltung → HTTPS) */
+export interface TlsStatus {
+  active: boolean;
+  httpsPort: number;
+  publicUrl: string;
+  /** http:// leitet auf https:// um */
+  redirects: boolean;
+  error: string | null;
+  certificate: (CertificateInfo & { daysLeft: number }) | null;
+  pending: { names: string[]; createdAt: string; csr: string } | null;
+  suggestedNames: string[];
 }
 
 /** Ordner eines Postfachs zur Auswahl für den Abruf */

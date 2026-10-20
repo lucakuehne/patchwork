@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { encryptSecret } from '../common/crypto';
+import { appConfig } from '../config';
 import type { Mailbox } from '../db/schema';
 import { SettingsService } from '../settings/settings.service';
 import { MailboxesService } from './mailboxes.service';
 import { MailTransportService } from './mail-transport.service';
 import {
   accountFromIdToken,
+  callbackUrl,
   formPost,
   MICROSOFT_LOGIN,
   MICROSOFT_SCOPE,
@@ -30,17 +32,29 @@ interface PendingBrowserLogin {
   verifier: string;
   tenant: string;
   clientId: string;
+  redirectUri: string;
   expiresAt: number;
+  /** Ergebnis nach dem Rücksprung zu Patchwork, bis der Anmeldedialog es abholt */
+  result?: LoginCheck;
 }
 
 export type LoginCheck = { status: 'pending' } | { status: 'done'; account: string } | { status: 'failed'; message: string };
 
+/** Antwort von Microsoft beim Rücksprung zu Patchwork */
+export interface CallbackQuery {
+  code?: string;
+  state?: string;
+  error?: string;
+  error_description?: string;
+}
+
 /**
  * Meldet ein Postfach mit einem Microsoft-Konto an:
- * - im Browser (Autorisierungscode mit PKCE): Anmeldeseite in einem neuen Tab, danach die Adresse der leeren
- *   Rücksprungseite in Patchwork einfügen. Bleibt erlaubt, wenn ein Tenant die Anmeldung mit Code sperrt.
+ * - im Browser (Autorisierungscode mit PKCE): Anmeldeseite in einem neuen Tab. Mit HTTPS kehrt der Tab danach
+ *   direkt zu Patchwork zurück, sonst (oder als Ausweichweg) fügt man die Adresse der leeren Rücksprungseite von
+ *   Microsoft in Patchwork ein. Bleibt erlaubt, wenn ein Tenant die Anmeldung mit Code sperrt.
  * - mit Gerätecode: Patchwork zeigt einen Code, den man unter microsoft.com/devicelogin eingibt.
- * Beides geht ohne Client Secret und ohne Rückleitung zu Patchwork, also auch ohne HTTPS.
+ * Alles ohne Client Secret.
  */
 @Injectable()
 export class MicrosoftAuthService {
@@ -66,17 +80,29 @@ export class MicrosoftAuthService {
     return tenant;
   }
 
-  /** Anmeldung im Browser starten: Adresse der Anmeldeseite von Microsoft. */
-  async startBrowser(mailbox: Mailbox): Promise<{ url: string }> {
+  /**
+   * Anmeldung im Browser starten: Adresse der Anmeldeseite von Microsoft. «direct» kehrt mit HTTPS direkt zu
+   * Patchwork zurück; ohne HTTPS und mit «paste» fügt man danach die Adresse der leeren Seite ein.
+   */
+  async startBrowser(mailbox: Mailbox, mode: 'direct' | 'paste' = 'direct'): Promise<{ url: string; direct: boolean }> {
     const clientId = await this.clientId();
     const tenant = await this.tenantFor(mailbox.address);
     const { verifier, challenge } = pkcePair();
     const state = randomBytes(16).toString('base64url');
-    this.pendingBrowser.set(mailbox.id, { state, verifier, tenant, clientId, expiresAt: Date.now() + 15 * 60 * 1000 });
+    const callback = mode === 'direct' ? callbackUrl(appConfig.publicUrl) : null;
+    const redirectUri = callback ?? NATIVE_REDIRECT_URI;
+    this.pendingBrowser.set(mailbox.id, {
+      state,
+      verifier,
+      tenant,
+      clientId,
+      redirectUri,
+      expiresAt: Date.now() + 15 * 60 * 1000,
+    });
     const params = new URLSearchParams({
       client_id: clientId,
       response_type: 'code',
-      redirect_uri: NATIVE_REDIRECT_URI,
+      redirect_uri: redirectUri,
       response_mode: 'query',
       scope: MICROSOFT_SCOPE,
       state,
@@ -84,7 +110,48 @@ export class MicrosoftAuthService {
       code_challenge_method: 'S256',
       prompt: 'select_account',
     });
-    return { url: `${MICROSOFT_LOGIN}/${tenant}/oauth2/v2.0/authorize?${params}` };
+    return { url: `${MICROSOFT_LOGIN}/${tenant}/oauth2/v2.0/authorize?${params}`, direct: !!callback };
+  }
+
+  /**
+   * Rücksprung von Microsoft direkt zu Patchwork: Code einlösen und das Ergebnis für den Anmeldedialog ablegen.
+   * Zugeordnet wird über «state», den nur Patchwork kennt; den Code einlösen geht nur mit dem PKCE-Verifier.
+   */
+  async completeCallback(query: CallbackQuery): Promise<LoginCheck> {
+    const entry = query.state ? [...this.pendingBrowser].find(([, login]) => login.state === query.state) : undefined;
+    if (!entry) return { status: 'failed', message: 'Diese Anmeldung ist unbekannt oder abgelaufen. Bitte in Patchwork neu starten.' };
+    const [mailboxId, login] = entry;
+    let result: LoginCheck;
+    if (login.result) {
+      result = login.result;
+    } else if (login.expiresAt < Date.now()) {
+      result = { status: 'failed', message: 'Die Anmeldung ist abgelaufen. Bitte die Anmeldung neu starten.' };
+    } else if (query.error || !query.code) {
+      result = {
+        status: 'failed',
+        message: microsoftError({ error: query.error ?? 'invalid_request', error_description: query.error_description }, 400),
+      };
+    } else {
+      try {
+        result = { status: 'done', account: await this.redeem(await this.mailboxes.get(mailboxId), login, query.code) };
+      } catch (err) {
+        result = { status: 'failed', message: (err as Error).message };
+      }
+    }
+    login.result = result;
+    return result;
+  }
+
+  /** Anmeldedialog fragt nach, ob der Rücksprung zu Patchwork schon da war. */
+  browserStatus(mailbox: Mailbox): LoginCheck {
+    const login = this.pendingBrowser.get(mailbox.id);
+    if (!login || login.expiresAt < Date.now()) {
+      this.pendingBrowser.delete(mailbox.id);
+      return { status: 'failed', message: 'Die Anmeldung ist abgelaufen. Bitte die Anmeldung neu starten.' };
+    }
+    if (!login.result) return { status: 'pending' };
+    this.pendingBrowser.delete(mailbox.id);
+    return login.result;
   }
 
   /** Anmeldung im Browser abschliessen: den Code aus der eingefügten Adresse gegen Tokens tauschen. */
@@ -106,22 +173,30 @@ export class MicrosoftAuthService {
     if (result.state !== login.state) {
       throw new BadRequestException('Die Adresse gehört nicht zu dieser Anmeldung. Bitte die Anmeldeseite neu öffnen.');
     }
+    try {
+      return { status: 'done', account: await this.redeem(mailbox, login, result.code!) };
+    } finally {
+      this.pendingBrowser.delete(mailbox.id);
+    }
+  }
+
+  /** Tauscht den Code gegen Tokens (mit derselben Rücksprungadresse wie beim Start) und speichert die Anmeldung. */
+  private async redeem(mailbox: Mailbox, login: PendingBrowserLogin, code: string): Promise<string> {
     const tokenUrl = `${MICROSOFT_LOGIN}/${login.tenant}/oauth2/v2.0/token`;
     const response = await fetch(
       tokenUrl,
       formPost({
         grant_type: 'authorization_code',
         client_id: login.clientId,
-        code: result.code!,
-        redirect_uri: NATIVE_REDIRECT_URI,
+        code,
+        redirect_uri: login.redirectUri,
         code_verifier: login.verifier,
         scope: MICROSOFT_SCOPE,
       }),
     );
     const data = (await response.json().catch(() => ({}))) as MicrosoftTokenResponse;
-    this.pendingBrowser.delete(mailbox.id);
     if (!response.ok || !data.refresh_token) throw new BadRequestException(microsoftError(data, response.status));
-    return { status: 'done', account: await this.store(mailbox, tokenUrl, login.clientId, data) };
+    return this.store(mailbox, tokenUrl, login.clientId, data);
   }
 
   /** Anmeldung mit Code starten: Code für microsoft.com/devicelogin. */

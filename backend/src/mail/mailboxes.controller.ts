@@ -1,6 +1,20 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  Res,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { z } from 'zod';
-import { AdminOnly } from '../auth/auth.decorators';
+import { AdminOnly, Public } from '../auth/auth.decorators';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import { GraphMailService } from './graph-mail.service';
 import { explainMailError } from './mail-errors';
@@ -8,7 +22,7 @@ import { MailFetcherService } from './mail-fetcher.service';
 import { imapFolders, type MailFolder } from './mail-folders';
 import { MailTransportService } from './mail-transport.service';
 import { MailboxesService, toPublicMailbox } from './mailboxes.service';
-import { MicrosoftAuthService } from './microsoft-auth.service';
+import { MicrosoftAuthService, type CallbackQuery } from './microsoft-auth.service';
 
 const port = z.coerce.number().int().min(1).max(65535);
 const optionalText = z.string().trim().max(1000).nullable().optional();
@@ -41,6 +55,31 @@ const mailboxSchema = z.object({
 
 /** Eingefügte Adresse der Rücksprungseite nach der Anmeldung im Browser */
 const browserFinishSchema = z.object({ url: z.string().trim().min(1, 'Adresse fehlt').max(8000) });
+
+/** direct = Rücksprung zu Patchwork (nur mit HTTPS), paste = Adresse der leeren Seite einfügen */
+const browserStartSchema = z.object({ mode: z.enum(['direct', 'paste']).default('direct') });
+
+/** Rücksprung von Microsoft nach der Anmeldung im Browser (nur mit HTTPS). */
+@Controller('microsoft')
+export class MicrosoftCallbackController {
+  constructor(private readonly microsoft: MicrosoftAuthService) {}
+
+  /**
+   * Ohne Sitzungsprüfung: Die Anmeldung ordnet «state» zu, den nur Patchwork vergeben hat, und den Code kann nur
+   * Patchwork mit dem PKCE-Verifier einlösen. Danach geht der Tab zu den Postfächern.
+   */
+  @Public()
+  @Get('callback')
+  async callback(@Query() query: CallbackQuery, @Res() res: Response) {
+    const result = await this.microsoft.completeCallback({
+      code: typeof query.code === 'string' ? query.code : undefined,
+      state: typeof query.state === 'string' ? query.state : undefined,
+      error: typeof query.error === 'string' ? query.error : undefined,
+      error_description: typeof query.error_description === 'string' ? query.error_description : undefined,
+    });
+    res.redirect(303, `/admin/postfaecher?microsoft=${result.status === 'done' ? 'ok' : 'fehler'}`);
+  }
+}
 
 /** Aktive Postfächer zur Auswahl des Antwort-Postfachs (für IT). */
 @Controller('mailboxes')
@@ -162,8 +201,17 @@ export class MailboxesController {
   /** Startet die Anmeldung mit einem Microsoft-Konto im Browser (Adresse der Anmeldeseite). */
   @Post(':id/microsoft/browser/start')
   @HttpCode(200)
-  async microsoftBrowserStart(@Param('id', ParseUUIDPipe) id: string) {
-    return this.microsoft.startBrowser(await this.mailboxes.get(id));
+  async microsoftBrowserStart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(browserStartSchema)) body: z.infer<typeof browserStartSchema>,
+  ) {
+    return this.microsoft.startBrowser(await this.mailboxes.get(id), body.mode);
+  }
+
+  /** Anmeldung im Browser mit Rücksprung zu Patchwork: abgeschlossen? */
+  @Get(':id/microsoft/browser/status')
+  async microsoftBrowserStatus(@Param('id', ParseUUIDPipe) id: string) {
+    return this.microsoft.browserStatus(await this.mailboxes.get(id));
   }
 
   /** Schliesst die Anmeldung im Browser mit der eingefügten Adresse der Rücksprungseite ab. */

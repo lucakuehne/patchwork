@@ -11,6 +11,7 @@
       <RouterLink to="/admin/checklisten">Checklisten-Vorlagen</RouterLink>
       <RouterLink to="/admin/textbausteine">Textbausteine</RouterLink>
       <RouterLink to="/admin/ldap">LDAP / AD</RouterLink>
+      <RouterLink to="/admin/https">HTTPS</RouterLink>
     </nav>
     <section class="admin-content">
       <RouterView />

@@ -19,6 +19,7 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080 \
+    HTTPS_PORT=8443 \
     DATA_DIR=/data \
     FRONTEND_DIR=/app/public
 
@@ -31,5 +32,6 @@ COPY --from=build /app/frontend/dist ./public
 RUN mkdir -p /data && chown node:node /data
 USER node
 VOLUME /data
-EXPOSE 8080
+# 8080 HTTP, 8443 HTTPS (sobald unter Verwaltung → HTTPS ein Zertifikat eingerichtet ist)
+EXPOSE 8080 8443
 CMD ["node", "dist/main.js"]

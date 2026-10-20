@@ -56,6 +56,7 @@ export const router = createRouter({
         },
         { path: 'status', name: 'admin-statuses', component: () => import('./views/admin/AdminStatuses.vue') },
         { path: 'ldap', name: 'admin-ldap', component: () => import('./views/admin/AdminLdap.vue') },
+        { path: 'https', name: 'admin-https', component: () => import('./views/admin/AdminHttps.vue') },
         {
           path: 'checklisten',
           name: 'admin-checklists',

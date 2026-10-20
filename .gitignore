@@ -7,3 +7,4 @@ coverage/
 .DS_Store
 ad-test-tls/
 portainer-token.txt
+deploy/tls/

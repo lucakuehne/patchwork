@@ -200,8 +200,14 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Smoke-, LDAP- und AD-Tests laufen in einem vorübergehenden Stack «patchwork-test» auf dem Server (`deploy/test-stack.yml`), der danach wieder entfernt wird.
   - Einrichtung über die Portainer-API mit einem Access Token des Benutzers. Die Token-Datei `portainer-token.txt` ist von Git und Docker ausgeschlossen.
   - Neue Versionen gehen erst nach Freigabe durch den Benutzer auf `main` und damit auf den Server.
-- Noch zu bestätigen:
-  - Vor dem produktiven Betrieb: HTTPS. Ohne HTTPS gehen Passwörter, auch die AD-Passwörter, unverschlüsselt durchs Netz.
+- HTTPS, bestätigt am 20.10.2026 (vor dem produktiven Betrieb nötig, sonst gehen Passwörter, auch die AD-Passwörter, unverschlüsselt durchs Netz):
+  - Zertifikat aus der eigenen Zertifizierungsstelle (AD CS). Der Schlüssel entsteht auf dem Server und verlässt ihn nicht; die CA signiert nur die Zertifikatsanforderung (CSR).
+  - **Patchwork liefert HTTPS selbst aus, ohne Caddy oder einen anderen Reverse Proxy.** Im Container auf Port 8443 (`HTTPS_PORT`), auf dem Server 443.
+  - `http://` leitet auf `https://` um, sobald HTTPS läuft und `PUBLIC_URL` mit `https://` beginnt (temporäre Umleitung 307 auf `PUBLIC_URL`, damit Browser sie nicht dauerhaft speichern).
+  - Hinweis für Admins oben in Patchwork ab 30 Tagen vor Ablauf des Zertifikats.
+  - Mit HTTPS kehrt die Microsoft-Anmeldung im Browser direkt zu Patchwork zurück (Umleitungs-URI `https://<Patchwork>/api/microsoft/callback` bei «Mobile- und Desktopanwendungen» in der App-Registrierung). Das Einfügen der Adresse und die Anmeldung mit Code bleiben als Ausweichweg.
+  - Erneuern in Patchwork: Verwaltung → HTTPS zeigt das Zertifikat, erstellt eine neue Anforderung samt Anleitung für die AD CS und nimmt das signierte Zertifikat entgegen; es gilt sofort, ohne Neustart.
+  - Technisch: Schlüssel und Zertifikat unter `DATA_DIR/tls` (Datenvolume, mit der Sicherung des Hosts gesichert), Anforderung mit `@peculiar/x509` (RSA 2048, SHA-256, Namen als CN und SAN). Upload als PEM, DER oder PKCS#7 (auch die Antwort der Microsoft-CA); Zwischenzertifikate gehen mit, die Wurzel nicht. Der Rücksprung von Microsoft wird über `state` zugeordnet, den Code löst nur Patchwork mit dem PKCE-Verifier ein.
 
 ## Testbetrieb, Mail-Abruf und Microsoft 365 (Stand 20.10.2026)
 
@@ -221,7 +227,7 @@ Bestätigt am 19.10.2026:
 5. Beim Ausschalten werden zurückgehaltene Mails nicht nachträglich verschickt, die Liste bleibt als Protokoll.
 6. Microsoft 365: Anmeldung pro Postfach mit Gerätecode (microsoft.com/devicelogin): Patchwork zeigt den Code, kopiert ihn und öffnet die Anmeldeseite in einem Popup. Tenant automatisch aus der Mail-Domain, kein Client Secret. Eine Anmeldung mit Weiterleitung zu Patchwork verlangt bei Microsoft HTTPS und folgt erst danach.
    - Ergänzt am 19.10.2026: Im Tenant des Benutzers sperrt eine Richtlinie für bedingten Zugriff die Anmeldung mit Gerätecode. Deshalb zusätzlich die Anmeldung im Browser (Autorisierungscode mit PKCE, ohne Client Secret): Anmeldeseite in einem neuen Tab, Rücksprung auf die leere Seite `https://login.microsoftonline.com/common/oauth2/nativeclient`, deren Adresse man in Patchwork einfügt. Beide Wege bleiben möglich.
-   - Bestätigt am 19.10.2026: Im Anmeldedialog ist die Anmeldung im Browser der Standard, «Stattdessen mit Code anmelden» die Alternative. Mit HTTPS entfällt später das Einfügen (Rückleitung direkt zu Patchwork).
+   - Bestätigt am 19.10.2026: Im Anmeldedialog ist die Anmeldung im Browser der Standard, «Stattdessen mit Code anmelden» die Alternative. Mit HTTPS entfällt später das Einfügen (Rückleitung direkt zu Patchwork). Umgesetzt am 20.10.2026, siehe Abschnitt Betrieb (HTTPS); «Stattdessen Adresse einfügen» bleibt als Ausweichweg.
 7. Einmalige App-Registrierung für die ganze Instanz (öffentlicher Client, einzelner Mandant, delegierte Rechte unter Microsoft Graph, Administratorzustimmung; seit 20.10.2026 `Mail.ReadWrite`, `Mail.Send`, `User.Read`, `offline_access`, `openid`, `profile`, siehe Punkt 11). Ganz automatisch geht es nicht, weil Patchwork für das Anlegen bereits eine Client-ID bräuchte. Die Anleitung steht in der Anwendung (Verwaltung → Postfächer → Microsoft 365), dort trägt man am Schluss die Anwendungs-ID ein.
 8. Benutzer-Postfach und freigegebenes Postfach: Es meldet sich das Konto des Postfachs selbst oder ein Konto mit Vollzugriff an (beim freigegebenen Postfach zusätzlich «Senden als»). Verbunden wird immer mit der Adresse des Postfachs. Patchwork zeigt das angemeldete Konto an.
 9. Der bisherige App-Zugriff (Client Credentials mit Client Secret) bleibt unter «Erweitert» erhalten.

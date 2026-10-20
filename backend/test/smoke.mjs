@@ -5,12 +5,19 @@
 //     -e "GREENMAIL_OPTS=-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled" \
 //     greenmail/standalone:2.1.3
 //   node test/smoke.mjs [http://localhost:8080]
+// HTTPS prüft der Test über HTTPS_PORT der Instanz (Standard 8443, sonst SMOKE_HTTPS_PORT setzen).
+import 'reflect-metadata';
+import * as x509 from '@peculiar/x509';
 import assert from 'node:assert/strict';
+import { webcrypto } from 'node:crypto';
+import https from 'node:https';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import nodemailer from 'nodemailer';
 
 const BASE = (process.argv[2] ?? 'http://localhost:8080') + '/api';
+// HTTPS der Instanz (HTTPS_PORT, Standard 8443)
+const HTTPS_PORT = Number(process.env.SMOKE_HTTPS_PORT ?? 8443);
 // Eindeutige Adressen pro Lauf: Andere Instanzen, die denselben GreenMail-Server abfragen, stören so nicht
 const RUN = Date.now().toString(36);
 const MAILBOX = `helpdesk-${RUN}@test.local`;
@@ -1202,6 +1209,73 @@ await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet wo
   await loginAs('ada@test.local', 'geheim-geheim');
   await api('PUT', '/settings/mail', { testMode: false });
   assert.equal((await api('GET', '/public/info')).testMode, false);
+});
+
+await step('HTTPS: Anforderung, signiertes Zertifikat hochladen, Abruf über HTTPS', async () => {
+  const host = new URL(BASE).hostname;
+  let tls = await api('GET', '/admin/tls');
+  assert.equal(tls.active, false);
+  assert.deepEqual(tls.suggestedNames, [host]);
+  tls = await api('POST', '/admin/tls/request', { names: [host, 'Patchwork.Test.local'] });
+  assert.deepEqual(tls.pending.names, [host, 'patchwork.test.local']);
+
+  // Test-CA signiert die Anforderung wie eine AD CS mit der Vorlage «Webserver»
+  x509.cryptoProvider.set(webcrypto);
+  const alg = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256', publicExponent: new Uint8Array([1, 0, 1]), modulusLength: 2048 };
+  const day = 24 * 60 * 60 * 1000;
+  const caKeys = await webcrypto.subtle.generateKey(alg, true, ['sign', 'verify']);
+  const ca = await x509.X509CertificateGenerator.createSelfSigned({
+    serialNumber: '01',
+    name: 'CN=Smoke-CA',
+    notBefore: new Date(Date.now() - day),
+    notAfter: new Date(Date.now() + 30 * day),
+    keys: caKeys,
+    signingAlgorithm: alg,
+    extensions: [new x509.BasicConstraintsExtension(true, undefined, true)],
+  });
+  const csr = new x509.Pkcs10CertificateRequest(tls.pending.csr);
+  const cert = await x509.X509CertificateGenerator.create({
+    serialNumber: '02',
+    subject: csr.subject,
+    issuer: ca.subject,
+    notBefore: new Date(Date.now() - 60_000),
+    notAfter: new Date(Date.now() + 20 * day),
+    publicKey: csr.publicKey,
+    signingKey: caKeys.privateKey,
+    signingAlgorithm: alg,
+    extensions: [...csr.extensions, new x509.ExtendedKeyUsageExtension([x509.ExtendedKeyUsage.serverAuth])],
+  });
+  const upload = (text, name) => {
+    const form = new FormData();
+    form.append('file', new Blob([text]), name);
+    return form;
+  };
+
+  // Ein Zertifikat zu einem fremden Schlüssel nimmt Patchwork nicht
+  const rejected = await api('POST', '/admin/tls/certificate', upload(ca.toString('pem'), 'ca.cer'), { expect: [400] });
+  assert.match(rejected.message, /passt zu keinem Schlüssel/);
+
+  tls = await api('POST', '/admin/tls/certificate', upload(`${cert.toString('pem')}\n${ca.toString('pem')}\n`, 'patchwork.cer'));
+  assert.equal(tls.active, true);
+  assert.equal(tls.pending, null);
+  assert.deepEqual(tls.certificate.names, [host, 'patchwork.test.local']);
+  assert.equal(tls.certificate.issuer, 'Smoke-CA');
+  assert.equal(tls.redirects, false, 'ohne https:// in PUBLIC_URL keine Umleitung');
+
+  // Abruf über HTTPS, nur mit Vertrauen in die Test-CA
+  const viaHttps = await new Promise((resolve, reject) => {
+    const req = https.request({ host, port: HTTPS_PORT, path: '/api/public/info', ca: ca.toString('pem') }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => resolve({ status: res.statusCode, info: JSON.parse(body) }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(viaHttps.status, 200);
+  assert.ok(viaHttps.info.certificateExpiresAt, 'Ablauf für den Hinweis an Admins');
+  // HTTP läuft daneben weiter
+  assert.equal((await api('GET', '/public/info')).certificateExpiresAt, viaHttps.info.certificateExpiresAt);
 });
 
 console.log('\nAlle Prüfungen bestanden.');

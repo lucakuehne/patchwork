@@ -21,8 +21,11 @@ import { AuthService } from '../auth/auth.service';
 import { LdapService } from '../auth/ldap.service';
 import { encryptSecret } from '../common/crypto';
 import { ZodPipe } from '../common/zod.pipe';
+import { appConfig } from '../config';
 import type { UploadedFile as UploadedFileData } from '../items/items.service';
+import { callbackUrl } from '../mail/microsoft';
 import { StorageService } from '../storage/storage.service';
+import { TlsService } from '../tls/tls.service';
 import { SettingsService, type LdapSettings } from './settings.service';
 
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
@@ -95,6 +98,7 @@ export class SettingsController {
     private readonly storage: StorageService,
     private readonly auth: AuthService,
     private readonly ldap: LdapService,
+    private readonly tls: TlsService,
   ) {}
 
   /** Angaben für Login-Seite und Kopfzeile. */
@@ -113,6 +117,8 @@ export class SettingsController {
       logoVersion: logo?.storageKey.slice(-8) ?? null,
       setupRequired,
       testMode: mail.testMode,
+      // Für den Hinweis an Admins vor Ablauf; das Zertifikat ist ohnehin öffentlich
+      certificateExpiresAt: this.tls.expiresAt,
     };
   }
 
@@ -155,10 +161,11 @@ export class SettingsController {
     return body;
   }
 
+  /** Anwendungs-ID und, mit HTTPS, die Rücksprungadresse für die App-Registrierung. */
   @AdminOnly()
   @Get('settings/microsoft')
-  microsoft() {
-    return this.settings.get('microsoft');
+  async microsoft() {
+    return { ...(await this.settings.get('microsoft')), callbackUrl: callbackUrl(appConfig.publicUrl) };
   }
 
   @AdminOnly()

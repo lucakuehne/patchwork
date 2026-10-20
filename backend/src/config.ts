@@ -30,6 +30,8 @@ export const appConfig = {
   publicUrl,
   secureCookies: publicUrl.startsWith('https://'),
   port: Number(process.env.PORT ?? 8080),
+  /** Port für HTTPS; Patchwork lauscht dort, sobald unter Verwaltung → HTTPS ein Zertifikat eingerichtet ist */
+  httpsPort: Number(process.env.HTTPS_PORT ?? 8443),
   dataDir: resolve(baseDir, process.env.DATA_DIR ?? './data'),
   frontendDir: resolve(process.env.FRONTEND_DIR ?? resolve(__dirname, '../../frontend/dist')),
   mailPolling: (process.env.MAIL_POLLING ?? 'true').toLowerCase() !== 'false',

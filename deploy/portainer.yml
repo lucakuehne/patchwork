@@ -9,10 +9,16 @@
 # Variablen des Stacks (Environment variables):
 #   APP_SECRET         mindestens 32 Zeichen, zufällig. Nach dem ersten Start nicht mehr ändern.
 #   POSTGRES_PASSWORD  nur Buchstaben und Ziffern, weil es in der Verbindungsadresse steht
-#   PUBLIC_URL         Adresse, unter der die Benutzer Patchwork aufrufen, z.B. http://patchwork.firma.local
-#   PATCHWORK_PORT     Port auf dem Server (Standard: 80)
+#   PUBLIC_URL         Adresse, unter der die Benutzer Patchwork aufrufen, z.B. http://patchwork.firma.local,
+#                      mit HTTPS https://patchwork.firma.local
+#   PATCHWORK_PORT     Port auf dem Server für HTTP (Standard: 80)
+#   PATCHWORK_HTTPS_PORT  Port auf dem Server für HTTPS (Standard: 443)
 #   PATCHWORK_TAG      Image-Version (Standard: latest, z.B. sha-1a2b3c4 für einen bestimmten Commit)
 #   MAIL_POLLING       Mail-Abruf ein/aus (Standard: true)
+#
+# HTTPS: Patchwork liefert es selbst aus. Das Zertifikat richtet man unter Verwaltung → HTTPS ein (Anforderung
+# erstellen, von der eigenen Zertifizierungsstelle signieren lassen, hochladen). Danach PUBLIC_URL auf https://
+# umstellen; dann leitet Patchwork http:// auf https:// um.
 #
 # Aktualisieren: im Stack «Pull and redeploy» mit «Re-pull image».
 
@@ -22,6 +28,7 @@ services:
     restart: unless-stopped
     ports:
       - "${PATCHWORK_PORT:-80}:8080"
+      - "${PATCHWORK_HTTPS_PORT:-443}:8443"
     environment:
       DATABASE_URL: postgres://patchwork:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD muss gesetzt sein}@db:5432/patchwork
       APP_SECRET: ${APP_SECRET:?APP_SECRET muss gesetzt sein (mindestens 32 Zeichen)}

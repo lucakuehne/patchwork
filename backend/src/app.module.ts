@@ -19,7 +19,7 @@ import { HeldMailsController } from './mail/held-mails.controller';
 import { MailFetcherService } from './mail/mail-fetcher.service';
 import { MailSenderService } from './mail/mail-sender.service';
 import { MailTransportService } from './mail/mail-transport.service';
-import { MailboxesController, MailboxOptionsController } from './mail/mailboxes.controller';
+import { MailboxesController, MailboxOptionsController, MicrosoftCallbackController } from './mail/mailboxes.controller';
 import { MailboxesService } from './mail/mailboxes.service';
 import { MicrosoftAuthService } from './mail/microsoft-auth.service';
 import { NotificationsService } from './mail/notifications.service';
@@ -37,6 +37,8 @@ import { SnippetsService } from './snippets/snippets.service';
 import { StatusesController } from './statuses/statuses.controller';
 import { StatusesService } from './statuses/statuses.service';
 import { StorageService } from './storage/storage.service';
+import { TlsController } from './tls/tls.controller';
+import { TlsService } from './tls/tls.service';
 import { UsersController } from './users/users.controller';
 import { UsersService } from './users/users.service';
 
@@ -53,10 +55,12 @@ import { UsersService } from './users/users.service';
     PortalController,
     MailboxesController,
     MailboxOptionsController,
+    MicrosoftCallbackController,
     HeldMailsController,
     RulesController,
     SnippetsController,
     ReportsController,
+    TlsController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
@@ -84,6 +88,7 @@ import { UsersService } from './users/users.service';
     AutomationService,
     SnippetsService,
     ReportsService,
+    TlsService,
   ],
 })
 export class AppModule {}

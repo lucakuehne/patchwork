@@ -12,6 +12,14 @@ export const MICROSOFT_LOGIN = 'https://login.microsoftonline.com';
  */
 export const NATIVE_REDIRECT_URI = 'https://login.microsoftonline.com/common/oauth2/nativeclient';
 
+/** Rücksprung direkt zu Patchwork (Plattform «Mobile- und Desktopanwendungen» in der App-Registrierung). */
+export const CALLBACK_PATH = '/api/microsoft/callback';
+
+/** Adresse für den Rücksprung zu Patchwork; nur mit HTTPS, sonst null. */
+export function callbackUrl(publicUrl: string): string | null {
+  return publicUrl.startsWith('https://') ? `${publicUrl.replace(/\/+$/, '')}${CALLBACK_PATH}` : null;
+}
+
 /**
  * Die in der App-Registrierung eingetragenen Rechte für Microsoft Graph (Mail.ReadWrite, Mail.Send, User.Read …),
  * dazu das Refresh-Token (offline_access) und der Kontoname (openid, profile).
@@ -84,7 +92,7 @@ const CODE_HINTS: Record<number, string> = {
   7000218:
     'Microsoft verlangt ein Client Secret: In der App-Registrierung unter Authentifizierung «Öffentliche Clientflows zulassen» auf Ja setzen, und die Rücksprungadresse muss unter «Mobile- und Desktopanwendungen» stehen, nicht unter «Web».',
   50011:
-    'Die Rücksprungadresse fehlt in der App-Registrierung: Authentifizierung → Plattform «Mobile- und Desktopanwendungen» → https://login.microsoftonline.com/common/oauth2/nativeclient.',
+    'Die Rücksprungadresse fehlt in der App-Registrierung: Authentifizierung → Plattform «Mobile- und Desktopanwendungen» → https://login.microsoftonline.com/common/oauth2/nativeclient und, mit HTTPS, die Adresse aus Verwaltung → Postfächer → Microsoft 365 → «Einrichtung ansehen».',
   54005: 'Diese Anmeldung wurde schon abgeschlossen. Bitte die Anmeldung neu starten.',
   70008: 'Die Anmeldung ist abgelaufen. Bitte die Anmeldung neu starten.',
   65001:

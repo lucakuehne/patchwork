@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
+import CertificateBanner from './components/CertificateBanner.vue';
 import ConfirmHost from './components/ConfirmHost.vue';
 import TestModeBanner from './components/TestModeBanner.vue';
 import ToastHost from './components/ToastHost.vue';
@@ -17,6 +18,7 @@ const showHeader = computed(
 
 <template>
   <TestModeBanner v-if="showHeader" />
+  <CertificateBanner v-if="showHeader" />
   <AppHeader v-if="showHeader" />
   <main>
     <RouterView />

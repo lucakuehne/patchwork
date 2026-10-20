@@ -190,11 +190,29 @@ Für eine PostgreSQL auf dem Docker-Host (Dev-Betrieb) lautet die Adresse z.B.
 | `DATABASE_URL` | PostgreSQL-Verbindung | – (Compose: Container `db`) |
 | `APP_SECRET` | Schlüssel für gespeicherte Passwörter (≥ 32 Zeichen, nach dem ersten Start nicht mehr ändern) | – |
 | `PUBLIC_URL` | Öffentliche Adresse, für Links in Mails; bei `https://` werden Cookies als `Secure` gesetzt | `http://localhost:8080` |
-| `PORT` | Port des Webservers | `8080` |
+| `PORT` | Port des Webservers (HTTP) | `8080` |
+| `HTTPS_PORT` | Port für HTTPS, aktiv sobald unter Verwaltung → HTTPS ein Zertifikat eingerichtet ist | `8443` |
 | `DATA_DIR` | Ablage für Dateien | `./data` (Container: `/data`) |
 | `MAIL_POLLING` | Mail-Abruf ein/aus | `true` |
 
 Mailserver, Name und Logo werden in der Oberfläche unter **Verwaltung** eingerichtet, nicht im Code.
+
+### HTTPS
+
+Patchwork liefert HTTPS selbst aus, ohne Reverse Proxy. Eingerichtet wird es unter **Verwaltung → HTTPS**:
+
+1. **Anforderung erstellen:** Patchwork erzeugt Schlüssel (RSA 2048) und Zertifikatsanforderung (CSR) für die angegebenen
+   Namen. Der Schlüssel liegt unter `DATA_DIR/tls` und verlässt den Server nicht.
+2. **Signieren lassen**, z.B. von der Zertifizierungsstelle des Active Directory (AD CS):
+   `certreq -submit -attrib "CertificateTemplate:WebServer" patchwork.csr patchwork.cer`. Die Anleitung steht auf der Seite.
+3. **Zertifikat hochladen** (.cer/.crt/.pem als Base64 oder DER, Ketten als .p7b). Patchwork prüft, ob es zum Schlüssel
+   passt und für Webserver ausgestellt ist, und übernimmt es ohne Neustart. Zwischenzertifikate gehen mit, die Wurzel nicht.
+4. `PUBLIC_URL` auf `https://…` umstellen. Dann leitet Patchwork Aufrufe über `http://` auf `https://` um, setzt Cookies
+   nur noch verschlüsselt und die Microsoft-Anmeldung kehrt direkt zu Patchwork zurück.
+
+Im Container lauscht HTTPS auf `HTTPS_PORT` (8443), die Stack-Dateien veröffentlichen ihn auf dem Server als 443
+(`PATCHWORK_HTTPS_PORT`). Ab 30 Tagen vor Ablauf sehen Admins oben einen Hinweis. Zum Erneuern auf derselben Seite eine
+neue Anforderung erstellen; das bisherige Zertifikat bleibt aktiv, bis das neue hochgeladen ist.
 
 ### Microsoft 365
 
@@ -209,9 +227,11 @@ Abruf und Versand laufen über Microsoft Graph, IMAP und SMTP AUTH braucht es da
    Administratorzustimmung. Am Schluss die Anwendungs-ID dort eintragen. Patchwork fordert genau die eingetragenen Rechte an
    (`https://graph.microsoft.com/.default`).
 2. **Pro Postfach:** Vorlage «Microsoft 365» wählen, speichern und «Mit Microsoft anmelden». Standard ist die Anmeldung im
-   Browser (Autorisierungscode mit PKCE): Patchwork öffnet die Anmeldeseite von Microsoft in einem neuen Tab, danach fügt man
-   die Adresse der leeren Seite in Patchwork ein. Alternativ «Stattdessen mit Code anmelden» (Gerätecode), sofern der Tenant
-   das nicht per bedingtem Zugriff sperrt. Anmelden kann sich das Konto des Postfachs oder ein Konto mit Vollzugriff
+   Browser (Autorisierungscode mit PKCE): Patchwork öffnet die Anmeldeseite von Microsoft in einem neuen Tab. Mit HTTPS
+   kehrt der Tab danach direkt zu Patchwork zurück; dafür braucht die App-Registrierung bei «Mobile- und
+   Desktopanwendungen» zusätzlich die Umleitungs-URI `https://<Patchwork>/api/microsoft/callback` (steht in der Anleitung
+   in Patchwork). Ohne HTTPS, oder mit «Stattdessen Adresse einfügen», fügt man die Adresse der leeren Seite in Patchwork
+   ein. Alternativ «Stattdessen mit Code anmelden» (Gerätecode), sofern der Tenant das nicht per bedingtem Zugriff sperrt. Anmelden kann sich das Konto des Postfachs oder ein Konto mit Vollzugriff
    (bei einem freigegebenen Postfach zusätzlich «Senden als»). Den Tenant ermittelt Patchwork aus der Mail-Domain.
 3. Den Ordner wählt man nach der Anmeldung beim Postfach aus der Liste der Ordner; Patchwork merkt sich dessen ID, ein
    Umbenennen stört also nicht.
@@ -221,7 +241,7 @@ Abruf und Versand laufen über Microsoft Graph, IMAP und SMTP AUTH braucht es da
    (`sendMail`), sie landet in «Gesendete Elemente». Mails über 3 MB gehen über einen Entwurf mit einzeln hochgeladenen
    Anhängen; dafür braucht es `Mail.ReadWrite`.
 
-Eine Rückleitung zu Patchwork selbst (ohne das Einfügen der Adresse) erlaubt Microsoft nur über HTTPS. Unter «Erweitert» bleibt der App-Zugriff ohne
+Unter «Erweitert» bleibt der App-Zugriff ohne
 angemeldetes Konto möglich (Client Credentials: `IMAP.AccessAsApp`, `SMTP.SendAsApp`, Service Principal in Exchange
 Online, Client Secret). Anleitung von Microsoft:
 <https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth>
@@ -234,6 +254,7 @@ backend/
   src/items/       Vorgänge: Ansichten, Typwechsel, Status, Timeline
   src/mail/        Postfächer, Abruf und Versand (IMAP/SMTP, Microsoft Graph), Benachrichtigungen
   src/statuses/    Status pro Typ und Kategorie-Regeln
+  src/tls/         HTTPS: Zertifikatsanforderung, Zertifikat, Server
   src/db/          Schema und Migrationen (drizzle/)
   test/smoke.mjs   End-to-End-Test
 frontend/

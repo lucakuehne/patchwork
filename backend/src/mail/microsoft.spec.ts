@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { decryptSecret, encryptSecret } from '../common/crypto';
+import { appConfig } from '../config';
 import type { Mailbox } from '../db/schema';
 import { MailTransportService } from './mail-transport.service';
 import { accountFromIdToken, microsoftError, tenantFromTokenEndpoint } from './microsoft';
@@ -31,7 +32,7 @@ afterEach(() => vi.unstubAllGlobals());
 const mailbox = { id: 'm1', address: 'helpdesk@firma.ch' } as Mailbox;
 
 function service(clientId = 'app-id') {
-  const mailboxes = { storeMicrosoftLogin: vi.fn() };
+  const mailboxes = { storeMicrosoftLogin: vi.fn(), get: vi.fn(async () => mailbox) };
   const transport = { forget: vi.fn() };
   const settings = { get: async () => ({ clientId }) };
   return {
@@ -119,6 +120,62 @@ describe('Anmeldung im Browser', () => {
         'https://login.microsoftonline.com/common/oauth2/nativeclient?error=access_denied&error_description=AADSTS53003%3A+Blocked+by+Conditional+Access',
       ),
     ).rejects.toThrow(/bedingten Zugriff.*\(AADSTS53003\)$/);
+  });
+});
+
+describe('Anmeldung im Browser mit Rücksprung zu Patchwork (HTTPS)', () => {
+  const publicUrl = appConfig.publicUrl;
+  afterEach(() => {
+    appConfig.publicUrl = publicUrl;
+  });
+
+  it('kehrt direkt zu Patchwork zurück; der Anmeldedialog holt das Ergebnis ab', async () => {
+    appConfig.publicUrl = 'https://patchwork.firma.ch';
+    const calls = microsoft({
+      '/firma.ch/v2.0/.well-known/openid-configuration': [json({ token_endpoint: TOKEN_URL }), json({ token_endpoint: TOKEN_URL })],
+      '/oauth2/v2.0/token': [
+        json({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, id_token: idToken({ preferred_username: 'luca@firma.ch' }) }),
+      ],
+    });
+    const { auth, mailboxes } = service();
+
+    const started = await auth.startBrowser(mailbox);
+    expect(started.direct).toBe(true);
+    const params = new URL(started.url).searchParams;
+    expect(params.get('redirect_uri')).toBe('https://patchwork.firma.ch/api/microsoft/callback');
+    expect(auth.browserStatus(mailbox)).toEqual({ status: 'pending' });
+
+    expect(await auth.completeCallback({ code: 'abc', state: params.get('state')! })).toEqual({ status: 'done', account: 'luca@firma.ch' });
+    expect(calls[1]!.form.get('redirect_uri')).toBe('https://patchwork.firma.ch/api/microsoft/callback');
+    expect(createHash('sha256').update(calls[1]!.form.get('code_verifier')!).digest('base64url')).toBe(params.get('code_challenge'));
+    expect(mailboxes.storeMicrosoftLogin).toHaveBeenCalledOnce();
+    expect(auth.browserStatus(mailbox)).toEqual({ status: 'done', account: 'luca@firma.ch' });
+
+    // Ausweichweg: Adresse der leeren Seite einfügen
+    const paste = await auth.startBrowser(mailbox, 'paste');
+    expect(paste.direct).toBe(false);
+    expect(new URL(paste.url).searchParams.get('redirect_uri')).toBe('https://login.microsoftonline.com/common/oauth2/nativeclient');
+  });
+
+  it('ohne HTTPS bleibt es beim Einfügen der Adresse', async () => {
+    appConfig.publicUrl = 'http://patchwork.firma.ch';
+    microsoft({ '/firma.ch/v2.0/.well-known/openid-configuration': [json({ token_endpoint: TOKEN_URL })] });
+    const started = await service().auth.startBrowser(mailbox);
+    expect(started.direct).toBe(false);
+    expect(new URL(started.url).searchParams.get('redirect_uri')).toBe('https://login.microsoftonline.com/common/oauth2/nativeclient');
+  });
+
+  it('meldet fremde und abgelehnte Rücksprünge', async () => {
+    appConfig.publicUrl = 'https://patchwork.firma.ch';
+    microsoft({ '/firma.ch/v2.0/.well-known/openid-configuration': [json({ token_endpoint: TOKEN_URL })] });
+    const { auth, mailboxes } = service();
+    expect((await auth.completeCallback({ code: 'x', state: 'fremd' })).status).toBe('failed');
+
+    const state = new URL((await auth.startBrowser(mailbox)).url).searchParams.get('state')!;
+    const result = await auth.completeCallback({ state, error: 'access_denied', error_description: 'AADSTS53003: Blocked by Conditional Access' });
+    expect(result).toMatchObject({ status: 'failed', message: expect.stringMatching(/bedingten Zugriff.*\(AADSTS53003\)$/) });
+    expect(auth.browserStatus(mailbox)).toEqual(result);
+    expect(mailboxes.storeMicrosoftLogin).not.toHaveBeenCalled();
   });
 });
 

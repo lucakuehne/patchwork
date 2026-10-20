@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { api, errorMessage } from '../../api';
+import { copyText } from '../../clipboard';
 import ModalDialog from '../../components/ModalDialog.vue';
 import { formatDateTime } from '../../format';
 import { useSession } from '../../stores/session';
@@ -69,6 +71,18 @@ async function load() {
   }
 }
 onMounted(() => Promise.all([load(), loadMicrosoft()]));
+
+// Rücksprung von Microsoft in einem neuen Tab: Ergebnis melden. Den Dialog im ursprünglichen Tab schliesst die Abfrage.
+const route = useRoute();
+const router = useRouter();
+onMounted(() => {
+  const result = route.query.microsoft;
+  if (result === 'ok') toast.success('Mit Microsoft angemeldet. Diesen Tab kannst du schliessen.');
+  if (result === 'fehler') {
+    toast.error(new Error('Die Anmeldung mit Microsoft ist fehlgeschlagen. Die Meldung steht im Anmeldedialog im anderen Tab.'));
+  }
+  if (result) void router.replace({ query: {} });
+});
 
 function create() {
   error.value = '';
@@ -324,6 +338,8 @@ async function remove(m: Mailbox) {
 // ---- Microsoft 365: einmalige Einrichtung (App-Registrierung) ----
 
 const microsoftClientId = ref('');
+/** Rücksprung zu Patchwork für die App-Registrierung, nur mit HTTPS */
+const microsoftCallbackUrl = ref<string | null>(null);
 const setupOpen = ref(false);
 const clientIdDraft = ref('');
 const setupError = ref('');
@@ -331,7 +347,9 @@ const savingSetup = ref(false);
 
 async function loadMicrosoft() {
   try {
-    microsoftClientId.value = (await api.get<{ clientId: string }>('/settings/microsoft')).clientId;
+    const settings = await api.get<{ clientId: string; callbackUrl: string | null }>('/settings/microsoft');
+    microsoftClientId.value = settings.clientId;
+    microsoftCallbackUrl.value = settings.callbackUrl;
   } catch (err) {
     toast.error(err);
   }
@@ -365,6 +383,8 @@ interface Login {
   /** Im Browser: Adresse der Anmeldeseite und eingefügte Adresse der leeren Rücksprungseite */
   url: string;
   pasted: string;
+  /** Im Browser mit HTTPS: Der Tab kehrt zu Patchwork zurück, nichts einfügen */
+  direct: boolean;
   /** Mit Code: Code für microsoft.com/devicelogin */
   userCode: string;
   verificationUri: string;
@@ -385,6 +405,7 @@ async function startMicrosoft(m: Mailbox) {
     mode: 'browser',
     url: '',
     pasted: '',
+    direct: false,
     userCode: '',
     verificationUri: '',
     expiresIn: 0,
@@ -394,17 +415,41 @@ async function startMicrosoft(m: Mailbox) {
   await startBrowser();
 }
 
-async function startBrowser() {
+/** «direct»: Mit HTTPS kehrt der Tab zu Patchwork zurück; «paste» oder ohne HTTPS: Adresse der leeren Seite einfügen. */
+async function startBrowser(mode: 'direct' | 'paste' = 'direct') {
   const current = login.value;
   if (!current) return;
   stopLogin();
-  Object.assign(current, { mode: 'browser', url: '', pasted: '', error: '', busy: true });
+  Object.assign(current, { mode: 'browser', url: '', pasted: '', direct: false, error: '', busy: true });
   try {
-    current.url = (await api.post<{ url: string }>(`/admin/mailboxes/${current.mailbox.id}/microsoft/browser/start`)).url;
+    const started = await api.post<{ url: string; direct: boolean }>(
+      `/admin/mailboxes/${current.mailbox.id}/microsoft/browser/start`,
+      { mode },
+    );
+    Object.assign(current, { url: started.url, direct: started.direct });
+    if (started.direct) loginTimer = window.setInterval(checkBrowser, 2000);
   } catch (err) {
     current.error = errorMessage(err);
   } finally {
     current.busy = false;
+  }
+}
+
+/** Anmeldung mit Rücksprung: nachfragen, ob der Tab schon zu Patchwork zurückgekehrt ist. */
+async function checkBrowser() {
+  const current = login.value;
+  if (!current) return stopLogin();
+  try {
+    const result = await api.get<{ status: 'pending' | 'done' | 'failed'; account?: string; message?: string }>(
+      `/admin/mailboxes/${current.mailbox.id}/microsoft/browser/status`,
+    );
+    if (result.status === 'pending') return;
+    stopLogin();
+    if (result.status === 'done') await loggedIn(result.account ?? '');
+    else current.error = result.message ?? 'Die Anmeldung ist fehlgeschlagen';
+  } catch (err) {
+    stopLogin();
+    current.error = errorMessage(err);
   }
 }
 
@@ -501,23 +546,6 @@ function openMicrosoft() {
   if (!login.value) return;
   copied.value = copyText(login.value.userCode);
   popup = window.open(login.value.verificationUri, 'patchwork-microsoft', 'popup,width=520,height=720');
-}
-
-/** Ohne HTTPS gibt es die Zwischenablage-API nicht, dann über ein unsichtbares Feld kopieren. */
-function copyText(text: string): boolean {
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).catch(() => undefined);
-    return true;
-  }
-  const field = document.createElement('textarea');
-  field.value = text;
-  field.style.position = 'fixed';
-  field.style.opacity = '0';
-  document.body.appendChild(field);
-  field.select();
-  const ok = document.execCommand('copy');
-  field.remove();
-  return ok;
 }
 </script>
 
@@ -777,20 +805,38 @@ function copyText(text: string): boolean {
             </button>
             <span class="faint small"> in einem neuen Tab</span>
           </li>
-          <li>Dort anmelden und bestätigen. Danach zeigt der Tab eine leere Seite.</li>
-          <li>
-            Die Adresse dieser leeren Seite kopieren (in die Adresszeile klicken, alles markieren und kopieren) und hier einfügen:
-            <input
-              v-model="login.pasted"
-              class="input mono pasted"
-              placeholder="https://login.microsoftonline.com/common/oauth2/nativeclient?code=…"
-              autocomplete="off"
-              @paste="onPaste"
-              @keydown.enter="finishBrowser"
-            />
+          <li v-if="login.direct">
+            Dort anmelden und bestätigen. Danach kehrt der Tab zu Patchwork zurück, und dieses Fenster schliesst sich von selbst.
           </li>
+          <template v-else>
+            <li>Dort anmelden und bestätigen. Danach zeigt der Tab eine leere Seite.</li>
+            <li>
+              Die Adresse dieser leeren Seite kopieren (in die Adresszeile klicken, alles markieren und kopieren) und hier
+              einfügen:
+              <input
+                v-model="login.pasted"
+                class="input mono pasted"
+                placeholder="https://login.microsoftonline.com/common/oauth2/nativeclient?code=…"
+                autocomplete="off"
+                @paste="onPaste"
+                @keydown.enter="finishBrowser"
+              />
+            </li>
+          </template>
         </ol>
-        <button class="btn btn-ghost btn-sm alternative" type="button" @click="startCode">Stattdessen mit Code anmelden</button>
+        <template v-if="login.direct">
+          <p v-if="login.url && !login.error" class="muted small">Warte auf die Anmeldung …</p>
+          <p class="faint small">
+            Zeigt Microsoft den Fehler AADSTS50011, fehlt die Rücksprungadresse von Patchwork in der App-Registrierung (siehe
+            «Einrichtung ansehen»). Bis dahin geht es mit «Stattdessen Adresse einfügen».
+          </p>
+        </template>
+        <div class="row">
+          <button v-if="login.direct" class="btn btn-ghost btn-sm" type="button" @click="startBrowser('paste')">
+            Stattdessen Adresse einfügen
+          </button>
+          <button class="btn btn-ghost btn-sm" type="button" @click="startCode">Stattdessen mit Code anmelden</button>
+        </div>
       </template>
       <template v-else>
         <template v-if="login.userCode">
@@ -805,14 +851,22 @@ function copyText(text: string): boolean {
           </p>
           <p v-if="!login.error" class="muted small">Warte auf die Anmeldung …</p>
         </template>
-        <button class="btn btn-ghost btn-sm alternative" type="button" @click="startBrowser">Stattdessen im Browser anmelden</button>
+        <button class="btn btn-ghost btn-sm alternative" type="button" @click="startBrowser()">Stattdessen im Browser anmelden</button>
       </template>
       <div v-if="login.error" class="error-box">{{ login.error }}</div>
       <template #footer>
         <button class="btn" type="button" @click="closeLogin">Abbrechen</button>
         <template v-if="login.mode === 'browser'">
-          <button v-if="login.error" class="btn" type="button" @click="startBrowser">Neu starten</button>
-          <button class="btn btn-primary" type="button" :disabled="!login.pasted.trim() || login.busy" @click="finishBrowser">
+          <button v-if="login.error" class="btn" type="button" @click="startBrowser(login.direct ? 'direct' : 'paste')">
+            Neu starten
+          </button>
+          <button
+            v-if="!login.direct"
+            class="btn btn-primary"
+            type="button"
+            :disabled="!login.pasted.trim() || login.busy"
+            @click="finishBrowser"
+          >
             Anmeldung abschliessen
           </button>
         </template>
@@ -844,6 +898,11 @@ function copyText(text: string): boolean {
           (Allow public client flows) auf <strong>Ja</strong> setzen und speichern. Fehlt die Umleitungs-URI aus Schritt 2, hier
           unter <strong>Plattform hinzufügen</strong> → <strong>Mobile- und Desktopanwendungen</strong> die vorgeschlagene Adresse
           <code>https://login.microsoftonline.com/common/oauth2/nativeclient</code> anhaken.
+        </li>
+        <li v-if="microsoftCallbackUrl">
+          Patchwork läuft über HTTPS: Unter <strong>Authentifizierung</strong> bei der Plattform <strong>Mobile- und
+          Desktopanwendungen</strong> zusätzlich <code>{{ microsoftCallbackUrl }}</code> als benutzerdefinierte Umleitungs-URI
+          eintragen und speichern. Dann kehrt die Anmeldung direkt zu Patchwork zurück, ohne Adresse einzufügen.
         </li>
         <li>
           Unter <strong>API-Berechtigungen</strong> (API permissions) → <strong>Berechtigung hinzufügen</strong> →
