@@ -2,13 +2,15 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { api } from '../api';
 import { CATEGORY_ORDER } from '../format';
-import type { Channel, Counts, ItemType, MailboxOption, PublicInfo, Status, User } from '../types';
+import { transitionAllowed } from '../status-flow';
+import type { Channel, Counts, ItemType, MailboxOption, PublicInfo, Status, StatusFlow, User } from '../types';
 
 export const useSession = defineStore('session', () => {
   const info = ref<PublicInfo | null>(null);
   const user = ref<User | null>(null);
   const counts = ref<Counts>({ inbox: 0, incidents: 0, tasks: 0 });
   const statuses = ref<Status[]>([]);
+  const statusFlow = ref<StatusFlow>({ restrict: { incident: false, task: false }, transitions: [] });
   const channels = ref<Channel[]>([]);
   const staff = ref<User[]>([]);
   const mailboxes = ref<MailboxOption[]>([]);
@@ -57,8 +59,14 @@ export const useSession = defineStore('session', () => {
   }
 
   async function loadStatuses() {
-    statuses.value = await api.get<Status[]>('/statuses');
+    const [list, flow] = await Promise.all([api.get<Status[]>('/statuses'), api.get<StatusFlow>('/statuses/flow')]);
+    statuses.value = list;
+    statusFlow.value = flow;
   }
+
+  /** Darf ein Vorgang dieses Typs von Hand von «fromId» nach «toId» wechseln (Ablauf)? */
+  const canMove = (type: ItemType, fromId: string | null, toId: string) =>
+    transitionAllowed(statusFlow.value.restrict[type], statusFlow.value.transitions, fromId, toId);
 
   async function loadStaff() {
     staff.value = await api.get<User[]>('/users/staff');
@@ -82,6 +90,7 @@ export const useSession = defineStore('session', () => {
     user,
     counts,
     statuses,
+    statusFlow,
     channels,
     staff,
     mailboxes,
@@ -100,6 +109,7 @@ export const useSession = defineStore('session', () => {
     loadStaff,
     loadMailboxes,
     statusesOf,
+    canMove,
     channelById,
   };
 });

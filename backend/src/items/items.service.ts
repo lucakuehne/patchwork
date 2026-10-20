@@ -206,7 +206,7 @@ export class ItemsService {
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
       closedAt: item.closedAt,
-      status: status && { id: status.id, label: status.label, category: status.category },
+      status: status && { id: status.id, label: status.label, category: status.category, color: status.color },
       reporter: toPublicUser(reporter),
       creator: toPublicUser(creator),
       assignee: assignee && toPublicUser(assignee),
@@ -441,6 +441,8 @@ export class ItemsService {
       if (target.category === 'rejected') throw new BadRequestException('Zum Ablehnen bitte «Ablehnen» verwenden');
       const current = all.find((s) => s.id === item.statusId);
       const completing = target.category === 'done' && current?.category !== 'done';
+      // Wechsel von Hand nur gemäss Ablauf, falls er für den Typ eingeschränkt ist
+      if (target.id !== item.statusId) await this.statuses.assertTransition(item.type, current, target, tx);
 
       if (completing && item.type === 'task' && !force) {
         const open = await this.openChecklistItems(tx, item.id);
@@ -958,7 +960,7 @@ export class ItemsService {
     createdAt: Date;
     updatedAt: Date;
     closedAt: Date | null;
-    status: { id: string | null; label: string | null; category: Status['category'] | null } | null;
+    status: { id: string | null; label: string | null; category: Status['category'] | null; color: string | null } | null;
     reporter: { id: string; name: string; email: string; role: User['role'] };
     assigneeId: string | null;
     assigneeName: string | null;

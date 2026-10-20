@@ -5,6 +5,6 @@ defineProps<{ status: StatusRef | null }>();
 </script>
 
 <template>
-  <span v-if="status" class="badge" :class="`cat-${status.category}`">{{ status.label }}</span>
+  <span v-if="status" class="badge" :class="`st-${status.color}`">{{ status.label }}</span>
   <span v-else class="badge">Eingang</span>
 </template>

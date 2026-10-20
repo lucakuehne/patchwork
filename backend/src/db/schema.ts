@@ -128,9 +128,28 @@ export const statuses = pgTable(
     label: text('label').notNull(),
     category: statusCategory('category').notNull(),
     position: integer('position').notNull(),
+    /** Farbe aus der Palette (siehe STATUS_COLORS) */
+    color: text('color').notNull().default('gray'),
+    /** Lage im Ablaufdiagramm; null = automatisch nach Kategorie */
+    diagramX: doublePrecision('diagram_x'),
+    diagramY: doublePrecision('diagram_y'),
     createdAt: createdAt(),
   },
   (t) => [unique('statuses_type_key_uq').on(t.type, t.key)],
+);
+
+/** Erlaubte Wechsel von Hand (Ablauf). Gelten nur, wenn der Ablauf des Typs eingeschränkt ist. */
+export const statusTransitions = pgTable(
+  'status_transitions',
+  {
+    fromId: uuid('from_id')
+      .notNull()
+      .references(() => statuses.id, { onDelete: 'cascade' }),
+    toId: uuid('to_id')
+      .notNull()
+      .references(() => statuses.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.fromId, t.toId] })],
 );
 
 /**

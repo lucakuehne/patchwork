@@ -32,12 +32,14 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
 - Standardstatus:
   - Störung: Neu (Neu), In Arbeit (In Arbeit), Wartet auf Melder (Wartend), Gelöst (Erledigt)
   - Aufgabe: Backlog (Neu), Geplant (Neu), In Arbeit (In Arbeit), Erledigt (Erledigt), Abgelehnt (Abgelehnt)
-- Überarbeitung, bestätigt am 20.10.2026 (noch nicht umgesetzt):
+- Überarbeitung, bestätigt am 20.10.2026:
   - Die Kategorie bleibt und steuert weiterhin das Verhalten.
   - Jeder Status erhält eine Farbe aus einer Palette, vorbelegt mit der Farbe seiner Kategorie. Sie gilt für die Anzeige des Status, die Listen, die Spalten des Boards und das Diagramm.
   - Erlaubte Wechsel («von welchem Status wohin») legt man pro Typ in einem bearbeitbaren Ablaufdiagramm fest: Status als Kästchen anordnen, Pfeile ziehen.
   - Die Wechsel gelten nur für Änderungen von Hand: Im Status-Feld und auf dem Board sind nur erlaubte Ziele wählbar. Automatisches (Antwort des Melders, Regeln, zeitgesteuerte Regeln, Ablehnen, Typwechsel, Duplikat) geht wie bisher.
   - Solange nichts festgelegt ist, sind alle Wechsel erlaubt, wie bisher.
+  - Seite (gewünscht am 20.10.2026): je eine Karte für Störung und Aufgabe untereinander, links die Status (anlegen, umbenennen, Farbe, Anzahl Vorgänge, löschen, per Ziehen sortieren und Kategorie wechseln), rechts das Ablaufdiagramm.
+  - Umgesetzt am 20.10.2026, Details: Pro Typ ein Häkchen «Wechsel von Hand nur gemäss Ablauf», anfangs aus; so lassen sich Pfeile vorbereiten, ohne dass sie schon gelten. Pfeil ziehen vom Punkt rechts an einem Status auf einen anderen Status (das ganze Kästchen nimmt ihn an), löschen durch Anklicken und Entf oder Doppelklick. Pfeile laufen von Rand zu Rand; gibt es Hin- und Rückweg zwischen zwei Status, sind beide leicht gebogen und liegen nebeneinander. In «Abgelehnt» führt kein Pfeil (dorthin nur «Ablehnen»). Ist der Ablauf eingeschränkt, sind Status ohne eingehenden Pfeil (ausser Kategorie Neu) gestrichelt markiert, weil man sie von Hand nicht erreicht. Auf dem Board sind beim Ziehen die nicht erlaubten Spalten abgeblendet. Palette mit zehn Farben, hell und dunkel. Diagramm mit Vue Flow.
 
 ## Ansichten
 

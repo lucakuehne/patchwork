@@ -134,6 +134,20 @@
       "when": 1792487459155,
       "tag": "0018_meldeweg_daten",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792490055187,
+      "tag": "0019_status_ablauf",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792490056881,
+      "tag": "0020_status_farben",
+      "breakpoints": true
     }
   ]
 }

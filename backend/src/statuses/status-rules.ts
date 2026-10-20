@@ -26,23 +26,51 @@ export const CATEGORY_LABELS: Record<StatusCategory, string> = {
   rejected: 'Abgelehnt',
 };
 
+/** Farben zur Auswahl für Status (das Frontend kennt die Farbwerte, hell und dunkel) */
+export const STATUS_COLORS = ['gray', 'blue', 'teal', 'green', 'yellow', 'orange', 'red', 'pink', 'purple', 'brown'] as const;
+export type StatusColor = (typeof STATUS_COLORS)[number];
+
+/** Farbe eines neuen Status: die bisherige Farbe seiner Kategorie */
+export const CATEGORY_COLORS: Record<StatusCategory, StatusColor> = {
+  new: 'blue',
+  in_progress: 'orange',
+  waiting: 'gray',
+  done: 'green',
+  rejected: 'red',
+};
+
 export const DEFAULT_STATUSES: {
   type: ItemType;
   key: string;
   label: string;
   category: StatusCategory;
   position: number;
+  color: StatusColor;
 }[] = [
-  { type: 'incident', key: 'new', label: 'Neu', category: 'new', position: 0 },
-  { type: 'incident', key: 'in_progress', label: 'In Arbeit', category: 'in_progress', position: 1 },
-  { type: 'incident', key: 'waiting', label: 'Wartet auf Melder', category: 'waiting', position: 2 },
-  { type: 'incident', key: 'resolved', label: 'Gelöst', category: 'done', position: 3 },
-  { type: 'task', key: 'backlog', label: 'Backlog', category: 'new', position: 0 },
-  { type: 'task', key: 'planned', label: 'Geplant', category: 'new', position: 1 },
-  { type: 'task', key: 'in_progress', label: 'In Arbeit', category: 'in_progress', position: 2 },
-  { type: 'task', key: 'done', label: 'Erledigt', category: 'done', position: 3 },
-  { type: 'task', key: 'rejected', label: 'Abgelehnt', category: 'rejected', position: 4 },
+  { type: 'incident', key: 'new', label: 'Neu', category: 'new', position: 0, color: 'blue' },
+  { type: 'incident', key: 'in_progress', label: 'In Arbeit', category: 'in_progress', position: 1, color: 'orange' },
+  { type: 'incident', key: 'waiting', label: 'Wartet auf Melder', category: 'waiting', position: 2, color: 'gray' },
+  { type: 'incident', key: 'resolved', label: 'Gelöst', category: 'done', position: 3, color: 'green' },
+  { type: 'task', key: 'backlog', label: 'Backlog', category: 'new', position: 0, color: 'blue' },
+  { type: 'task', key: 'planned', label: 'Geplant', category: 'new', position: 1, color: 'blue' },
+  { type: 'task', key: 'in_progress', label: 'In Arbeit', category: 'in_progress', position: 2, color: 'orange' },
+  { type: 'task', key: 'done', label: 'Erledigt', category: 'done', position: 3, color: 'green' },
+  { type: 'task', key: 'rejected', label: 'Abgelehnt', category: 'rejected', position: 4, color: 'red' },
 ];
+
+/**
+ * Darf ein Vorgang von Hand von einem Status in einen anderen wechseln? Ist der Ablauf eines Typs nicht eingeschränkt,
+ * ist jeder Wechsel erlaubt, sonst nur die festgelegten. Automatische Wechsel prüfen das nicht.
+ */
+export function transitionAllowed(
+  restricted: boolean,
+  transitions: { fromId: string; toId: string }[],
+  fromId: string | null,
+  toId: string,
+): boolean {
+  if (!restricted || !fromId || fromId === toId) return true;
+  return transitions.some((t) => t.fromId === fromId && t.toId === toId);
+}
 
 export function isClosedCategory(category: StatusCategory): boolean {
   return CLOSED_CATEGORIES.includes(category);

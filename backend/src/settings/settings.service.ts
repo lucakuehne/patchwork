@@ -82,6 +82,11 @@ export interface PortalSettings {
   groupDn: string;
 }
 
+/** Ablauf der Status: eingeschränkt = nur die festgelegten Wechsel von Hand (pro Typ) */
+export interface StatusFlowSettings {
+  restrict: { incident: boolean; task: boolean };
+}
+
 export interface MicrosoftSettings {
   /** Anwendungs-ID (Client-ID) der App-Registrierung in Entra ID für die Anmeldung von Postfächern */
   clientId: string;
@@ -96,6 +101,7 @@ interface SettingsMap {
   ldap: LdapSettings;
   mail: MailSettings;
   portal: PortalSettings;
+  statusFlow: StatusFlowSettings;
   microsoft: MicrosoftSettings;
   mailTemplates: MailTemplateOverrides;
 }
@@ -107,6 +113,8 @@ const DEFAULTS: SettingsMap = {
   mail: { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] },
   // Ohne Einstellung ist das Portal aus (Entscheid vom 20.10.2026)
   portal: { access: 'none', emails: [], groupDn: '' },
+  // Solange kein Ablauf festgelegt ist, sind alle Wechsel erlaubt
+  statusFlow: { restrict: { incident: false, task: false } },
   microsoft: { clientId: '' },
   mailTemplates: {},
 };

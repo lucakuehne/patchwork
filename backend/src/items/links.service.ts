@@ -68,7 +68,7 @@ export class LinksService {
       .select({
         link: links,
         other: { id: otherItem.id, number: otherItem.number, title: otherItem.title, type: otherItem.type },
-        status: { label: statuses.label, category: statuses.category },
+        status: { label: statuses.label, category: statuses.category, color: statuses.color },
       })
       .from(links)
       .innerJoin(

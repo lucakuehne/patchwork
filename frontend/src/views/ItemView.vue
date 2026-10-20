@@ -58,9 +58,15 @@ async function run(action: () => Promise<unknown>, success?: string) {
   }
 }
 
-const statusOptions = computed(() =>
-  item.value?.type ? session.statusesOf(item.value.type).filter((s) => s.category !== 'rejected') : [],
-);
+// Nur Status, in die der Vorgang laut Ablauf von Hand wechseln darf (dazu der aktuelle)
+const statusOptions = computed(() => {
+  const type = item.value?.type;
+  if (!type) return [];
+  const current = item.value!.status?.id ?? null;
+  return session
+    .statusesOf(type)
+    .filter((s) => s.category !== 'rejected' && (s.id === current || session.canMove(type, current, s.id)));
+});
 const canReject = computed(
   () =>
     !!item.value?.type &&

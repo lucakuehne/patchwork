@@ -30,7 +30,7 @@ export const summaryColumns = {
   createdAt: items.createdAt,
   updatedAt: items.updatedAt,
   closedAt: items.closedAt,
-  status: { id: statuses.id, label: statuses.label, category: statuses.category },
+  status: { id: statuses.id, label: statuses.label, category: statuses.category, color: statuses.color },
   reporter: { id: reporterUser.id, name: reporterUser.name, email: reporterUser.email, role: reporterUser.role },
   assigneeId: items.assigneeId,
   assigneeName: assigneeUser.name,

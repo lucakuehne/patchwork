@@ -3,10 +3,12 @@ import { onMounted, ref } from 'vue';
 import draggable from 'vuedraggable';
 import { api, errorMessage } from '../../api';
 import ModalDialog from '../../components/ModalDialog.vue';
+import StatusColorPicker from '../../components/StatusColorPicker.vue';
+import StatusFlowDiagram from '../../components/StatusFlowDiagram.vue';
 import { CATEGORY_LABELS, CATEGORY_ORDER, TYPE_LABELS } from '../../format';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
-import type { ItemType, Status, StatusCategory } from '../../types';
+import type { ItemType, Status, StatusCategory, StatusColor, StatusFlow } from '../../types';
 
 const session = useSession();
 const toast = useToast();
@@ -68,6 +70,41 @@ async function onChange(type: ItemType, category: StatusCategory, event: ChangeE
   await load();
 }
 
+async function setColor(status: Status, color: StatusColor) {
+  try {
+    await api.patch(`/statuses/${status.id}`, { color });
+  } catch (err) {
+    toast.error(err);
+  }
+  await load();
+}
+
+/** Ablauf eines Typs speichern: eingeschränkt ja/nein und die erlaubten Wechsel */
+async function saveFlow(type: ItemType, restrict: boolean, transitions: StatusFlow['transitions']) {
+  try {
+    session.statusFlow = await api.put<StatusFlow>('/statuses/flow', { type, restrict, transitions });
+  } catch (err) {
+    toast.error(err);
+    await load();
+  }
+}
+
+const transitionsOf = (type: ItemType) => {
+  const ids = new Set(session.statusesOf(type).map((s) => s.id));
+  return session.statusFlow.transitions.filter((t) => ids.has(t.fromId));
+};
+
+/** Lage im Diagramm merken, ohne alles neu zu laden */
+async function moveNode(id: string, x: number, y: number) {
+  const status = session.statuses.find((s) => s.id === id);
+  if (status) Object.assign(status, { diagramX: x, diagramY: y });
+  try {
+    await api.patch(`/statuses/${id}`, { diagramX: x, diagramY: y });
+  } catch (err) {
+    toast.error(err);
+  }
+}
+
 async function rename(status: Status, e: Event) {
   const label = (e.target as HTMLInputElement).value.trim();
   if (!label || label === status.label) return;
@@ -118,47 +155,79 @@ async function confirmRemove() {
   <div class="stack">
     <h1>Status</h1>
     <p class="muted" style="margin: 0">
-      Die Status sind nach Kategorie gruppiert. Die Kategorie steuert das Verhalten, beim Typwechsel wird nach Kategorie zugeordnet.
-      Reihenfolge und Kategorie lassen sich per Ziehen ändern; die Reihenfolge gilt auch für die Spalten des Boards.
+      Links die Status nach Kategorie: Die Kategorie steuert das Verhalten, beim Typwechsel wird nach Kategorie zugeordnet.
+      Reihenfolge und Kategorie lassen sich per Ziehen ändern; die Reihenfolge gilt auch für die Spalten des Boards. Rechts der
+      Ablauf: welche Wechsel von Hand erlaubt sind.
     </p>
-    <div class="types">
-      <div v-for="type in types" :key="type" class="card card-body stack">
-        <h2>{{ TYPE_LABELS[type] }}</h2>
-        <section v-for="category in CATEGORY_ORDER" :key="category" class="group">
-          <header class="group-head">
-            <span class="badge" :class="`cat-${category}`">{{ CATEGORY_LABELS[category] }}</span>
-            <span v-if="REQUIRED.includes(category)" class="faint required">Pflicht</span>
-          </header>
-          <p class="faint hint">{{ CATEGORY_HINTS[category] }}</p>
-          <draggable
-            v-model="groups[type][category]"
-            item-key="id"
-            handle=".handle"
-            :group="`statuses-${type}`"
-            class="list"
-            :animation="120"
-            @change="onChange(type, category, $event)"
-          >
-            <template #item="{ element }">
-              <div class="status-row">
-                <span class="handle" title="Ziehen zum Sortieren oder in eine andere Kategorie">⋮⋮</span>
-                <input class="input label-input" :value="element.label" maxlength="60" @change="rename(element, $event)" />
-                <span class="faint usage" title="Vorgänge mit diesem Status">{{ usage[element.id] ?? 0 }}</span>
-                <button class="btn btn-sm btn-ghost btn-danger" type="button" :aria-label="`${element.label} löschen`" @click="askRemove(element)">
-                  ✕
-                </button>
-              </div>
-            </template>
-            <template #footer>
-              <div v-if="groups[type][category].length === 0" class="empty-group faint">Kein Status – hierher ziehen oder hinzufügen</div>
-            </template>
-          </draggable>
-          <form class="status-row add-row" @submit.prevent="add(type, category)">
-            <span class="handle" />
-            <input v-model="newLabel[`${type}:${category}`]" class="input label-input" placeholder="Status hinzufügen" maxlength="60" />
-            <button class="btn btn-sm" type="submit" :disabled="!newLabel[`${type}:${category}`]?.trim()">+</button>
-          </form>
-        </section>
+    <div v-for="type in types" :key="type" class="card card-body type-card">
+      <h2>{{ TYPE_LABELS[type] }}</h2>
+      <div class="type-grid">
+        <div class="stack">
+          <section v-for="category in CATEGORY_ORDER" :key="category" class="group">
+            <header class="group-head">
+              <span class="badge" :class="`cat-${category}`">{{ CATEGORY_LABELS[category] }}</span>
+              <span v-if="REQUIRED.includes(category)" class="faint required">Pflicht</span>
+            </header>
+            <p class="faint hint">{{ CATEGORY_HINTS[category] }}</p>
+            <draggable
+              v-model="groups[type][category]"
+              item-key="id"
+              handle=".handle"
+              :group="`statuses-${type}`"
+              class="list"
+              :animation="120"
+              @change="onChange(type, category, $event)"
+            >
+              <template #item="{ element }">
+                <div class="status-row">
+                  <span class="handle" title="Ziehen zum Sortieren oder in eine andere Kategorie">⋮⋮</span>
+                  <StatusColorPicker :model-value="element.color" @update:model-value="setColor(element, $event)" />
+                  <input class="input label-input" :value="element.label" maxlength="60" @change="rename(element, $event)" />
+                  <span class="faint usage" title="Vorgänge mit diesem Status">{{ usage[element.id] ?? 0 }}</span>
+                  <button class="btn btn-sm btn-ghost btn-danger" type="button" :aria-label="`${element.label} löschen`" @click="askRemove(element)">
+                    ✕
+                  </button>
+                </div>
+              </template>
+              <template #footer>
+                <div v-if="groups[type][category].length === 0" class="empty-group faint">Kein Status – hierher ziehen oder hinzufügen</div>
+              </template>
+            </draggable>
+            <form class="status-row add-row" @submit.prevent="add(type, category)">
+              <span class="handle" />
+              <span class="swatch-space" />
+              <input v-model="newLabel[`${type}:${category}`]" class="input label-input" placeholder="Status hinzufügen" maxlength="60" />
+              <button class="btn btn-sm" type="submit" :disabled="!newLabel[`${type}:${category}`]?.trim()">+</button>
+            </form>
+          </section>
+        </div>
+        <div class="flow-col">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              :checked="session.statusFlow.restrict[type]"
+              @change="saveFlow(type, ($event.target as HTMLInputElement).checked, transitionsOf(type))"
+            />
+            Wechsel von Hand nur gemäss Ablauf
+          </label>
+          <span class="faint hint">
+            {{
+              session.statusFlow.restrict[type]
+                ? 'Im Status-Feld und auf dem Board sind nur die Wechsel entlang der Pfeile möglich.'
+                : 'Zurzeit ist jeder Wechsel erlaubt. Die Pfeile gelten erst, wenn dieses Häkchen gesetzt ist.'
+            }}
+            Automatisches (Antworten, Regeln, Ablehnen, Typwechsel) geht immer. Pfeil ziehen: vom Punkt rechts an einem Status
+            auf einen anderen; löschen: anklicken und Entf drücken oder doppelklicken.
+          </span>
+          <StatusFlowDiagram
+            class="diagram"
+            :statuses="session.statusesOf(type)"
+            :transitions="transitionsOf(type)"
+            :restricted="session.statusFlow.restrict[type]"
+            @transitions="saveFlow(type, session.statusFlow.restrict[type], $event)"
+            @move="moveNode"
+          />
+        </div>
       </div>
     </div>
 
@@ -185,11 +254,38 @@ async function confirmRemove() {
 </template>
 
 <style scoped>
-.types {
+.type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* Links die Status, rechts das Ablaufdiagramm; schmal untereinander */
+.type-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 16px;
+  grid-template-columns: minmax(320px, 420px) 1fr;
+  gap: 20px;
   align-items: start;
+}
+@media (max-width: 1000px) {
+  .type-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.flow-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.flow-col .hint {
+  font-size: 12px;
+}
+.diagram {
+  height: 440px;
+}
+.swatch-space {
+  width: 22px;
+  flex-shrink: 0;
 }
 .group {
   display: flex;

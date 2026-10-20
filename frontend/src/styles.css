@@ -34,6 +34,27 @@
   --high: #d14343;
   --normal: #6b7686;
   --low: #9aa4b2;
+  /* Farben der Status: Hintergrund und Schrift */
+  --st-gray-bg: #eef0f3;
+  --st-gray: #545e6c;
+  --st-blue-bg: #e8eefd;
+  --st-blue: #2f5bea;
+  --st-teal-bg: #dff4f2;
+  --st-teal: #0f766e;
+  --st-green-bg: #e5f5ec;
+  --st-green: #1f8a4c;
+  --st-yellow-bg: #fbf3cf;
+  --st-yellow: #866a00;
+  --st-orange-bg: #fdf3e1;
+  --st-orange: #b26b00;
+  --st-red-bg: #fbeaea;
+  --st-red: #c93a3a;
+  --st-pink-bg: #fce7f3;
+  --st-pink: #be185d;
+  --st-purple-bg: #efe9fd;
+  --st-purple: #6d3fd1;
+  --st-brown-bg: #f3ece6;
+  --st-brown: #7c4a2d;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 8%);
   --shadow-lg: 0 12px 32px rgb(16 24 40 / 18%);
   --radius: 8px;
@@ -78,6 +99,26 @@
     --high: #f07171;
     --normal: #a3acba;
     --low: #6f7a8b;
+    --st-gray-bg: #262d39;
+    --st-gray: #a3acba;
+    --st-blue-bg: #232d4a;
+    --st-blue: #6d8dff;
+    --st-teal-bg: #173533;
+    --st-teal: #4fd1c5;
+    --st-green-bg: #1c3327;
+    --st-green: #4cc584;
+    --st-yellow-bg: #3a351a;
+    --st-yellow: #e3c84a;
+    --st-orange-bg: #3a2f1a;
+    --st-orange: #e3a53c;
+    --st-red-bg: #3a2224;
+    --st-red: #f07171;
+    --st-pink-bg: #3a1f2e;
+    --st-pink: #f48fbf;
+    --st-purple-bg: #2c2346;
+    --st-purple: #a78bfa;
+    --st-brown-bg: #33281f;
+    --st-brown: #d0a07d;
     --shadow: 0 1px 2px rgb(0 0 0 / 30%);
     --shadow-lg: 0 12px 32px rgb(0 0 0 / 50%);
     color-scheme: dark;
@@ -394,6 +435,47 @@ h3 {
 .badge.type-task {
   background: var(--accent-soft);
   color: var(--accent);
+}
+/* Farbe eines Status (Verwaltung → Status) */
+.badge.st-gray {
+  background: var(--st-gray-bg);
+  color: var(--st-gray);
+}
+.badge.st-blue {
+  background: var(--st-blue-bg);
+  color: var(--st-blue);
+}
+.badge.st-teal {
+  background: var(--st-teal-bg);
+  color: var(--st-teal);
+}
+.badge.st-green {
+  background: var(--st-green-bg);
+  color: var(--st-green);
+}
+.badge.st-yellow {
+  background: var(--st-yellow-bg);
+  color: var(--st-yellow);
+}
+.badge.st-orange {
+  background: var(--st-orange-bg);
+  color: var(--st-orange);
+}
+.badge.st-red {
+  background: var(--st-red-bg);
+  color: var(--st-red);
+}
+.badge.st-pink {
+  background: var(--st-pink-bg);
+  color: var(--st-pink);
+}
+.badge.st-purple {
+  background: var(--st-purple-bg);
+  color: var(--st-purple);
+}
+.badge.st-brown {
+  background: var(--st-brown-bg);
+  color: var(--st-brown);
 }
 /* Im Testbetrieb simulierte Mail */
 .badge.simulated {

@@ -21,6 +21,21 @@ const mine = useMineFilter('tasks');
 const columns = ref<Record<string, ItemSummary[]>>({});
 const loading = ref(true);
 const newOpen = ref(false);
+/** Karte, die gerade gezogen wird: Spalten ausserhalb des Ablaufs sind gesperrt */
+const dragging = ref<ItemSummary | null>(null);
+
+const blocked = (statusId: string) =>
+  !!dragging.value && !session.canMove('task', dragging.value.status?.id ?? null, statusId);
+
+function onStart(statusId: string, event: { oldIndex: number }) {
+  dragging.value = columns.value[statusId]?.[event.oldIndex] ?? null;
+}
+
+/** Ablegen nur in Spalten, in die der Ablauf den Wechsel erlaubt */
+function canDrop(event: { draggedContext: { element: ItemSummary }; to: HTMLElement }) {
+  const toId = event.to.dataset.statusId;
+  return !toId || session.canMove('task', event.draggedContext.element.status?.id ?? null, toId);
+}
 
 const statuses = computed(() => session.statusesOf('task').filter((s) => s.category !== 'rejected'));
 
@@ -61,7 +76,7 @@ async function onChange(statusId: string, event: ChangeEvent) {
     }
     if (event.added) {
       const status = statuses.value.find((s) => s.id === statusId);
-      if (status) change.element.status = { id: status.id, label: status.label, category: status.category };
+      if (status) change.element.status = { id: status.id, label: status.label, category: status.category, color: status.color };
       if (status?.category === 'done') toast.success(`${itemRef(change.element.number)} erledigt`);
     }
     void session.refreshCounts();
@@ -92,9 +107,15 @@ function onCreated(number: number) {
     </div>
 
     <div v-if="!loading" class="board">
-      <section v-for="status in statuses" :key="status.id" class="column">
+      <section
+        v-for="status in statuses"
+        :key="status.id"
+        class="column"
+        :class="{ blocked: blocked(status.id) }"
+        :title="blocked(status.id) ? 'Dieser Wechsel ist im Ablauf nicht vorgesehen' : undefined"
+      >
         <header class="column-head">
-          <span class="badge" :class="`cat-${status.category}`">{{ status.label }}</span>
+          <span class="badge" :class="`st-${status.color}`">{{ status.label }}</span>
           <span class="faint">{{ columns[status.id]?.length ?? 0 }}</span>
           <span v-if="status.category === 'done'" class="faint hint">letzte 14 Tage</span>
         </header>
@@ -105,6 +126,10 @@ function onCreated(number: number) {
           class="cards"
           ghost-class="ghost"
           :animation="120"
+          :component-data="{ 'data-status-id': status.id }"
+          :move="canDrop"
+          @start="onStart(status.id, $event)"
+          @end="dragging = null"
           @change="onChange(status.id, $event)"
         >
           <template #item="{ element }">
@@ -159,6 +184,10 @@ function onCreated(number: number) {
   border-radius: var(--radius);
   padding: 10px;
   min-height: 200px;
+  transition: opacity 0.12s;
+}
+.column.blocked {
+  opacity: 0.45;
 }
 .column-head {
   display: flex;

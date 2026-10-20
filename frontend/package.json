@@ -18,6 +18,7 @@
     "@tiptap/pm": "3.31.4",
     "@tiptap/starter-kit": "3.31.4",
     "@tiptap/vue-3": "3.31.4",
+    "@vue-flow/core": "1.48.2",
     "chart.js": "4.5.1",
     "dompurify": "3.4.17",
     "jspdf": "4.2.1",

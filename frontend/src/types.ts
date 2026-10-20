@@ -64,6 +64,9 @@ export interface PublicInfo {
   certificateExpiresAt: string | null;
 }
 
+/** Farben zur Auswahl für Status (siehe status-colors.ts) */
+export type StatusColor = 'gray' | 'blue' | 'teal' | 'green' | 'yellow' | 'orange' | 'red' | 'pink' | 'purple' | 'brown';
+
 export interface Status {
   id: string;
   type: ItemType;
@@ -71,6 +74,16 @@ export interface Status {
   label: string;
   category: StatusCategory;
   position: number;
+  color: StatusColor;
+  /** Lage im Ablaufdiagramm; null = automatisch nach Kategorie */
+  diagramX: number | null;
+  diagramY: number | null;
+}
+
+/** Ablauf: pro Typ eingeschränkt (nur festgelegte Wechsel von Hand) oder frei */
+export interface StatusFlow {
+  restrict: Record<ItemType, boolean>;
+  transitions: { fromId: string; toId: string }[];
 }
 
 /** Symbole für Meldewege (siehe ChannelIcon.vue) */
@@ -89,6 +102,7 @@ export interface StatusRef {
   id: string;
   label: string;
   category: StatusCategory;
+  color: StatusColor;
 }
 
 export interface ItemSummary {
@@ -120,7 +134,13 @@ export interface ItemLink {
   id: string;
   role: LinkRole;
   createdAt: string;
-  other: { id: string; number: number; title: string; type: ItemType | null; status: { label: string; category: StatusCategory } | null };
+  other: {
+    id: string;
+    number: number;
+    title: string;
+    type: ItemType | null;
+    status: { label: string; category: StatusCategory; color: StatusColor } | null;
+  };
 }
 
 export interface ChecklistEntry {

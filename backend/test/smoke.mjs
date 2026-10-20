@@ -414,6 +414,67 @@ await step('Status bearbeiten mit Pflichtkategorien und Ersatz', async () => {
   await api('PATCH', `/statuses/${status('task', 'done').id}`, { category: 'in_progress' }, { expect: [400] });
 });
 
+await step('Status: Farben und Ablauf, eingeschränkt gilt er nur für Wechsel von Hand', async () => {
+  let list = await api('GET', '/statuses');
+  assert.equal(list.find((s) => s.type === 'task' && s.key === 'backlog').color, 'blue', 'Farbe der Kategorie');
+  assert.equal(list.find((s) => s.type === 'task' && s.key === 'done').color, 'green');
+  const backlog = status('task', 'backlog');
+  await api('PATCH', `/statuses/${backlog.id}`, { color: 'purple', diagramX: 10, diagramY: 20 });
+  list = await api('GET', '/statuses');
+  assert.deepEqual(
+    ['color', 'diagramX', 'diagramY'].map((k) => list.find((s) => s.id === backlog.id)[k]),
+    ['purple', 10, 20],
+  );
+  await api('PATCH', `/statuses/${backlog.id}`, { color: 'neon' }, { expect: [400] });
+
+  assert.deepEqual(await api('GET', '/statuses/flow'), { restrict: { incident: false, task: false }, transitions: [] });
+  const inProgress = status('task', 'in_progress');
+  const done = status('task', 'done');
+  const rejected = status('task', 'rejected');
+  // Ungültige Wechsel: nach «Abgelehnt», in sich selbst, über die Typen hinweg
+  for (const transitions of [
+    [{ fromId: backlog.id, toId: rejected.id }],
+    [{ fromId: backlog.id, toId: backlog.id }],
+    [{ fromId: backlog.id, toId: status('incident', 'new').id }],
+  ]) {
+    await api('PUT', '/statuses/flow', { type: 'task', restrict: true, transitions }, { expect: [400] });
+  }
+  const flow = await api('PUT', '/statuses/flow', {
+    type: 'task',
+    restrict: true,
+    transitions: [
+      { fromId: backlog.id, toId: inProgress.id },
+      { fromId: inProgress.id, toId: done.id },
+    ],
+  });
+  assert.equal(flow.restrict.task, true);
+  assert.equal(flow.restrict.incident, false);
+  assert.equal(flow.transitions.length, 2);
+
+  const f = new FormData();
+  f.append('type', 'task');
+  f.append('title', 'Ablauf prüfen');
+  f.append('channelId', channel('Telefon').id);
+  const n = (await api('POST', '/items', f)).number;
+  const refused = await api('POST', `/items/${n}/move`, { statusId: done.id }, { expect: [400] });
+  assert.match(refused.message, /im Ablauf nicht vorgesehen/);
+  await api('POST', `/items/${n}/move`, { statusId: inProgress.id });
+  await api('POST', `/items/${n}/move`, { statusId: done.id });
+  assert.equal((await detail(n)).status.color, 'green');
+  // Ablehnen geht immer
+  await api('POST', `/items/${n}/reject`, { reason: 'Test', notify: false });
+
+  // loginAs ist hier noch nicht definiert
+  await api('POST', '/auth/logout');
+  await api('POST', '/auth/login', { username: IVAN, password: 'geheim-geheim' });
+  assert.equal((await api('GET', '/statuses/flow')).restrict.task, true);
+  await api('PUT', '/statuses/flow', { type: 'task', restrict: false, transitions: [] }, { expect: [403] });
+  await api('POST', '/auth/logout');
+  await api('POST', '/auth/login', { username: 'ada@test.local', password: 'geheim-geheim' });
+  await api('PUT', '/statuses/flow', { type: 'task', restrict: false, transitions: [] });
+  await api('PATCH', `/statuses/${backlog.id}`, { color: 'blue' });
+});
+
 await step('Newsletter: keine Bestätigung, verwerfen', async () => {
   await sendMail({ from: NEWS, subject: 'Grosser Sale', text: 'Kaufen!', headers: { 'List-Unsubscribe': '<mailto:u@shop.test>' } });
   await sleep(500);

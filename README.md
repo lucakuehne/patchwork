@@ -7,7 +7,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 
 - **Ein Vorgang, zwei Typen:** Störung oder Aufgabe, Typwechsel mit einem Klick. Verlauf, Kommentare und Anhänge bleiben erhalten.
 - **Tabs:** Eingang (Mails ohne Typ, mit «+ Neu» für einen Vorgang beliebigen Typs), Störungen (Liste, dringend zuerst; Ansicht «Gelöst»), Aufgaben (Board mit Drag & Drop; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge und hat den Filter «Nur meine».
-- **Status pro Typ** in der Verwaltung bearbeitbar. Die Kategorie (Neu, In Arbeit, Wartend, Erledigt, Abgelehnt) steuert das Verhalten.
+- **Status pro Typ** in der Verwaltung bearbeitbar, mit Farbe. Die Kategorie (Neu, In Arbeit, Wartend, Erledigt, Abgelehnt) steuert das Verhalten. Ein Ablaufdiagramm legt auf Wunsch fest, welche Wechsel von Hand erlaubt sind.
 - **E-Mail rein und raus:** mehrere Postfächer (IMAP/SMTP mit Passwort, Microsoft 365 über Microsoft Graph mit Anmeldung), die Patchwork nur liest (Mails bleiben ungelesen im Postfach), Abruf aus einem wählbaren Ordner ab einem einstellbaren Zeitpunkt, Zuordnung von Antworten über Mail-Header oder `[PW-1234]` im Betreff, Eingangsbestätigung, öffentliche Antworten an Melder und CC-Beteiligte, interne Notizen, Benachrichtigungen an Zuständige, Stummschalten pro Vorgang.
 - **Login:** lokale Benutzer und LDAP/AD (Rolle über AD-Gruppen). Erster Admin über den Einrichtungs-Assistenten.
 - **Volltextsuche** über Titel, Beschreibung und Timeline (PostgreSQL).
