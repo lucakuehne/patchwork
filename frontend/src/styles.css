@@ -408,26 +408,6 @@ h3 {
   color: var(--text-muted);
   white-space: nowrap;
 }
-.badge.cat-new {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.badge.cat-in_progress {
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-.badge.cat-waiting {
-  background: var(--surface-2);
-  color: var(--text-muted);
-}
-.badge.cat-done {
-  background: var(--success-soft);
-  color: var(--success);
-}
-.badge.cat-rejected {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
 .badge.type-incident {
   background: var(--danger-soft);
   color: var(--danger);
@@ -436,7 +416,7 @@ h3 {
   background: var(--accent-soft);
   color: var(--accent);
 }
-/* Farbe eines Status (Verwaltung → Status) */
+/* Farbe eines Status (in Verwaltung → Status gewählt, überall wo der Status erscheint) */
 .badge.st-gray {
   background: var(--st-gray-bg);
   color: var(--st-gray);

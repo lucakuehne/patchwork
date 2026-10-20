@@ -1,6 +1,15 @@
-import { and, desc, asc, eq, gte, ilike, inArray, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, asc, eq, gte, ilike, isNull, not, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { checklistItems, checklists, entries, items, statuses, users } from '../db/schema';
+import {
+  checklistItems,
+  checklists,
+  entries,
+  items,
+  statuses,
+  statusTargets,
+  users,
+  type StatusTargetKind,
+} from '../db/schema';
 
 export const VIEWS = [
   'inbox',
@@ -30,7 +39,7 @@ export const summaryColumns = {
   createdAt: items.createdAt,
   updatedAt: items.updatedAt,
   closedAt: items.closedAt,
-  status: { id: statuses.id, label: statuses.label, category: statuses.category, color: statuses.color },
+  status: { id: statuses.id, label: statuses.label, closed: statuses.closed, color: statuses.color },
   reporter: { id: reporterUser.id, name: reporterUser.name, email: reporterUser.email, role: reporterUser.role },
   assigneeId: items.assigneeId,
   assigneeName: assigneeUser.name,
@@ -39,8 +48,22 @@ export const summaryColumns = {
   checklistDone: sql<number>`(select count(*)::int from ${checklistItems} ci join ${checklists} c on c.id = ci.checklist_id where c.item_id = ${items.id} and ci.done)`,
 };
 
-const OPEN = ['new', 'in_progress', 'waiting'] as const;
-const BOARD_DONE_DAYS = 14;
+/** Abgeschlossene Spalten des Boards zeigen nur so viele Tage zurück. */
+const BOARD_CLOSED_DAYS = 14;
+
+/** Status offen bzw. abgeschlossen (die Ansichten verbinden statuses mit dem Status des Vorgangs). */
+const OPEN = eq(statuses.closed, false);
+const CLOSED = eq(statuses.closed, true);
+
+/** Steht der Vorgang im Ziel-Status «target» seines Typs, z.B. im Ablehnen-Status? */
+function inTarget(target: StatusTargetKind): SQL {
+  const matches = and(
+    eq(statusTargets.type, items.type),
+    eq(statusTargets.target, target),
+    eq(statusTargets.statusId, items.statusId),
+  );
+  return sql`exists (select 1 from ${statusTargets} where ${matches})`;
+}
 
 /** Volltext-Bedingung: Nummer, Titel/Beschreibung oder Timeline. */
 export function searchCondition(query: string): SQL | undefined {
@@ -77,37 +100,36 @@ export function viewQuery(view: View): { where: SQL | undefined; orderBy: SQL[] 
       };
     case 'incidents':
       return {
-        where: and(eq(items.type, 'incident'), inArray(statuses.category, [...OPEN])),
+        where: and(eq(items.type, 'incident'), OPEN),
         // Enum-Reihenfolge: high, normal, low
         orderBy: [asc(items.priority), asc(items.createdAt)],
       };
     case 'incidents-closed':
       return {
-        where: and(eq(items.type, 'incident'), notInArray(statuses.category, [...OPEN])),
+        where: and(eq(items.type, 'incident'), CLOSED),
         orderBy: [desc(items.closedAt)],
       };
     case 'board':
+      // Spalten sind die Status ausser dem Ablehnen-Status; abgeschlossene nur mit den letzten Tagen
       return {
         where: and(
           eq(items.type, 'task'),
+          not(inTarget('reject')),
           or(
-            inArray(statuses.category, [...OPEN]),
-            and(
-              eq(statuses.category, 'done'),
-              gte(items.closedAt, sql`now() - ${sql.raw(`interval '${BOARD_DONE_DAYS} days'`)}`),
-            ),
+            OPEN,
+            and(CLOSED, gte(items.closedAt, sql`now() - ${sql.raw(`interval '${BOARD_CLOSED_DAYS} days'`)}`)),
           ),
         ),
         orderBy: [asc(items.boardPosition), asc(items.createdAt)],
       };
     case 'tasks-done':
       return {
-        where: and(eq(items.type, 'task'), eq(statuses.category, 'done')),
+        where: and(eq(items.type, 'task'), CLOSED, not(inTarget('reject'))),
         orderBy: [desc(items.closedAt)],
       };
     case 'tasks-rejected':
       return {
-        where: and(eq(items.type, 'task'), eq(statuses.category, 'rejected')),
+        where: and(eq(items.type, 'task'), inTarget('reject')),
         orderBy: [desc(items.closedAt)],
       };
     case 'search':

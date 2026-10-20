@@ -88,7 +88,9 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'done',
     group: 'reporter',
     label: 'Erledigt',
-    description: 'An den Melder, wenn der Vorgang einen Status der Kategorie «Erledigt» erhält.',
+    description:
+      'An den Melder beim Wechsel von Hand in einen abgeschlossenen Status (nicht beim Ablehnen und nicht zwischen zwei ' +
+      'abgeschlossenen Status).',
     subject: '{{Status}}: {{Titel}}',
     body:
       'Guten Tag\n\nIhr Anliegen «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +
@@ -99,7 +101,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'rejected',
     group: 'reporter',
     label: 'Abgelehnt',
-    description: 'An den Melder, wenn eine Aufgabe abgelehnt wird und «Melder informieren» gewählt ist.',
+    description: 'An den Melder, wenn ein Vorgang abgelehnt wird und «Melder informieren» gewählt ist.',
     subject: 'Abgelehnt: {{Titel}}',
     body: 'Guten Tag\n\nIhr Anliegen «{{Titel}}» ({{Nummer}}) wurde abgelehnt.\n\n**Begründung:**\n\n{{Begründung}}',
     placeholders: [...ITEM, p('Begründung', 'Begründung der Ablehnung', 'Dafür ist die IT nicht zuständig.'), PORTAL_LINK],
@@ -144,7 +146,8 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'waitingReminder',
     group: 'reporter',
     label: 'Erinnerung',
-    description: 'An den Melder, wenn ein Vorgang länger auf seine Rückmeldung wartet (Regel «Melder per Mail erinnern»).',
+    description:
+      'An den Melder, wenn ein Vorgang länger im Status «Wartet auf den Melder» steht (Regel «Melder per Mail erinnern»).',
     subject: 'Erinnerung: {{Titel}}',
     body:
       'Guten Tag\n\nWir warten noch auf Ihre Rückmeldung zu «{{Titel}}» ({{Nummer}}). Bitte antworten Sie direkt auf diese Mail.' +
@@ -163,7 +166,9 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'waitingClosed',
     group: 'reporter',
     label: 'Automatisch geschlossen',
-    description: 'An den Melder, wenn eine Regel den Vorgang mangels Rückmeldung schliesst (statt der Mail «Erledigt»).',
+    description:
+      'An den Melder, wenn eine Regel den Vorgang mangels Rückmeldung in den Status «Automatisch schliessen in» setzt ' +
+      '(statt der Mail «Erledigt»).',
     subject: '{{Status}}: {{Titel}}',
     body:
       'Guten Tag\n\nZu «{{Titel}}» ({{Nummer}}) haben wir seit {{Tage}} Tagen keine Rückmeldung erhalten ' +
@@ -223,7 +228,9 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'fixCompleted',
     group: 'staff',
     label: 'Behebender Vorgang erledigt',
-    description: 'An den Zuständigen, wenn ein Vorgang erledigt wird, der seinen Vorgang «behebt».',
+    description:
+      'An den Zuständigen, wenn ein Vorgang, der seinen Vorgang «behebt», von Hand in einen abgeschlossenen Status wechselt ' +
+      '(nicht beim Ablehnen).',
     subject: 'Behebender Vorgang erledigt: {{Titel}}',
     body:
       '{{Behebender Vorgang}} wurde von {{Bearbeiter}} erledigt.\n' +

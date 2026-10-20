@@ -1,39 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
-import {
-  attachments,
-  entries,
-  items,
-  statuses,
-  users,
-  type Attachment,
-  type ItemType,
-  type StatusCategory,
-  type User,
-} from '../db/schema';
+import { attachments, entries, items, statuses, users, type Attachment, type User } from '../db/schema';
 import { duplicateRedirect } from '../items/duplicates';
+import { StatusesService } from '../statuses/statuses.service';
+import { portalStatus } from './portal-status';
 import { visibleInPortal } from './portal-visibility';
-
-const OPEN: StatusCategory[] = ['new', 'in_progress', 'waiting'];
-const CLOSED: StatusCategory[] = ['done', 'rejected'];
-
-/** Status, wie ihn der Melder sieht: vereinfacht nach Kategorie, ohne interne Statusnamen. */
-export function portalStatus(type: ItemType | null, category: StatusCategory | null): { key: string; label: string } {
-  if (!type || !category) return { key: 'received', label: 'Eingegangen' };
-  switch (category) {
-    case 'new':
-      return { key: 'received', label: 'Eingegangen' };
-    case 'in_progress':
-      return { key: 'in_progress', label: 'In Bearbeitung' };
-    case 'waiting':
-      return { key: 'waiting', label: 'Wartet auf Ihre Rückmeldung' };
-    case 'done':
-      return { key: 'done', label: 'Erledigt' };
-    case 'rejected':
-      return { key: 'rejected', label: 'Abgelehnt' };
-  }
-}
 
 /** Interne Anhang-Adressen in HTML aus Mails auf die Portal-Adressen umschreiben. */
 function portalHtml(html: string | null): string | null {
@@ -51,41 +23,44 @@ const toAttachment = (a: Attachment) => ({
 /** Lesender Zugriff des Melders auf seine eigenen Vorgänge. */
 @Injectable()
 export class PortalService {
-  constructor(@InjectDb() private readonly db: Db) {}
+  constructor(
+    @InjectDb() private readonly db: Db,
+    private readonly statuses: StatusesService,
+  ) {}
 
+  /** Offen = im Eingang (ohne Status) oder in einem offenen Status; abgeschlossen = in einem abgeschlossenen Status. */
   async list(user: User, state: 'open' | 'closed') {
-    const condition =
-      state === 'open'
-        ? or(isNull(items.type), inArray(statuses.category, OPEN))
-        : inArray(statuses.category, CLOSED);
-    const rows = await this.db
-      .select({
-        number: items.number,
-        title: items.title,
-        type: items.type,
-        category: statuses.category,
-        createdAt: items.createdAt,
-        updatedAt: items.updatedAt,
-        closedAt: items.closedAt,
-      })
-      .from(items)
-      .leftJoin(statuses, eq(statuses.id, items.statusId))
-      .where(and(eq(items.reporterId, user.id), eq(items.discarded, false), condition))
-      .orderBy(state === 'open' ? desc(items.updatedAt) : desc(items.closedAt))
-      .limit(200);
+    const condition = state === 'open' ? or(isNull(items.statusId), eq(statuses.closed, false)) : eq(statuses.closed, true);
+    const [rows, targets] = await Promise.all([
+      this.db
+        .select({
+          number: items.number,
+          title: items.title,
+          status: { id: statuses.id, type: statuses.type, label: statuses.label, color: statuses.color, closed: statuses.closed },
+          createdAt: items.createdAt,
+          updatedAt: items.updatedAt,
+          closedAt: items.closedAt,
+        })
+        .from(items)
+        .leftJoin(statuses, eq(statuses.id, items.statusId))
+        .where(and(eq(items.reporterId, user.id), eq(items.discarded, false), condition))
+        .orderBy(state === 'open' ? desc(items.updatedAt) : desc(items.closedAt))
+        .limit(200),
+      this.statuses.targets(),
+    ]);
     return rows.map((r) => ({
       number: r.number,
       title: r.title,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       closedAt: r.closedAt,
-      status: portalStatus(r.type, r.category),
+      status: portalStatus(r.status, targets),
     }));
   }
 
   async detail(user: User, number: number) {
     const [row] = await this.db
-      .select({ item: items, category: statuses.category })
+      .select({ item: items, status: statuses })
       .from(items)
       .leftJoin(statuses, eq(statuses.id, items.statusId))
       .where(and(eq(items.number, number), eq(items.reporterId, user.id), eq(items.discarded, false)))
@@ -111,8 +86,9 @@ export class PortalService {
       .from(attachments)
       .where(eq(attachments.itemId, item.id))
       .orderBy(asc(attachments.createdAt));
-    // Umgeleitetes Duplikat: Hinweis auf das Original (öffnen kann es der Melder nur, wenn er auch dort Melder ist)
-    const original = await duplicateRedirect(this.db, item);
+    // Umgeleitetes Duplikat (abgeschlossen): Hinweis auf das Original statt des Antwortfelds (öffnen kann es der Melder
+    // nur, wenn er auch dort Melder ist)
+    const [original, targets] = await Promise.all([duplicateRedirect(this.db, item), this.statuses.targets()]);
 
     return {
       number: item.number,
@@ -126,7 +102,7 @@ export class PortalService {
       simulated: item.simulated,
       createdAt: item.createdAt,
       closedAt: item.closedAt,
-      status: portalStatus(item.type, row.category),
+      status: portalStatus(row.status, targets),
       attachments: files.filter((a) => !a.entryId).map(toAttachment),
       entries: visible.map(({ entry, author }) => ({
         id: entry.id,

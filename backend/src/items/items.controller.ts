@@ -75,6 +75,12 @@ const updateSchema = z.object({
   channelId: z.uuid().optional(),
 });
 
+const typeChangeSchema = z.object({
+  type: typeSchema,
+  /** Status im neuen Typ; ohne Angabe der Vorschlag nach der Rolle des bisherigen Status (aus dem Eingang: Start) */
+  statusId: nullableUuid.optional(),
+});
+
 const moveSchema = z.object({
   statusId: z.uuid(),
   beforeId: nullableUuid.optional(),
@@ -156,10 +162,10 @@ export class ItemsController {
   @HttpCode(204)
   async setType(
     @Param('number', ParseIntPipe) number: number,
-    @Body(new ZodPipe(z.object({ type: typeSchema }))) body: { type: 'incident' | 'task' },
+    @Body(new ZodPipe(typeChangeSchema)) body: z.infer<typeof typeChangeSchema>,
     @CurrentUser() user: User,
   ) {
-    await this.items.setType(user, number, body.type);
+    await this.items.setType(user, number, body.type, body.statusId);
   }
 
   @Post('items/:number/move')

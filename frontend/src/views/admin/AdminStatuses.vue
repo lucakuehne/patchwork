@@ -1,69 +1,70 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import { api, errorMessage } from '../../api';
 import ModalDialog from '../../components/ModalDialog.vue';
 import StatusColorPicker from '../../components/StatusColorPicker.vue';
 import StatusFlowDiagram from '../../components/StatusFlowDiagram.vue';
-import { CATEGORY_LABELS, CATEGORY_ORDER, TYPE_LABELS } from '../../format';
+import { TYPE_LABELS } from '../../format';
+import { TARGET_SHORT, targetOptions, targetsAfterRemoval, targetsOf } from '../../status-admin';
+import { REQUIRED_TARGETS, STATUS_TARGETS, TARGET_CLOSED, TARGET_LABELS } from '../../status-flow';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
-import type { ItemType, Status, StatusCategory, StatusColor, StatusFlow } from '../../types';
+import type { ItemType, Status, StatusColor, StatusFlow, StatusTarget, StatusTargetsByType } from '../../types';
 
 const session = useSession();
 const toast = useToast();
 const types: ItemType[] = ['incident', 'task'];
 
-const CATEGORY_HINTS: Record<StatusCategory, string> = {
-  new: 'Neue Vorgänge erhalten den ersten Status dieser Gruppe.',
-  in_progress: 'In Bearbeitung. Antworten des Melders führen hierher zurück.',
-  waiting: 'Wartet auf den Melder. Seine Antwort setzt den Vorgang auf «In Arbeit».',
-  done: 'Abgeschlossen. Der Melder wird per Mail informiert, seine Antwort öffnet den Vorgang wieder.',
-  rejected: 'Abgeschlossen über «Ablehnen». Erscheint nicht auf dem Board.',
+/** Wann ein Ziel greift (siehe docs/Entscheidungen.md, Abschnitt Status) */
+const TARGET_HINTS: Record<StatusTarget, string> = {
+  start: 'Intern erfasste Vorgänge ohne Statuswahl, Typ im Eingang zugewiesen und Regelaktion «Typ».',
+  reply:
+    'Antwort des Melders oder eines Beteiligten, wenn der Vorgang auf ihn wartet oder abgeschlossen ist (nicht aus dem Ablehnen-Status).',
+  close: 'Duplikat schliessen und zeitgesteuerte Regelaktion «Schliessen».',
+  reject:
+    'Aktion «Ablehnen» mit Begründung. Der Status ist nur so erreichbar, eine Antwort öffnet ihn nicht wieder. Ohne Status gibt es kein «Ablehnen».',
+  waiting: 'Eine Antwort holt den Vorgang zurück, das Portal hebt ihn hervor, zeitgesteuerte Regeln können erinnern und schliessen.',
 };
-const REQUIRED: StatusCategory[] = ['new', 'in_progress', 'done'];
+const noneLabel = (target: StatusTarget) => (target === 'reject' ? '– kein Ablehnen –' : '– keiner –');
+const isRequired = (target: StatusTarget) => REQUIRED_TARGETS.includes(target);
 
-type Groups = Record<StatusCategory, Status[]>;
-const emptyGroups = (): Groups => ({ new: [], in_progress: [], waiting: [], done: [], rejected: [] });
+type Draft = Record<StatusTarget, string>;
+const emptyDraft = (): Draft => ({ start: '', reply: '', close: '', reject: '', waiting: '' });
 
-const groups = ref<Record<ItemType, Groups>>({ incident: emptyGroups(), task: emptyGroups() });
+/** Status je Typ in ihrer Reihenfolge (per Ziehen sortierbar) */
+const lists = ref<Record<ItemType, Status[]>>({ incident: [], task: [] });
 const usage = ref<Record<string, number>>({});
-const newLabel = ref<Record<string, string>>({});
-const removing = ref<Status | null>(null);
-const replacementId = ref('');
-const removeError = ref('');
+const newLabel = ref<Record<ItemType, string>>({ incident: '', task: '' });
+const newClosed = ref<Record<ItemType, boolean>>({ incident: false, task: false });
+/** Auswahl im Block «Automatische Wechsel» ('' = keiner) */
+const targetDraft = ref<Record<ItemType, Draft>>({ incident: emptyDraft(), task: emptyDraft() });
 
 async function load() {
   try {
     await session.loadStatuses();
     usage.value = await api.get<Record<string, number>>('/statuses/usage');
-    const next = { incident: emptyGroups(), task: emptyGroups() };
-    for (const type of types) {
-      for (const s of session.statusesOf(type)) next[type][s.category].push(s);
-    }
-    groups.value = next;
   } catch (err) {
     toast.error(err);
   }
+  lists.value = { incident: session.statusesOf('incident'), task: session.statusesOf('task') };
+  syncTargets();
 }
 onMounted(load);
 
-const ofType = (type: ItemType) => CATEGORY_ORDER.flatMap((c) => groups.value[type][c]);
-
-interface ChangeEvent {
-  added?: { element: Status };
-  moved?: { element: Status };
+function syncTargets() {
+  const draftOf = (type: ItemType): Draft => {
+    const draft = emptyDraft();
+    for (const t of STATUS_TARGETS) draft[t] = session.statusTargets[type][t] ?? '';
+    return draft;
+  };
+  targetDraft.value = { incident: draftOf('incident'), task: draftOf('task') };
 }
 
-/** Sortieren innerhalb einer Gruppe oder Verschieben in eine andere Kategorie. */
-async function onChange(type: ItemType, category: StatusCategory, event: ChangeEvent) {
-  const change = event.added ?? event.moved;
-  if (!change) return; // «removed» wird in der Zielgruppe behandelt
+/** Reihenfolge eines Typs speichern (gilt für die Spalten des Boards und alle Auswahllisten) */
+async function onReorder(type: ItemType) {
   try {
-    if (event.added && change.element.category !== category) {
-      await api.patch(`/statuses/${change.element.id}`, { category });
-    }
-    await api.put('/statuses/order', { type, ids: ofType(type).map((s) => s.id) });
+    await api.put('/statuses/order', { type, ids: lists.value[type].map((s) => s.id) });
   } catch (err) {
     toast.error(err);
   }
@@ -77,6 +78,84 @@ async function setColor(status: Status, color: StatusColor) {
     toast.error(err);
   }
   await load();
+}
+
+async function rename(status: Status, e: Event) {
+  const input = e.target as HTMLInputElement;
+  const label = input.value.trim();
+  if (!label || label === status.label) {
+    input.value = status.label;
+    return;
+  }
+  try {
+    await api.patch(`/statuses/${status.id}`, { label });
+  } catch (err) {
+    toast.error(err);
+    input.value = status.label;
+  }
+  await load();
+}
+
+/** Hinweis, warum «abgeschlossen» gesperrt ist: Jedes Ziel verlangt einen offenen bzw. abgeschlossenen Status */
+function closedLock(status: Status): string | undefined {
+  const target = targetsOf(session.statusTargets[status.type], status.id)[0];
+  if (!target) return undefined;
+  return (
+    `«${status.label}» ist «${TARGET_LABELS[target]}» und muss ${TARGET_CLOSED[target] ? 'abgeschlossen' : 'offen'} bleiben. ` +
+    'Zuerst unter «Automatische Wechsel» einen anderen Status wählen.'
+  );
+}
+
+async function setClosed(status: Status, e: Event) {
+  const input = e.target as HTMLInputElement;
+  try {
+    await api.patch(`/statuses/${status.id}`, { closed: input.checked });
+  } catch (err) {
+    toast.error(err);
+    input.checked = status.closed;
+  }
+  await load();
+}
+
+async function add(type: ItemType) {
+  const label = newLabel.value[type].trim();
+  if (!label) return;
+  try {
+    await api.post('/statuses', { type, label, closed: newClosed.value[type] });
+    newLabel.value[type] = '';
+    newClosed.value[type] = false;
+    await load();
+  } catch (err) {
+    toast.error(err);
+  }
+}
+
+/** Status, die ein Ziel annehmen kann (offen bzw. abgeschlossen, ohne Konflikt mit den übrigen Zielen) */
+const optionsFor = (type: ItemType, target: StatusTarget) =>
+  targetOptions(session.statusesOf(type), targetDraft.value[type], target);
+
+/** Ziele eines Typs sofort speichern */
+async function saveTargets(type: ItemType) {
+  const t = targetDraft.value[type];
+  try {
+    session.statusTargets = await api.put<StatusTargetsByType>('/statuses/targets', {
+      type,
+      targets: { start: t.start, reply: t.reply, close: t.close, reject: t.reject || null, waiting: t.waiting || null },
+    });
+  } catch (err) {
+    toast.error(err);
+  }
+  syncTargets();
+}
+
+const targetFieldId = (type: ItemType, target: StatusTarget) => `target-${type}-${target}`;
+
+/** Zum Feld eines Ziels im Block «Automatische Wechsel» springen (Schilder und Marken im Diagramm) */
+function jumpTo(type: ItemType, target: StatusTarget) {
+  const field = document.getElementById(targetFieldId(type, target));
+  if (!field) return;
+  field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  field.focus({ preventScroll: true });
 }
 
 /** Ablauf eines Typs speichern: eingeschränkt ja/nein und die erlaubten Wechsel */
@@ -105,43 +184,80 @@ async function moveNode(id: string, x: number, y: number) {
   }
 }
 
-async function rename(status: Status, e: Event) {
-  const label = (e.target as HTMLInputElement).value.trim();
-  if (!label || label === status.label) return;
-  try {
-    await api.patch(`/statuses/${status.id}`, { label });
-    await load();
-  } catch (err) {
-    toast.error(err);
-    await load();
-  }
+/* Löschen: Ersatz für die Vorgänge und für jedes Ziel, das auf den Status zeigt */
+
+/** Wahl «keiner» bei freiwilligen Zielen; '' = noch nicht gewählt */
+const NONE = 'none';
+const removing = ref<Status | null>(null);
+const replacementId = ref('');
+const choices = ref<Partial<Record<StatusTarget, string>>>({});
+/** Von Hand gewählte Ziele werden beim Wechsel des Ersatzstatus nicht mehr vorbelegt */
+const touched = ref<Partial<Record<StatusTarget, boolean>>>({});
+/** Zeitgesteuerte Regeln, die den Status nennen */
+const ruleNames = ref<string[]>([]);
+const removeError = ref('');
+
+const removeUsage = computed(() => (removing.value ? (usage.value[removing.value.id] ?? 0) : 0));
+const removeOthers = computed(() =>
+  removing.value ? session.statusesOf(removing.value.type).filter((s) => s.id !== removing.value!.id) : [],
+);
+const removeTargets = computed(() =>
+  removing.value ? targetsOf(session.statusTargets[removing.value.type], removing.value.id) : [],
+);
+const replacement = computed(() => removeOthers.value.find((s) => s.id === replacementId.value));
+
+const choiceIds = () =>
+  Object.fromEntries(removeTargets.value.map((t) => [t, choices.value[t] === NONE ? null : choices.value[t]])) as Partial<
+    Record<StatusTarget, string | null>
+  >;
+
+/** Passende Status für ein Ziel des gelöschten Status, nach den übrigen Zielen samt bisheriger Wahl */
+function removalOptions(target: StatusTarget): Status[] {
+  const status = removing.value;
+  if (!status) return [];
+  return targetOptions(removeOthers.value, targetsAfterRemoval(session.statusTargets[status.type], status.id, choiceIds()), target);
 }
 
-async function add(type: ItemType, category: StatusCategory) {
-  const key = `${type}:${category}`;
-  const label = newLabel.value[key]?.trim();
-  if (!label) return;
-  try {
-    await api.post('/statuses', { type, label, category });
-    newLabel.value[key] = '';
-    await load();
-  } catch (err) {
-    toast.error(err);
-  }
-}
+const canRemove = computed(
+  () =>
+    !!removing.value &&
+    (removeUsage.value === 0 || !!replacement.value) &&
+    removeTargets.value.every((t) => !!choices.value[t]),
+);
 
-function askRemove(status: Status) {
+async function askRemove(status: Status) {
   removing.value = status;
   replacementId.value = '';
+  choices.value = Object.fromEntries(removeTargets.value.map((t) => [t, '']));
+  touched.value = {};
+  ruleNames.value = [];
   removeError.value = '';
+  try {
+    // Anzahl Vorgänge frisch laden, sonst fehlt bei inzwischen verwendeten Status die Wahl des Ersatzes
+    const [counts, rulesUsage] = await Promise.all([
+      api.get<Record<string, number>>('/statuses/usage'),
+      api.get<Record<string, string[]>>('/statuses/rules-usage'),
+    ]);
+    usage.value = counts;
+    ruleNames.value = rulesUsage[status.id] ?? [];
+  } catch (err) {
+    removeError.value = errorMessage(err);
+  }
 }
+
+/** Ziele mit dem Ersatzstatus vorbelegen, wenn er passt */
+watch(replacementId, (id) => {
+  for (const t of removeTargets.value) {
+    if (touched.value[t]) continue;
+    choices.value[t] = id && removalOptions(t).some((s) => s.id === id) ? id : '';
+  }
+});
 
 async function confirmRemove() {
   const status = removing.value;
-  if (!status) return;
+  if (!status || !canRemove.value) return;
   try {
-    const query = replacementId.value ? `?replacementId=${replacementId.value}` : '';
-    await api.delete(`/statuses/${status.id}${query}`);
+    await api.delete(`/statuses/${status.id}`, { replacementId: replacement.value?.id ?? null, targets: choiceIds() });
     removing.value = null;
     toast.success('Status gelöscht');
     await load();
@@ -155,52 +271,92 @@ async function confirmRemove() {
   <div class="stack">
     <h1>Status</h1>
     <p class="muted" style="margin: 0">
-      Links die Status nach Kategorie: Die Kategorie steuert das Verhalten, beim Typwechsel wird nach Kategorie zugeordnet.
-      Reihenfolge und Kategorie lassen sich per Ziehen ändern; die Reihenfolge gilt auch für die Spalten des Boards. Rechts der
-      Ablauf: welche Wechsel von Hand erlaubt sind.
+      Pro Typ die Status in ihrer Reihenfolge; sie gilt für die Spalten des Boards und alle Auswahllisten und lässt sich per
+      Ziehen ändern. «Abgeschlossen» bestimmt Abschlussdatum, Listen offen/abgeschlossen, Board und Portal. Darunter die
+      automatischen Wechsel, rechts der Ablauf: welche Wechsel von Hand erlaubt sind.
     </p>
     <div v-for="type in types" :key="type" class="card card-body type-card">
       <h2>{{ TYPE_LABELS[type] }}</h2>
       <div class="type-grid">
         <div class="stack">
-          <section v-for="category in CATEGORY_ORDER" :key="category" class="group">
-            <header class="group-head">
-              <span class="badge" :class="`cat-${category}`">{{ CATEGORY_LABELS[category] }}</span>
-              <span v-if="REQUIRED.includes(category)" class="faint required">Pflicht</span>
-            </header>
-            <p class="faint hint">{{ CATEGORY_HINTS[category] }}</p>
-            <draggable
-              v-model="groups[type][category]"
-              item-key="id"
-              handle=".handle"
-              :group="`statuses-${type}`"
-              class="list"
-              :animation="120"
-              @change="onChange(type, category, $event)"
-            >
+          <section class="block">
+            <div class="status-row list-head faint" aria-hidden="true">
+              <span />
+              <span />
+              <span>Name</span>
+              <span class="center">abgeschlossen</span>
+              <span class="right">Vorgänge</span>
+              <span />
+            </div>
+            <draggable v-model="lists[type]" item-key="id" handle=".handle" class="list" :animation="120" @change="onReorder(type)">
               <template #item="{ element }">
                 <div class="status-row">
-                  <span class="handle" title="Ziehen zum Sortieren oder in eine andere Kategorie">⋮⋮</span>
+                  <span class="handle" title="Ziehen zum Sortieren">⋮⋮</span>
                   <StatusColorPicker :model-value="element.color" @update:model-value="setColor(element, $event)" />
-                  <input class="input label-input" :value="element.label" maxlength="60" @change="rename(element, $event)" />
-                  <span class="faint usage" title="Vorgänge mit diesem Status">{{ usage[element.id] ?? 0 }}</span>
+                  <span class="name-cell">
+                    <input
+                      class="input label-input"
+                      :value="element.label"
+                      maxlength="60"
+                      :aria-label="`Name von ${element.label}`"
+                      @change="rename(element, $event)"
+                    />
+                    <button
+                      v-for="t in targetsOf(session.statusTargets[type], element.id)"
+                      :key="t"
+                      type="button"
+                      class="badge target-badge"
+                      :title="TARGET_LABELS[t]"
+                      @click="jumpTo(type, t)"
+                    >
+                      {{ TARGET_SHORT[t] }}
+                    </button>
+                  </span>
+                  <span class="center" :title="closedLock(element)">
+                    <input
+                      type="checkbox"
+                      class="closed-box"
+                      :checked="element.closed"
+                      :disabled="!!closedLock(element)"
+                      :title="closedLock(element)"
+                      :aria-label="`${element.label} abgeschlossen`"
+                      @change="setClosed(element, $event)"
+                    />
+                  </span>
+                  <span class="right faint usage" title="Vorgänge mit diesem Status">{{ usage[element.id] ?? 0 }}</span>
                   <button class="btn btn-sm btn-ghost btn-danger" type="button" :aria-label="`${element.label} löschen`" @click="askRemove(element)">
                     ✕
                   </button>
                 </div>
               </template>
-              <template #footer>
-                <div v-if="groups[type][category].length === 0" class="empty-group faint">Kein Status – hierher ziehen oder hinzufügen</div>
-              </template>
             </draggable>
-            <form class="status-row add-row" @submit.prevent="add(type, category)">
-              <span class="handle" />
-              <span class="swatch-space" />
-              <input v-model="newLabel[`${type}:${category}`]" class="input label-input" placeholder="Status hinzufügen" maxlength="60" />
-              <button class="btn btn-sm" type="submit" :disabled="!newLabel[`${type}:${category}`]?.trim()">+</button>
+            <form class="status-row add-row" @submit.prevent="add(type)">
+              <span />
+              <span />
+              <input v-model="newLabel[type]" class="input label-input" placeholder="Status hinzufügen" maxlength="60" aria-label="Neuer Status" />
+              <span class="center">
+                <input v-model="newClosed[type]" type="checkbox" class="closed-box" title="abgeschlossen" aria-label="Neuer Status abgeschlossen" />
+              </span>
+              <span />
+              <button class="btn btn-sm" type="submit" :disabled="!newLabel[type].trim()" aria-label="Status hinzufügen">+</button>
             </form>
           </section>
+
+          <section class="block">
+            <h3>Automatische Wechsel</h3>
+            <div v-for="t in STATUS_TARGETS" :key="t" class="field">
+              <label :for="targetFieldId(type, t)">
+                {{ TARGET_LABELS[t] }}<span v-if="isRequired(t)" class="required" title="Pflicht"> *</span>
+              </label>
+              <select :id="targetFieldId(type, t)" v-model="targetDraft[type][t]" class="select" @change="saveTargets(type)">
+                <option v-if="!isRequired(t)" value="">{{ noneLabel(t) }}</option>
+                <option v-for="s in optionsFor(type, t)" :key="s.id" :value="s.id">{{ s.label }}</option>
+              </select>
+              <span class="hint">{{ TARGET_HINTS[t] }}</span>
+            </div>
+          </section>
         </div>
+
         <div class="flow-col">
           <label class="checkbox">
             <input
@@ -213,41 +369,75 @@ async function confirmRemove() {
           <span class="faint hint">
             {{
               session.statusFlow.restrict[type]
-                ? 'Im Status-Feld und auf dem Board sind nur die Wechsel entlang der Pfeile möglich.'
-                : 'Zurzeit ist jeder Wechsel erlaubt. Die Pfeile gelten erst, wenn dieses Häkchen gesetzt ist.'
+                ? 'Im Status-Feld und auf dem Board sind nur die Wechsel entlang der Pfeile möglich, «Ablehnen» nur aus Status mit einem Pfeil in den Ablehnen-Status.'
+                : 'Zurzeit ist jeder Wechsel erlaubt. Die Pfeile gelten erst, wenn dieses Häkchen gesetzt ist; Pfeile in den Ablehnen-Status bestimmen dann, aus welchen Status «Ablehnen» möglich ist.'
             }}
-            Automatisches (Antworten, Regeln, Ablehnen, Typwechsel) geht immer. Pfeil ziehen: vom Punkt rechts an einem Status
-            auf einen anderen; löschen: anklicken und Entf drücken oder doppelklicken.
+            Die übrigen automatischen Wechsel (Antworten, Regeln, Typwechsel, Duplikate) gehen immer. Pfeil ziehen: vom Punkt
+            rechts an einem Status auf einen anderen; löschen: anklicken und Entf drücken oder doppelklicken. Ein Klick auf eine
+            Marke springt zum Feld unter «Automatische Wechsel».
           </span>
           <StatusFlowDiagram
             class="diagram"
             :statuses="session.statusesOf(type)"
             :transitions="transitionsOf(type)"
             :restricted="session.statusFlow.restrict[type]"
+            :targets="session.statusTargets[type]"
             @transitions="saveFlow(type, session.statusFlow.restrict[type], $event)"
             @move="moveNode"
+            @target="jumpTo(type, $event)"
           />
         </div>
       </div>
     </div>
 
     <ModalDialog v-if="removing" :title="`Status «${removing.label}» löschen`" @close="removing = null">
-      <p v-if="(usage[removing.id] ?? 0) > 0" style="margin: 0">
-        {{ usage[removing.id] }} Vorgänge haben diesen Status. Welchen Status sollen sie stattdessen erhalten?
-      </p>
+      <div v-if="removeUsage > 0" class="field">
+        <label for="remove-replacement">
+          {{
+            removeUsage === 1
+              ? '1 Vorgang hat diesen Status. Welchen Status soll er stattdessen erhalten?'
+              : `${removeUsage} Vorgänge haben diesen Status. Welchen Status sollen sie stattdessen erhalten?`
+          }}
+        </label>
+        <select id="remove-replacement" v-model="replacementId" class="select">
+          <option value="" disabled>Ersatzstatus wählen</option>
+          <option v-for="s in removeOthers" :key="s.id" :value="s.id">{{ s.label }}{{ s.closed ? ' (abgeschlossen)' : '' }}</option>
+        </select>
+      </div>
       <p v-else style="margin: 0">Der Status wird von keinem Vorgang verwendet.</p>
-      <select v-if="(usage[removing.id] ?? 0) > 0" v-model="replacementId" class="select">
-        <option value="" disabled>Ersatzstatus wählen</option>
-        <option v-for="s in ofType(removing.type).filter((x) => x.id !== removing!.id)" :key="s.id" :value="s.id">
-          {{ s.label }} ({{ CATEGORY_LABELS[s.category] }})
-        </option>
-      </select>
+
+      <div v-for="t in removeTargets" :key="t" class="field">
+        <label :for="`remove-target-${t}`">
+          «{{ removing.label }}» ist «{{ TARGET_LABELS[t] }}». Welcher Status soll es stattdessen sein?
+        </label>
+        <select :id="`remove-target-${t}`" v-model="choices[t]" class="select" @change="touched[t] = true">
+          <option value="" disabled>Status wählen</option>
+          <option v-if="!isRequired(t)" :value="NONE">{{ noneLabel(t) }}</option>
+          <option v-for="s in removalOptions(t)" :key="s.id" :value="s.id">{{ s.label }}</option>
+        </select>
+        <span v-if="isRequired(t) && removalOptions(t).length === 0" class="hint">
+          Zuerst einen weiteren {{ TARGET_CLOSED[t] ? 'abgeschlossenen' : 'offenen' }} Status anlegen.
+        </span>
+      </div>
+
+      <div v-if="ruleNames.length" class="rules-note">
+        <span v-for="(name, i) in ruleNames" :key="i">
+          Zeitgesteuerte Regel «{{ name }}»: wird angepasst –
+          {{
+            replacement && !replacement.closed
+              ? `«${replacement.label}» ersetzt den Status.`
+              : 'der Status wird entfernt.'
+          }}
+        </span>
+        <span v-if="!replacement || replacement.closed" class="faint">
+          Eine Regel, die danach weder einen Status noch «Wartet auf den Melder» nennt, wird ausgeschaltet.
+        </span>
+      </div>
+
       <div v-if="removeError" class="error-box">{{ removeError }}</div>
       <template #footer>
         <button class="btn" type="button" @click="removing = null">Abbrechen</button>
-        <button class="btn btn-danger" type="button" :disabled="(usage[removing.id] ?? 0) > 0 && !replacementId" @click="confirmRemove">
-          Löschen
-        </button>
+        <button class="btn btn-danger" type="button" :disabled="!canRemove" @click="confirmRemove">Löschen</button>
       </template>
     </ModalDialog>
   </div>
@@ -259,10 +449,10 @@ async function confirmRemove() {
   flex-direction: column;
   gap: 12px;
 }
-/* Links die Status, rechts das Ablaufdiagramm; schmal untereinander */
+/* Links die Status und die automatischen Wechsel, rechts das Ablaufdiagramm; schmal untereinander */
 .type-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 420px) 1fr;
+  grid-template-columns: minmax(400px, 520px) 1fr;
   gap: 20px;
   align-items: start;
 }
@@ -281,26 +471,25 @@ async function confirmRemove() {
   font-size: 12px;
 }
 .diagram {
-  height: 440px;
+  height: 480px;
 }
-.swatch-space {
-  width: 22px;
-  flex-shrink: 0;
-}
-.group {
+.block {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.block + .block {
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
-.group-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.block h3 {
+  margin-bottom: 2px;
+}
+.block .field + .field {
+  margin-top: 4px;
 }
 .required {
-  font-size: 12px;
+  color: var(--danger);
 }
 .hint {
   margin: 0;
@@ -310,36 +499,68 @@ async function confirmRemove() {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 8px;
 }
+/* Zeile: Griff, Farbe, Name mit Ziel-Schildern, abgeschlossen, Anzahl Vorgänge, Löschen */
 .status-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px 22px minmax(0, 1fr) 88px 56px 26px;
   align-items: center;
   gap: 8px;
 }
+.list-head {
+  font-size: 12px;
+}
+.center {
+  display: flex;
+  justify-content: center;
+}
+.right {
+  text-align: right;
+}
 .handle {
-  width: 16px;
-  flex-shrink: 0;
   cursor: grab;
   color: var(--text-faint);
   user-select: none;
 }
-.add-row .handle {
-  cursor: default;
+.name-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 .label-input {
   flex: 1;
   min-width: 0;
 }
+.target-badge {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.target-badge:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.closed-box {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.closed-box:disabled {
+  cursor: not-allowed;
+}
 .usage {
-  width: 28px;
-  text-align: right;
   font-size: 12px;
 }
-.empty-group {
-  padding: 8px 10px;
-  border: 1px dashed var(--border-strong);
+.rules-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  background: var(--warning-soft);
 }
 </style>

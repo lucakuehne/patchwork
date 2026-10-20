@@ -17,6 +17,10 @@ describe('Platzhalter', () => {
       expect(used.filter((name) => !known.includes(name!)), t.key).toEqual([]);
     }
   });
+
+  it('Beschreibungen nennen keine Status-Kategorien (gibt es seit 20.10.2026 nicht mehr)', () => {
+    for (const t of TEMPLATES) expect(t.description, t.key).not.toMatch(/Kategorie/);
+  });
 });
 
 describe('Fertige Mail', () => {

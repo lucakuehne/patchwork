@@ -1,7 +1,6 @@
 export type Role = 'admin' | 'it' | 'standard';
 export type ItemType = 'incident' | 'task';
 export type Priority = 'high' | 'normal' | 'low';
-export type StatusCategory = 'new' | 'in_progress' | 'waiting' | 'done' | 'rejected';
 export type View = 'inbox' | 'incidents' | 'incidents-closed' | 'board' | 'tasks-done' | 'tasks-rejected' | 'search';
 
 export interface User {
@@ -82,10 +81,12 @@ export interface Status {
   type: ItemType;
   key: string;
   label: string;
-  category: StatusCategory;
+  /** Abgeschlossen (Listen offen/abgeschlossen, Board, Portal, Auswertungen) */
+  closed: boolean;
+  /** Reihenfolge im Typ: Spalten des Boards und alle Auswahllisten */
   position: number;
   color: StatusColor;
-  /** Lage im Ablaufdiagramm; null = automatisch nach Kategorie */
+  /** Lage im Ablaufdiagramm; null = automatisch */
   diagramX: number | null;
   diagramY: number | null;
 }
@@ -95,6 +96,14 @@ export interface StatusFlow {
   restrict: Record<ItemType, boolean>;
   transitions: { fromId: string; toId: string }[];
 }
+
+/**
+ * Ziel-Status je Typ (automatische Wechsel): start «Neuer Vorgang erhält», reply «Antwort des Melders führt in»,
+ * close «Automatisch schliessen in», reject «Ablehnen führt in» (freiwillig), waiting «Wartet auf den Melder» (freiwillig)
+ */
+export type StatusTarget = 'start' | 'reply' | 'close' | 'reject' | 'waiting';
+export type StatusTargets = Partial<Record<StatusTarget, string>>;
+export type StatusTargetsByType = Record<ItemType, StatusTargets>;
 
 /** Symbole für Meldewege (siehe ChannelIcon.vue) */
 export type ChannelIcon = 'mail' | 'portal' | 'phone' | 'mobile' | 'person' | 'chat' | 'video' | 'letter' | 'alert' | 'other';
@@ -111,7 +120,7 @@ export interface Channel {
 export interface StatusRef {
   id: string;
   label: string;
-  category: StatusCategory;
+  closed: boolean;
   color: StatusColor;
 }
 
@@ -149,7 +158,7 @@ export interface ItemLink {
     number: number;
     title: string;
     type: ItemType | null;
-    status: { label: string; category: StatusCategory; color: StatusColor } | null;
+    status: { label: string; closed: boolean; color: StatusColor } | null;
   };
 }
 
@@ -173,9 +182,15 @@ export interface ChecklistTemplate {
   items: string[];
 }
 
+/**
+ * Status, wie ihn der Melder im Portal sieht: interner Name mit Farbe, im Eingang «Eingegangen». «waiting»: Status
+ * «Wartet auf den Melder» seines Typs (hervorgehoben).
+ */
 export interface PortalStatus {
-  key: 'received' | 'in_progress' | 'waiting' | 'done' | 'rejected';
   label: string;
+  color: StatusColor;
+  closed: boolean;
+  waiting: boolean;
 }
 
 export interface PortalItemSummary {
@@ -485,8 +500,12 @@ export interface LdapSettings {
 // ---------------------------------------------------------------- Etappe 3
 
 export type RuleTrigger = 'mail_new' | 'portal_new' | 'mail_reply' | 'portal_reply';
-/** Zeitgesteuerte Regeln: Kategorien, für die eine Wartezeit gezählt wird */
-export type ScheduleCategory = 'new' | 'in_progress' | 'waiting';
+/** Zeitgesteuerte Regel: Status (offen, beide Typen) und/oder «Wartet auf den Melder» */
+export interface RuleSchedule {
+  days: number;
+  statusIds: string[];
+  waiting: boolean;
+}
 export type ConditionField = 'sender' | 'subject' | 'body' | 'mailbox' | 'adGroup';
 export type ConditionOperator = 'is' | 'isNot' | 'domain' | 'notDomain' | 'contains' | 'notContains' | 'member' | 'notMember';
 
@@ -510,7 +529,7 @@ export interface RuleActions {
   checklistTemplateId?: string;
   suppressConfirmation?: boolean;
   discard?: boolean;
-  /** Zeitgesteuert, nur «Wartend» */
+  /** Zeitgesteuert, nur «Wartet auf den Melder» allein */
   remindReporter?: boolean;
   close?: boolean;
 }
@@ -522,8 +541,11 @@ export interface Rule {
   position: number;
   /** Ereignisse; leer bei zeitgesteuerten Regeln */
   triggers: RuleTrigger[];
-  /** Zeitgesteuert: seit «days» Tagen in einem Status der Kategorie */
-  schedule: { category: ScheduleCategory; days: number } | null;
+  /**
+   * Zeitgesteuert: seit «days» Tagen in einem der Status «statusIds» (offene Status beider Typen) oder, mit
+   * «waiting», im Status «Wartet auf den Melder» des Typs
+   */
+  schedule: RuleSchedule | null;
   conditions: RuleGroup;
   actions: RuleActions;
 }
@@ -547,7 +569,7 @@ export interface Report {
   flow: { start: string; created: { incident: number; task: number; inbox: number }; closed: { incident: number; task: number } }[];
   open: {
     inbox: number;
-    byStatus: { type: ItemType; label: string; category: StatusCategory; count: number }[];
+    byStatus: { type: ItemType; label: string; closed: boolean; count: number }[];
     byPriority: { priority: Priority; count: number }[];
     byAssignee: { name: string | null; count: number }[];
   };

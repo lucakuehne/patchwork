@@ -1,9 +1,19 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { api } from '../api';
-import { CATEGORY_ORDER } from '../format';
-import { transitionAllowed } from '../status-flow';
-import type { Channel, Counts, ItemType, MailboxOption, PublicInfo, Status, StatusFlow, User } from '../types';
+import { rejectAllowed, transitionAllowed } from '../status-flow';
+import type {
+  Channel,
+  Counts,
+  ItemType,
+  MailboxOption,
+  PublicInfo,
+  Status,
+  StatusFlow,
+  StatusTarget,
+  StatusTargetsByType,
+  User,
+} from '../types';
 
 export const useSession = defineStore('session', () => {
   const info = ref<PublicInfo | null>(null);
@@ -11,6 +21,8 @@ export const useSession = defineStore('session', () => {
   const counts = ref<Counts>({ inbox: 0, incidents: 0, tasks: 0 });
   const statuses = ref<Status[]>([]);
   const statusFlow = ref<StatusFlow>({ restrict: { incident: false, task: false }, transitions: [] });
+  /** Ziel-Status je Typ (automatische Wechsel: Start, nach Antwort, Schliessen, Ablehnen, Wartet) */
+  const statusTargets = ref<StatusTargetsByType>({ incident: {}, task: {} });
   const channels = ref<Channel[]>([]);
   const staff = ref<User[]>([]);
   const mailboxes = ref<MailboxOption[]>([]);
@@ -59,14 +71,32 @@ export const useSession = defineStore('session', () => {
   }
 
   async function loadStatuses() {
-    const [list, flow] = await Promise.all([api.get<Status[]>('/statuses'), api.get<StatusFlow>('/statuses/flow')]);
+    const [list, flow, targets] = await Promise.all([
+      api.get<Status[]>('/statuses'),
+      api.get<StatusFlow>('/statuses/flow'),
+      api.get<StatusTargetsByType>('/statuses/targets'),
+    ]);
     statuses.value = list;
     statusFlow.value = flow;
+    statusTargets.value = targets;
   }
 
   /** Darf ein Vorgang dieses Typs von Hand von «fromId» nach «toId» wechseln (Ablauf)? */
   const canMove = (type: ItemType, fromId: string | null, toId: string) =>
     transitionAllowed(statusFlow.value.restrict[type], statusFlow.value.transitions, fromId, toId);
+
+  /** Status-ID eines Ziels (z.B. «reject»), undefined bei leerem freiwilligem Ziel */
+  const targetId = (type: ItemType, target: StatusTarget) => statusTargets.value[type][target];
+
+  /** Ist der Status der Ablehnen-Status seines Typs? Er ist nur über «Ablehnen» erreichbar. */
+  const isRejectStatus = (status: { id: string; type?: ItemType } | null | undefined, type?: ItemType) => {
+    const t = type ?? status?.type;
+    return !!status && !!t && statusTargets.value[t].reject === status.id;
+  };
+
+  /** Gibt es «Ablehnen» für einen Vorgang dieses Typs im Status «currentId» (Ziel vorhanden, Ablauf)? */
+  const canReject = (type: ItemType, currentId: string | null) =>
+    rejectAllowed(statusFlow.value.restrict[type], statusFlow.value.transitions, statusTargets.value[type].reject, currentId);
 
   async function loadStaff() {
     staff.value = await api.get<User[]>('/users/staff');
@@ -76,14 +106,9 @@ export const useSession = defineStore('session', () => {
     mailboxes.value = await api.get<MailboxOption[]>('/mailboxes');
   }
 
-  /** Status eines Typs, gruppiert nach Kategorie und innerhalb nach Reihenfolge. */
+  /** Status eines Typs in der eingestellten Reihenfolge (= Spalten des Boards) */
   const statusesOf = (type: ItemType) =>
-    statuses.value
-      .filter((s) => s.type === type)
-      .sort(
-        (a, b) =>
-          CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category) || a.position - b.position,
-      );
+    statuses.value.filter((s) => s.type === type).sort((a, b) => a.position - b.position);
 
   return {
     info,
@@ -91,6 +116,10 @@ export const useSession = defineStore('session', () => {
     counts,
     statuses,
     statusFlow,
+    statusTargets,
+    targetId,
+    isRejectStatus,
+    canReject,
     channels,
     staff,
     mailboxes,

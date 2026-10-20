@@ -7,11 +7,10 @@ import { ChecklistsService } from '../items/checklists.service';
 import { ItemsService, PRIORITY_LABELS, TYPE_LABELS } from '../items/items.service';
 import { NotificationsService } from '../mail/notifications.service';
 import { SettingsService } from '../settings/settings.service';
-import { firstOfCategory } from '../statuses/status-rules';
 import { StatusesService } from '../statuses/statuses.service';
 import { matchesGroup, type RuleEvent } from './rule-eval';
 import { isNewItemTrigger, type RuleGroup, type RuleInputDto, type RuleSchedule, type RuleTrigger } from './rule-types';
-import { dueDate, waitedDays } from './timed';
+import { dueDate, scheduledStatusIds, waitedDays } from './timed';
 
 /**
  * Passende Regeln für ein Ereignis. Die Bedingungen sind bereits geprüft (ausserhalb der
@@ -105,9 +104,26 @@ export class RulesService {
     });
   }
 
-  /** Verweise einer Regel prüfen: Zuständiger, Vorlage und Postfächer müssen existieren. */
+  /**
+   * Verweise einer Regel prüfen: Zuständiger, Vorlage und Postfächer müssen existieren, die Status einer
+   * zeitgesteuerten Regel existieren und offen sein.
+   */
   private async validate(input: RuleInputDto) {
     const { assigneeId, checklistTemplateId } = input.actions;
+    const statusIds = [...new Set(input.schedule?.statusIds ?? [])];
+    if (statusIds.length > 0) {
+      const found = await this.db
+        .select({ label: statuses.label, closed: statuses.closed })
+        .from(statuses)
+        .where(inArray(statuses.id, statusIds));
+      if (found.length !== statusIds.length) {
+        throw new BadRequestException('Ein gewählter Status existiert nicht mehr. Bitte die Auswahl der Status prüfen.');
+      }
+      const closed = found.find((s) => s.closed);
+      if (closed) {
+        throw new BadRequestException(`«${closed.label}» ist abgeschlossen. Zeitgesteuerte Regeln gelten nur für offene Status.`);
+      }
+    }
     if (assigneeId) {
       const [user] = await this.db.select().from(users).where(eq(users.id, assigneeId)).limit(1);
       if (!user || !user.active || (user.role !== 'admin' && user.role !== 'it')) {
@@ -137,17 +153,17 @@ export class RulesService {
     const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
     const candidates: (RuleEvent & { number: number; title: string; kind: PreviewHit['kind']; at: Date })[] = [];
 
-    // Zeitgesteuert: Vorgänge, die jetzt lange genug in der Kategorie sind
-    if (schedule) {
+    // Zeitgesteuert: Vorgänge, die jetzt lange genug in einem gewählten Status bzw. im Wartet-Status ihres Typs sind
+    const statusIds = schedule ? scheduledStatusIds([schedule], await this.statuses.targets()) : [];
+    if (schedule && statusIds.length > 0) {
       const rows = await this.db
         .select({ item: items, sender: users.email })
         .from(items)
-        .innerJoin(statuses, eq(statuses.id, items.statusId))
         .innerJoin(users, eq(users.id, items.reporterId))
         .where(
           and(
             eq(items.discarded, false),
-            eq(statuses.category, schedule.category),
+            inArray(items.statusId, statusIds),
             sql`${items.statusChangedAt} <= now() - make_interval(days => ${schedule.days})`,
           ),
         )
@@ -312,7 +328,6 @@ export class RulesService {
     state: { suppressConfirmation: boolean },
     pending: (() => Promise<void>)[],
   ) {
-    const all = await this.statuses.list(tx);
     const staff = new Map(
       (await tx.select().from(users).where(inArray(users.role, ['admin', 'it'])))
         .filter((u) => u.active)
@@ -327,16 +342,14 @@ export class RulesService {
     for (const rule of matched) {
       const a = rule.actions;
       const parts: string[] = [];
-      // Typ nur für neue Vorgänge bzw. solange der Vorgang im Eingang liegt
+      // Typ nur für neue Vorgänge bzw. solange der Vorgang im Eingang liegt; Status «Neuer Vorgang erhält»
       if (a.type && !item.type) {
-        const target = firstOfCategory(all, a.type, 'new');
-        if (target) {
-          type = a.type;
-          changes.type = a.type;
-          changes.statusId = target.id;
-          changes.suggestedType = null;
-          parts.push(`den Typ ${q(TYPE_LABELS[a.type])} gesetzt (Status ${q(target.label)})`);
-        }
+        const target = await this.statuses.targetStatus(a.type, 'start', tx);
+        type = a.type;
+        changes.type = a.type;
+        changes.statusId = target.id;
+        changes.suggestedType = null;
+        parts.push(`den Typ ${q(TYPE_LABELS[a.type])} gesetzt (Status ${q(target.label)})`);
       }
       if (a.priority) {
         changes.priority = a.priority;
@@ -415,7 +428,6 @@ export class RulesService {
         return;
       }
       result.applied = true;
-      const all = await this.statuses.list(tx);
       const staff = new Map(
         (await tx.select().from(users).where(inArray(users.role, ['admin', 'it']))).filter((u) => u.active).map((u) => [u.id, u]),
       );
@@ -444,7 +456,8 @@ export class RulesService {
           result.reminded = true;
           parts.push(`den Melder erinnert (wartet seit ${days} Tagen)`);
         }
-        const target = a.close ? firstOfCategory(all, locked.type, 'done') : undefined;
+        // Schliessen: Status «Automatisch schliessen in» des Typs
+        const target = a.close ? await this.statuses.targetStatus(locked.type, 'close', tx) : undefined;
         if (target) {
           changes.statusId = target.id;
           changes.closedAt = now;

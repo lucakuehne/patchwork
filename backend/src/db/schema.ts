@@ -28,7 +28,8 @@ const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull(
 export const userRole = pgEnum('user_role', ['admin', 'it', 'standard']);
 export const authSource = pgEnum('auth_source', ['local', 'ldap', 'oidc']);
 export const itemType = pgEnum('item_type', ['incident', 'task']);
-export const statusCategory = pgEnum('status_category', ['new', 'in_progress', 'waiting', 'done', 'rejected']);
+/** Ziel-Status je Typ (siehe STATUS_TARGETS in status-rules.ts) */
+export const statusTarget = pgEnum('status_target', ['start', 'reply', 'close', 'reject', 'waiting']);
 export const priority = pgEnum('priority', ['high', 'normal', 'low']);
 export const itemSource = pgEnum('item_source', ['mail', 'portal', 'internal']);
 export const entryKind = pgEnum('entry_kind', ['reply', 'note', 'status', 'type', 'change']);
@@ -128,11 +129,13 @@ export const statuses = pgTable(
     type: itemType('type').notNull(),
     key: text('key').notNull(),
     label: text('label').notNull(),
-    category: statusCategory('category').notNull(),
+    /** Abgeschlossen (Abschlussdatum, Listen offen/abgeschlossen, Board, Portal, Auswertungen) */
+    closed: boolean('closed').notNull().default(false),
+    /** Reihenfolge im Typ: Spalten des Boards und alle Auswahllisten */
     position: integer('position').notNull(),
     /** Farbe aus der Palette (siehe STATUS_COLORS) */
     color: text('color').notNull().default('gray'),
-    /** Lage im Ablaufdiagramm; null = automatisch nach Kategorie */
+    /** Lage im Ablaufdiagramm; null = automatisch */
     diagramX: doublePrecision('diagram_x'),
     diagramY: doublePrecision('diagram_y'),
     createdAt: createdAt(),
@@ -152,6 +155,22 @@ export const statusTransitions = pgTable(
       .references(() => statuses.id, { onDelete: 'cascade' }),
   },
   (t) => [primaryKey({ columns: [t.fromId, t.toId] })],
+);
+
+/**
+ * Ziel-Status je Typ: wohin automatische Wechsel führen (Start, nach Antwort, Schliessen, Ablehnen, Wartet).
+ * Ein Status kann mehrere Ziele tragen; löschen lässt er sich erst, wenn seine Ziele umgehängt sind.
+ */
+export const statusTargets = pgTable(
+  'status_targets',
+  {
+    type: itemType('type').notNull(),
+    target: statusTarget('target').notNull(),
+    statusId: uuid('status_id')
+      .notNull()
+      .references(() => statuses.id, { onDelete: 'restrict' }),
+  },
+  (t) => [primaryKey({ columns: [t.type, t.target] })],
 );
 
 /**
@@ -485,7 +504,7 @@ export const rules = pgTable('rules', {
   position: integer('position').notNull(),
   /** Ereignisse, bei denen die Regel greift (leer bei zeitgesteuerten Regeln) */
   triggers: jsonb('triggers').$type<RuleTrigger[]>().notNull(),
-  /** Zeitgesteuert: seit so vielen Tagen in einem Status dieser Kategorie (sonst null) */
+  /** Zeitgesteuert: seit so vielen Tagen in einem dieser Status bzw. im Wartet-Status (sonst null) */
   schedule: jsonb('schedule').$type<RuleSchedule>(),
   /** Bedingungen als Gruppe (UND/ODER) aus Einzelbedingungen und Untergruppen */
   conditions: jsonb('conditions').$type<RuleGroup>().notNull(),
@@ -535,5 +554,5 @@ export type Rule = typeof rules.$inferSelect;
 export type Snippet = typeof snippets.$inferSelect;
 export type UserRole = (typeof userRole.enumValues)[number];
 export type ItemType = (typeof itemType.enumValues)[number];
-export type StatusCategory = (typeof statusCategory.enumValues)[number];
+export type StatusTargetKind = (typeof statusTarget.enumValues)[number];
 export type Priority = (typeof priority.enumValues)[number];

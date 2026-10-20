@@ -71,7 +71,8 @@
 - Schema in `backend/src/db/schema.ts`, Migrationen in `backend/drizzle/`. Neue Migration aus `backend/` mit
   `pnpm exec drizzle-kit generate --name <name>`, eigenes SQL zusätzlich mit `--custom` (z.B. der Trigger
   `items_status_changed`, der `status_changed_at` setzt).
-- Die Logik hängt an den Status-Kategorien (`new`, `in_progress`, `waiting`, `done`, `rejected`), nie an Statusnamen.
+- Die Logik hängt am Häkchen «abgeschlossen» je Status und an den Ziel-Status je Typ (Start, nach Antwort, Schliessen,
+  Ablehnen, Wartet; Tabelle `status_targets`), nie an Statusnamen. Kategorien gibt es seit 20.10.2026 nicht mehr.
 - Passwörter von Postfächern und LDAP sind mit `APP_SECRET` verschlüsselt. `APP_SECRET` nicht ändern, solange die
   Datenbank weiterverwendet wird.
 - AD des Benutzers: Windows Server 2025 mit Pflicht zur LDAP-Signierung. Patchwork verbindet sich per STARTTLS mit dem

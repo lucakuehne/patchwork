@@ -25,9 +25,79 @@ function groupable(e: Entry): boolean {
   return !(e.kind === 'status' && (m.rejected || m.reason));
 }
 
+/** Felder mit Von/Nach, die bei mehrfacher Änderung in einer Karte nur einmal erscheinen */
+const MERGED_FIELDS = ['title', 'description', 'priority', 'channel', 'assignee', 'reporter', 'mailbox'];
+
+/** Welches Feld ändert der Eintrag? null = wird nicht zusammengelegt (Beteiligte, Verknüpfungen, Duplikat …) */
+function mergeKey(e: Entry): string | null {
+  const m = e.meta ?? {};
+  if (e.kind === 'status') return m.duplicateOf ? null : 'status';
+  if (e.kind === 'type') return 'type';
+  if (e.kind === 'change' && typeof m.field === 'string' && MERGED_FIELDS.includes(m.field)) return m.field;
+  return null;
+}
+
+/**
+ * Status und Typ einer Karte als eine Kette (neueste zuerst; der Typwechsel ändert auch den Status): eine Zeile vom
+ * ersten zum letzten Typ samt Status, bei gleichem Typ eine Statuszeile, ohne Änderung keine.
+ */
+function mergeStatusChain(chain: Entry[]): Entry | null {
+  const newest = chain[0]!;
+  const oldest = chain.at(-1)!;
+  const types = chain.filter((e) => e.kind === 'type');
+  const m = (e: Entry) => e.meta ?? {};
+  const firstStatus = oldest.kind === 'type' ? m(oldest).fromStatus : m(oldest).from;
+  const lastStatus = newest.kind === 'type' ? m(newest).toStatus : m(newest).to;
+  const firstType = m(types.at(-1)!).from;
+  const lastType = m(types[0]!).to;
+  if (firstType !== lastType) {
+    return { ...newest, kind: 'type', meta: { ...m(types[0]!), from: firstType, to: lastType, fromStatus: firstStatus, toStatus: lastStatus } };
+  }
+  return firstStatus !== lastStatus ? { ...newest, kind: 'status', meta: { from: firstStatus, to: lastStatus } } : null;
+}
+
+/**
+ * Mehrfache Änderungen desselben Feldes in einer Karte (neueste zuerst) erscheinen einmal: vom ersten zum letzten Wert,
+ * mit der Zeit der letzten Änderung. Steht am Ende wieder der Ausgangswert, entfällt die Zeile. Mit einem Typwechsel
+ * in der Karte bilden Status und Typ eine Kette (siehe mergeStatusChain).
+ */
+export function mergeRepeats(newestFirst: Entry[]): Entry[] {
+  const withType = newestFirst.some((e) => mergeKey(e) === 'type');
+  const keyOf = (e: Entry) => {
+    const key = mergeKey(e);
+    return withType && (key === 'status' || key === 'type') ? 'chain' : key;
+  };
+  const result: Entry[] = [];
+  const seen = new Set<string>();
+  for (const entry of newestFirst) {
+    const key = keyOf(entry);
+    if (!key) {
+      result.push(entry);
+      continue;
+    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const same = newestFirst.filter((e) => keyOf(e) === key);
+    if (same.length === 1) {
+      result.push(entry);
+      continue;
+    }
+    if (key === 'chain') {
+      const merged = mergeStatusChain(same);
+      if (merged) result.push(merged);
+      continue;
+    }
+    const meta: Record<string, unknown> = { ...entry.meta, from: (same.at(-1)!.meta ?? {}).from };
+    // «Beschreibung geändert» hat keine Werte: einmal zeigen
+    if (key === 'description' || meta.from !== meta.to) result.push({ ...entry, meta });
+  }
+  return result;
+}
+
 /**
  * Teilt die Einträge (neueste zuerst) in Nachrichten und Ereigniszeilen. Aufeinanderfolgende
- * Änderungen derselben Person kurz hintereinander (z.B. Status und Priorität) werden zusammengefasst.
+ * Änderungen derselben Person kurz hintereinander (z.B. Status und Priorität) werden zusammengefasst,
+ * mehrfache Änderungen desselben Feldes darin zu einer (siehe mergeRepeats).
  */
 export function groupTimeline(newestFirst: Entry[]): TimelineBlock[] {
   const blocks: TimelineBlock[] = [];
@@ -50,7 +120,11 @@ export function groupTimeline(newestFirst: Entry[]): TimelineBlock[] {
       blocks.push({ kind: 'events', entries: [entry] });
     }
   }
-  return blocks;
+  return blocks.flatMap((block) => {
+    if (block.kind === 'message' || block.entries.length < 2) return [block];
+    const entries = mergeRepeats(block.entries);
+    return entries.length ? [{ kind: 'events' as const, entries }] : [];
+  });
 }
 
 const q = (v: unknown) => (v === null || v === undefined || v === '' ? '–' : `«${String(v)}»`);

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { sql, type SQL } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
-import type { ItemType, Priority, StatusCategory } from '../db/schema';
+import type { ItemType, Priority } from '../db/schema';
 import { PRIORITY_LABELS, TYPE_LABELS } from '../items/items.service';
 
 export type Bucket = 'day' | 'week' | 'month';
@@ -20,20 +20,23 @@ export interface Report {
   flow: { start: string; created: Record<ItemType | 'inbox', number>; closed: Record<ItemType, number> }[];
   open: {
     inbox: number;
-    byStatus: { type: ItemType; label: string; category: StatusCategory; count: number }[];
+    byStatus: { type: ItemType; label: string; closed: boolean; count: number }[];
     byPriority: { priority: Priority; count: number }[];
     byAssignee: { name: string | null; count: number }[];
   };
   oldest: { total: number; items: { number: number; title: string; type: ItemType | null; status: string | null; assignee: string | null; createdAt: Date }[] };
-  /** Dauer bis «Gelöst» bei Störungen, die im Zeitraum gelöst wurden (keine abgelehnten) */
+  /** Dauer bis «Gelöst» bei Störungen, die im Zeitraum abgeschlossen wurden (ohne den Ablehnen-Status) */
   resolution: { count: number; medianHours: number | null; averageHours: number | null };
   topReporters: { name: string; email: string; count: number }[];
   /** Neue Vorgänge im Zeitraum nach Meldeweg; label null = ohne Angabe */
   byChannel: { label: string | null; icon: string | null; count: number }[];
 }
 
-/** Offen = im Eingang (ohne Status) oder in einem Status ausserhalb «Erledigt»/«Abgelehnt» */
-const OPEN = sql`i.discarded = false and (i.status_id is null or s.category not in ('done', 'rejected'))`;
+/** Offen = im Eingang (ohne Status) oder in einem Status, der nicht abgeschlossen ist */
+const OPEN = sql`i.discarded = false and (i.status_id is null or not s.closed)`;
+
+/** Status ist der Ablehnen-Status seines Typs («Ablehnen führt in») */
+const REJECT_STATUS = sql`exists (select 1 from status_targets t where t.status_id = s.id and t.target = 'reject')`;
 
 /** Auswertungen (nur Admin). Die Kennzahlen für «offen» gelten für jetzt, alle anderen für den Zeitraum. */
 @Injectable()
@@ -84,11 +87,11 @@ export class ReportsService {
     }
 
     const [byStatus, inbox, byPriority, byAssignee, oldest, oldestTotal, resolution, topReporters, byChannel] = await Promise.all([
-      this.rows<{ type: ItemType; label: string; category: StatusCategory; count: number }>(sql`
-        select s.type::text as type, s.label, s.category::text as category, count(i.id)::int as count
+      this.rows<{ type: ItemType; label: string; closed: boolean; count: number }>(sql`
+        select s.type::text as type, s.label, s.closed, count(i.id)::int as count
         from items i join statuses s on s.id = i.status_id
         where ${OPEN}
-        group by s.id, s.type, s.label, s.category, s.position
+        group by s.id, s.type, s.label, s.closed, s.position
         order by s.type, s.position`),
       this.rows<{ n: number }>(sql`select count(*)::int as n from items i where i.discarded = false and i.type is null`),
       this.rows<{ priority: Priority; count: number }>(sql`
@@ -117,7 +120,7 @@ export class ReportsService {
           percentile_cont(0.5) within group (order by extract(epoch from i.closed_at - i.created_at)) / 3600 as median,
           avg(extract(epoch from i.closed_at - i.created_at)) / 3600 as average
         from items i join statuses s on s.id = i.status_id
-        where i.discarded = false and i.type = 'incident' and s.category = 'done'
+        where i.discarded = false and i.type = 'incident' and s.closed and not ${REJECT_STATUS}
           and i.closed_at >= ${from}::timestamptz and i.closed_at < ${to}::timestamptz`),
       this.rows<{ name: string; email: string; count: number }>(sql`
         select u.name, u.email, count(*)::int as count

@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { api } from '../api';
 import MineToggle from '../components/MineToggle.vue';
-import { moveItem } from '../status-move';
+import { isCompleting } from '../status-flow';
+import { manualStatusChoices, moveItem } from '../status-move';
 import TasksNav from '../components/TasksNav.vue';
 import { useMineFilter } from '../composables';
 import { formatAge, initials, itemRef } from '../format';
@@ -37,7 +38,8 @@ function canDrop(event: { draggedContext: { element: ItemSummary }; to: HTMLElem
   return !toId || session.canMove('task', event.draggedContext.element.status?.id ?? null, toId);
 }
 
-const statuses = computed(() => session.statusesOf('task').filter((s) => s.category !== 'rejected'));
+// Spalten: alle Status der Aufgaben ausser dem Ablehnen-Status; abgeschlossene zeigen nur die letzten 14 Tage
+const statuses = computed(() => manualStatusChoices(session.statusesOf('task'), session.statusTargets.task, null));
 
 async function load() {
   try {
@@ -74,10 +76,12 @@ async function onChange(statusId: string, event: ChangeEvent) {
       await load();
       return;
     }
-    if (event.added) {
-      const status = statuses.value.find((s) => s.id === statusId);
-      if (status) change.element.status = { id: status.id, label: status.label, category: status.category, color: status.color };
-      if (status?.category === 'done') toast.success(`${itemRef(change.element.number)} erledigt`);
+    const status = event.added && statuses.value.find((s) => s.id === statusId);
+    if (status) {
+      // Toast wie die Mail «Erledigt»: aus einem offenen in einen abgeschlossenen Status
+      const from = change.element.status;
+      change.element.status = { id: status.id, label: status.label, closed: status.closed, color: status.color };
+      if (isCompleting(session.statusTargets.task, from, status)) toast.success(`${itemRef(change.element.number)} erledigt`);
     }
     void session.refreshCounts();
   } catch (err) {
@@ -117,7 +121,7 @@ function onCreated(number: number) {
         <header class="column-head">
           <span class="badge" :class="`st-${status.color}`">{{ status.label }}</span>
           <span class="faint">{{ columns[status.id]?.length ?? 0 }}</span>
-          <span v-if="status.category === 'done'" class="faint hint">letzte 14 Tage</span>
+          <span v-if="status.closed" class="faint hint">letzte 14 Tage</span>
         </header>
         <draggable
           v-model="columns[status.id]"
@@ -133,7 +137,7 @@ function onCreated(number: number) {
           @change="onChange(status.id, $event)"
         >
           <template #item="{ element }">
-            <article class="task card" :class="{ done: status.category === 'done' }" @click="open(element)">
+            <article class="task card" :class="{ done: status.closed }" @click="open(element)">
               <div class="task-top">
                 <span class="mono faint">{{ itemRef(element.number) }}</span>
                 <span v-if="element.priority === 'high'" class="prio prio-high">Hoch</span>

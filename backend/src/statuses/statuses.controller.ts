@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import { z } from 'zod';
 import { AdminOnly } from '../auth/auth.decorators';
 import { nullableUuid, ZodPipe } from '../common/zod.pipe';
@@ -6,20 +6,41 @@ import { STATUS_COLORS } from './status-rules';
 import { StatusesService } from './statuses.service';
 
 const typeSchema = z.enum(['incident', 'task']);
-const categorySchema = z.enum(['new', 'in_progress', 'waiting', 'done', 'rejected']);
 const labelSchema = z.string().trim().min(1, 'Bezeichnung fehlt').max(60);
 const coordinate = z.number().finite().min(-100000).max(100000);
 
-const createSchema = z.object({ type: typeSchema, label: labelSchema, category: categorySchema });
+const createSchema = z.object({ type: typeSchema, label: labelSchema, closed: z.boolean() });
 const updateSchema = z.object({
   label: labelSchema.optional(),
-  category: categorySchema.optional(),
+  closed: z.boolean().optional(),
   color: z.enum(STATUS_COLORS).optional(),
   diagramX: coordinate.optional(),
   diagramY: coordinate.optional(),
 });
 const reorderSchema = z.object({ type: typeSchema, ids: z.array(z.uuid()).min(1) });
-const removeSchema = z.object({ replacementId: nullableUuid.optional() });
+/** Ersatz je Ziel: Status-ID, bei freiwilligen Zielen auch null (= keiner) */
+const targetChoices = z.object({
+  start: nullableUuid.optional(),
+  reply: nullableUuid.optional(),
+  close: nullableUuid.optional(),
+  reject: nullableUuid.optional(),
+  waiting: nullableUuid.optional(),
+});
+// Ohne Body (unbenutzter Status ohne Ziele) kommt undefined an
+const removeSchema = z.preprocess(
+  (body) => body ?? {},
+  z.object({ replacementId: nullableUuid.optional(), targets: targetChoices.optional() }),
+);
+const targetsSchema = z.object({
+  type: typeSchema,
+  targets: z.object({
+    start: z.uuid(),
+    reply: z.uuid(),
+    close: z.uuid(),
+    reject: nullableUuid.optional(),
+    waiting: nullableUuid.optional(),
+  }),
+});
 const flowSchema = z.object({
   type: typeSchema,
   restrict: z.boolean(),
@@ -41,6 +62,13 @@ export class StatusesController {
     return this.statuses.usage();
   }
 
+  /** Zeitgesteuerte Regeln je Status (für den Lösch-Dialog) */
+  @AdminOnly()
+  @Get('rules-usage')
+  rulesUsage() {
+    return this.statuses.rulesUsage();
+  }
+
   /** Ablauf: pro Typ eingeschränkt oder frei, und die erlaubten Wechsel von Hand */
   @Get('flow')
   flow() {
@@ -51,6 +79,23 @@ export class StatusesController {
   @Put('flow')
   setFlow(@Body(new ZodPipe(flowSchema)) body: z.infer<typeof flowSchema>) {
     return this.statuses.setFlow(body.type, body.restrict, body.transitions);
+  }
+
+  /** Ziel-Status je Typ (automatische Wechsel) */
+  @Get('targets')
+  targets() {
+    return this.statuses.targets();
+  }
+
+  @AdminOnly()
+  @Put('targets')
+  setTargets(@Body(new ZodPipe(targetsSchema)) body: z.infer<typeof targetsSchema>) {
+    const { reject, waiting, ...required } = body.targets;
+    return this.statuses.setTargets(body.type, {
+      ...required,
+      ...(reject ? { reject } : {}),
+      ...(waiting ? { waiting } : {}),
+    });
   }
 
   @AdminOnly()
@@ -72,13 +117,11 @@ export class StatusesController {
     return this.statuses.update(id, body);
   }
 
+  /** Löschen mit Ersatz für die Vorgänge und für Ziele, die auf den Status zeigen */
   @AdminOnly()
   @Delete(':id')
   @HttpCode(204)
-  async remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Query(new ZodPipe(removeSchema)) query: z.infer<typeof removeSchema>,
-  ) {
-    await this.statuses.remove(id, query.replacementId ?? null);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(removeSchema)) body: z.infer<typeof removeSchema>) {
+    await this.statuses.remove(id, body);
   }
 }

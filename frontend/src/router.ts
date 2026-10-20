@@ -27,6 +27,7 @@ export const router = createRouter({
       component: () => import('./views/TasksClosedView.vue'),
       props: { view: 'tasks-done' },
     },
+    // Nur mit Ablehnen-Ziel für Aufgaben (siehe beforeEach)
     {
       path: '/aufgaben/abgelehnt',
       name: 'tasks-rejected',
@@ -128,5 +129,7 @@ router.beforeEach(async (to) => {
     return to.name === 'portal-item' ? { name: 'item', params: { number: to.params.number } } : { name: 'inbox' };
   }
   if (to.matched.some((r) => r.meta.admin) && !session.isAdmin) return { name: 'inbox' };
+  // Ohne Ablehnen-Ziel für Aufgaben gibt es die Ansicht «Abgelehnt» nicht; abgeschlossene Aufgaben stehen unter «Erledigt»
+  if (to.name === 'tasks-rejected' && !session.statusTargets.task.reject) return { name: 'tasks-done' };
   return true;
 });

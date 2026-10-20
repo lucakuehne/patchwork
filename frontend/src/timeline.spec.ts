@@ -25,7 +25,9 @@ const shape = (newestFirst: Entry[]) =>
 
 describe('groupTimeline', () => {
   it('fasst Änderungen derselben Person innert 2 Minuten zusammen', () => {
-    expect(shape([entry(3), entry(2), entry(1)])).toEqual([3]);
+    const status = entry(2, { kind: 'status', meta: { from: 'Neu', to: 'In Arbeit' } });
+    const title = entry(1, { meta: { field: 'title', from: 'A', to: 'B' } });
+    expect(shape([entry(3), status, title])).toEqual([3]);
   });
 
   it('trennt bei grösserem Abstand, anderer Person oder einer Nachricht dazwischen', () => {
@@ -40,6 +42,78 @@ describe('groupTimeline', () => {
     expect(shape([rule, system])).toEqual([1, 1]);
     const rejected = entry(2, { kind: 'status', meta: { rejected: true, from: 'Backlog', to: 'Abgelehnt' } });
     expect(shape([rejected, entry(1)])).toEqual([1, 1]);
+  });
+
+  it('zeigt ein mehrfach geändertes Feld einmal, vom ersten zum letzten Wert', () => {
+    const blocks = groupTimeline([
+      entry(3, { meta: { field: 'priority', from: 'Hoch', to: 'Niedrig' } }),
+      entry(2, { kind: 'status', meta: { from: 'Neu', to: 'In Arbeit' } }),
+      entry(1, { meta: { field: 'priority', from: 'Normal', to: 'Hoch' } }),
+    ]);
+    expect(blocks).toHaveLength(1);
+    const entries = blocks[0]!.kind === 'events' ? blocks[0]!.entries : [];
+    expect(entries.map((e) => eventPart(e).text)).toEqual([
+      'die Priorität von «Normal» auf «Niedrig» geändert',
+      'den Status von «Neu» auf «In Arbeit» geändert',
+    ]);
+    // Zeit der letzten Änderung
+    expect(entries[0]!.createdAt).toBe(new Date(Date.UTC(2026, 9, 15, 10, 3)).toISOString());
+  });
+
+  it('lässt eine Änderung weg, die wieder beim Ausgangswert endet, und die Karte, wenn nichts übrig bleibt', () => {
+    const back = [entry(2, { meta: { field: 'priority', from: 'Hoch', to: 'Normal' } }), entry(1)];
+    expect(shape(back)).toEqual([]);
+    expect(shape([entry(3, { kind: 'status', meta: { from: 'Neu', to: 'In Arbeit' } }), ...back])).toEqual([1]);
+    const type = (minute: number, from: string, to: string, fromStatus: string, toStatus: string) =>
+      entry(minute, { kind: 'type', meta: { from, to, fromStatus, toStatus } });
+    // Störung → Aufgabe → Störung in einem anderen Status: als Statuswechsel
+    const there = type(1, 'Störung', 'Aufgabe', 'Neu', 'Geplant');
+    const blocks = groupTimeline([type(2, 'Aufgabe', 'Störung', 'Geplant', 'In Arbeit'), there]);
+    expect(blocks[0]!.kind === 'events' && eventPart(blocks[0]!.entries[0]!).text).toBe('den Status von «Neu» auf «In Arbeit» geändert');
+    expect(shape([type(2, 'Aufgabe', 'Störung', 'Geplant', 'Neu'), there])).toEqual([]);
+    // Dreimal gewechselt: vom ersten zum letzten Typ und Status
+    const thrice = groupTimeline([
+      type(3, 'Störung', 'Aufgabe', 'Neu', 'Backlog'),
+      type(2, 'Aufgabe', 'Störung', 'Geplant', 'Neu'),
+      type(1, 'Störung', 'Aufgabe', 'Wartet', 'Geplant'),
+    ]);
+    expect(thrice[0]!.kind === 'events' && eventPart(thrice[0]!.entries[0]!).text).toBe(
+      'den Typ von «Störung» auf «Aufgabe» geändert (Status «Wartet» → «Backlog»)',
+    );
+  });
+
+  it('Status und Typ bilden eine Kette, wenn die Karte einen Typwechsel enthält', () => {
+    const text = (newestFirst: Entry[]) =>
+      groupTimeline(newestFirst).flatMap((b) => (b.kind === 'events' ? b.entries.map((e) => eventPart(e).text) : []));
+    const type = (minute: number, from: string, to: string, fromStatus: string, toStatus: string) =>
+      entry(minute, { kind: 'type', meta: { from, to, fromStatus, toStatus } });
+    const status = (minute: number, from: string, to: string) => entry(minute, { kind: 'status', meta: { from, to } });
+    // Störung → Aufgabe, Status gewechselt, zurück zur Störung: nur eine Statuszeile
+    expect(
+      text([type(3, 'Aufgabe', 'Störung', 'In Arbeit', 'In Arbeit'), status(2, 'Backlog', 'In Arbeit'), type(1, 'Störung', 'Aufgabe', 'Neu', 'Backlog')]),
+    ).toEqual(['den Status von «Neu» auf «In Arbeit» geändert']);
+    // Status, Typ hin, Status, Typ zurück: vom ersten zum letzten Status
+    expect(
+      text([
+        type(4, 'Aufgabe', 'Störung', 'Erledigt', 'Gelöst'),
+        status(3, 'In Arbeit', 'Erledigt'),
+        type(2, 'Störung', 'Aufgabe', 'In Arbeit', 'In Arbeit'),
+        status(1, 'Neu', 'In Arbeit'),
+      ]),
+    ).toEqual(['den Status von «Neu» auf «Gelöst» geändert']);
+    // Typ bleibt geändert: eine Typzeile mit erstem und letztem Status
+    expect(text([status(2, 'Backlog', 'In Arbeit'), type(1, 'Störung', 'Aufgabe', 'Neu', 'Backlog')])).toEqual([
+      'den Typ von «Störung» auf «Aufgabe» geändert (Status «Neu» → «In Arbeit»)',
+    ]);
+  });
+
+  it('Beschreibung einmal, Beteiligte und Ablehnungen bleiben einzeln, nur innerhalb von 2 Minuten', () => {
+    const description = (minute: number) => entry(minute, { meta: { field: 'description' } });
+    expect(shape([description(2), description(1)])).toEqual([1]);
+    const added = (minute: number) => entry(minute, { meta: { field: 'participantAdded', to: 'Bea' } });
+    const removed = entry(3, { meta: { field: 'participantRemoved', from: 'Bea' } });
+    expect(shape([removed, added(2), added(1)])).toEqual([3]);
+    expect(shape([entry(10, { meta: { field: 'priority', from: 'Hoch', to: 'Normal' } }), entry(1)])).toEqual([1, 1]);
   });
 
   it('Satzteile ohne «hat»', () => {

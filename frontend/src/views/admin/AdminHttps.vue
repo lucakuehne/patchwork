@@ -118,7 +118,7 @@ async function upload(e: Event) {
         <div v-if="status.error" class="error-box">{{ status.error }}</div>
         <template v-if="status.active">
           <div class="row">
-            <span class="badge cat-done">aktiv</span>
+            <span class="badge st-green">aktiv</span>
             <span>Patchwork ist über <strong>{{ httpsUrl }}</strong> erreichbar.</span>
           </div>
           <span v-if="status.redirects" class="faint">Aufrufe über http:// leiten auf https:// um.</span>

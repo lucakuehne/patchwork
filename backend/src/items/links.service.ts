@@ -6,7 +6,6 @@ import { attachments, entries, items, links, participants, statuses, users, type
 import { itemRef } from '../mail/mail-content';
 import { replaceImages } from './inline-images';
 import { NotificationsService } from '../mail/notifications.service';
-import { firstOfCategory, isClosedCategory } from '../statuses/status-rules';
 import { StatusesService } from '../statuses/statuses.service';
 import { ItemsService, TYPE_LABELS } from './items.service';
 
@@ -68,7 +67,7 @@ export class LinksService {
       .select({
         link: links,
         other: { id: otherItem.id, number: otherItem.number, title: otherItem.title, type: otherItem.type },
-        status: { label: statuses.label, category: statuses.category, color: statuses.color },
+        status: { label: statuses.label, closed: statuses.closed, color: statuses.color },
       })
       .from(links)
       .innerJoin(
@@ -136,14 +135,13 @@ export class LinksService {
    * - gleicher Melder: Meldung (Text und Anhänge) wird ins Original übernommen (zusammenführen)
    * - anderer Melder: Melder wird beim Original Beteiligter
    * - Beteiligte (CC) des Duplikats werden ebenfalls beim Original Beteiligte
-   * - ein offenes Duplikat wird geschlossen (erster Status der Kategorie «Erledigt»)
+   * - ein offenes Duplikat wird geschlossen (Status «Automatisch schliessen in» seines Typs, ohne Typ der des Originals)
    * Der Melder erhält statt der Erledigt-Mail einen Hinweis auf das Original.
    * Verworfene Duplikate werden nur verknüpft.
    */
   private async redirectDuplicate(tx: Tx, actorId: string, duplicate: Item, original: Item) {
     if (duplicate.discarded) return [];
-    const all = await this.statuses.list(tx);
-    const current = duplicate.statusId ? all.find((s) => s.id === duplicate.statusId) : undefined;
+    const current = duplicate.statusId ? await this.statuses.get(duplicate.statusId, tx) : undefined;
     const merged = duplicate.reporterId === original.reporterId;
 
     if (merged) {
@@ -201,10 +199,9 @@ export class LinksService {
       });
     }
 
-    if (!current || !isClosedCategory(current.category)) {
+    if (!current?.closed) {
       const type = duplicate.type ?? original.type!;
-      const target = firstOfCategory(all, type, 'done');
-      if (!target) throw new BadRequestException('Für diesen Typ ist kein Status der Kategorie «Erledigt» definiert');
+      const target = await this.statuses.targetStatus(type, 'close', tx);
       if (!duplicate.type) {
         await this.items.addEntry(tx, duplicate.id, actorId, 'type', '', {
           from: null,
@@ -226,7 +223,6 @@ export class LinksService {
       await this.items.addEntry(tx, duplicate.id, actorId, 'status', '', {
         from: current?.label ?? null,
         to: target.label,
-        toCategory: target.category,
         duplicateOf: original.number,
         merged,
       });
@@ -284,8 +280,8 @@ export class LinksService {
     const ref = `${itemRef(original.number)} «${original.title}»`;
     if (original.discarded) throw new BadRequestException(`${ref} ist verworfen und kann nicht Original eines Duplikats sein`);
     if (!original.statusId) return;
-    const status = (await this.statuses.list(tx)).find((s) => s.id === original.statusId);
-    if (status && isClosedCategory(status.category)) {
+    const status = await this.statuses.get(original.statusId, tx);
+    if (status.closed) {
       throw new BadRequestException(
         `${ref} ist bereits abgeschlossen. Bitte das Original zuerst wieder öffnen oder «Bezieht sich auf» verwenden.`,
       );

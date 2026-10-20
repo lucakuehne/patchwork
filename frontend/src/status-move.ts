@@ -1,5 +1,6 @@
 import { api, ApiError } from './api';
 import { useConfirm } from './stores/confirm';
+import type { ItemType, StatusTargets, StatusTargetsByType } from './types';
 
 export interface MoveRequest {
   statusId: string;
@@ -8,8 +9,8 @@ export interface MoveRequest {
 }
 
 /**
- * Setzt den Status eines Vorgangs. Meldet der Server offene Checklisten-Punkte,
- * wird nachgefragt und bei Bestätigung erneut mit «force» gesendet.
+ * Setzt den Status eines Vorgangs. Meldet der Server offene Checklisten-Punkte (Wechsel von Hand in einen
+ * abgeschlossenen Status ausser dem Ablehnen-Status), wird nachgefragt und bei Bestätigung erneut mit «force» gesendet.
  * Ergebnis: false, wenn abgebrochen wurde.
  */
 export async function moveItem(number: number, request: MoveRequest): Promise<boolean> {
@@ -27,4 +28,32 @@ export async function moveItem(number: number, request: MoveRequest): Promise<bo
     await api.post(`/items/${number}/move`, { ...request, force: true });
     return true;
   }
+}
+
+/**
+ * Status zur Wahl beim Wechsel von Hand (Status-Feld, Board, Neu-Dialog): die Status des Typs in ihrer Reihenfolge ohne
+ * den Ablehnen-Status (nur über «Ablehnen» erreichbar), dazu nur, was der Ablauf aus dem aktuellen Status erlaubt. Der
+ * aktuelle Status bleibt in der Auswahl, ausser es ist der Ablehnen-Status.
+ */
+export function manualStatusChoices<T extends { id: string }>(
+  statuses: T[],
+  targets: StatusTargets,
+  currentId: string | null,
+  allowed: (toId: string) => boolean = () => true,
+): T[] {
+  return statuses.filter((s) => s.id !== targets.reject && (s.id === currentId || allowed(s.id)));
+}
+
+/**
+ * Status zur Wahl beim Typwechsel von Hand: alle Status des Zieltyps (der Ablauf gilt hier nicht). Den Ablehnen-Status
+ * des Zieltyps gibt es nur, wenn der Vorgang im Ablehnen-Status seines bisherigen Typs steht.
+ */
+export function typeChangeChoices<T extends { id: string }>(
+  targetStatuses: T[],
+  targets: StatusTargetsByType,
+  current: { id: string; type: ItemType },
+  targetType: ItemType,
+): T[] {
+  const fromReject = current.id === targets[current.type].reject;
+  return targetStatuses.filter((s) => fromReject || s.id !== targets[targetType].reject);
 }

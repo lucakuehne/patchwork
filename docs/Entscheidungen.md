@@ -16,42 +16,46 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
 
 ## Status
 
-- Status sind pro Typ in der Oberfläche bearbeitbar (nur Admin): anlegen, umbenennen, sortieren, löschen.
-- Jeder Status hat eine feste **Kategorie**: *Neu*, *In Arbeit*, *Wartend*, *Erledigt*, *Abgelehnt*.
-  *Erledigt* und *Abgelehnt* gelten als abgeschlossen.
-- Pro Typ braucht es mindestens je einen Status der Kategorie *Neu*, *In Arbeit* und *Erledigt*.
-- Löschen eines verwendeten Status erfordert die Wahl eines Ersatzstatus.
-- Die Verwaltung zeigt die Status nach Kategorie gruppiert. Die Reihenfolge (auch der Board-Spalten) ergibt sich aus der Kategorie (Neu, In Arbeit, Wartend, Erledigt, Abgelehnt) und innerhalb der Kategorie aus der eingestellten Reihenfolge.
+- Status sind pro Typ in der Oberfläche bearbeitbar (nur Admin): anlegen, umbenennen, Farbe, sortieren, löschen.
 - Texteingaben (Beschreibung, Antworten, Notizen, Ablehnungsgrund) erfolgen über einen WYSIWYG-Editor mit Toolbar, gespeichert wird Markdown.
-- Die Logik hängt an der Kategorie:
-  - Neuer Vorgang → erster Status der Kategorie *Neu*.
-  - Antwort des Melders (oder eines Beteiligten) auf einen Vorgang in *Wartend* oder *Erledigt* → erster Status der Kategorie *In Arbeit*.
-  - Wechsel in die Kategorie *Erledigt* → Mail an den Melder.
-  - Aktion «Ablehnen» → Status der Kategorie *Abgelehnt*.
-  - Typwechsel → erster Status derselben Kategorie im anderen Typ. Ersatz, falls nicht vorhanden: *Wartend* → *In Arbeit*, *Abgelehnt* → *Erledigt*.
+- **Status ohne Kategorien** (bestätigt am 20.10.2026; ersetzt die bisherigen Kategorien *Neu*, *In Arbeit*, *Wartend*, *Erledigt*, *Abgelehnt* und die Gruppierung danach):
+  - Pro Typ eine flache Liste ohne Gruppen. Ihre Reihenfolge gilt für die Spalten des Boards und alle Auswahllisten.
+  - Jeder Status hat ausser Name, Farbe und Reihenfolge nur das Häkchen **«abgeschlossen»**. Daran hängen Abschlussdatum, Listen offen/abgeschlossen, Zähler, Board, Portal offen/abgeschlossen, Auswertungen und Duplikate.
+  - Pro Typ legt der Block **«Automatische Wechsel»** die Ziel-Status fest:
+    - «Neuer Vorgang erhält» (Pflicht, offener Status): intern erfasst ohne Statuswahl, Typ im Eingang zugewiesen, Regelaktion «Typ».
+    - «Antwort des Melders führt in» (Pflicht, offen, nicht der Wartet-Status): Antwort des Melders oder eines Beteiligten auf einen Vorgang im Wartet-Status oder in einem abgeschlossenen Status ausser dem Ablehnen-Status.
+    - «Automatisch schliessen in» (Pflicht, abgeschlossen, nicht der Ablehnen-Status): Duplikat schliessen und Zeitregel «Schliessen» (ein gemeinsames Ziel).
+    - «Ablehnen führt in» (freiwillig, abgeschlossen): Aktion «Ablehnen». Leer heisst: kein Knopf «Ablehnen». Dieser Status ist nur über «Ablehnen» (mit Begründung) erreichbar, nicht über Status-Feld oder Board, und eine Antwort öffnet ihn nicht wieder. Pfeile in diesen Status sind erlaubt (bestätigt am 20.10.2026): Ist «Wechsel von Hand nur gemäss Ablauf» an, gibt es «Ablehnen» nur in Status mit Pfeil dorthin; sonst wie bisher aus jedem Status ausser dem Ablehnen-Status selbst.
+    - «Wartet auf den Melder» (freiwillig, offen, höchstens ein Status je Typ, weder Start noch «nach Antwort»): Eine Antwort holt den Vorgang zurück, das Portal hebt ihn hervor, zeitgesteuerte Regeln können erinnern und schliessen.
+  - Mail «Erledigt», Rückfrage bei offenen Checklisten-Punkten und Meldung «Behebt»: beim Wechsel von Hand in einen abgeschlossenen Status (ausser dem Ablehnen-Status) aus einem offenen Status oder aus dem Ablehnen-Status. Zwischen zwei abgeschlossenen Status keine Mail.
+  - Löschen eines Ziel-Status: Im Lösch-Dialog erscheint das betroffene Pflichtfeld leer, «Löschen» geht erst, wenn ein passender Ersatz gewählt ist. So ist kein Pflichtfeld je leer. Ebenso lässt sich «abgeschlossen» nicht umschalten, wenn ein Ziel dadurch nicht mehr passt.
+  - Typwechsel von Hand bei einem Vorgang mit Status: Ein Dialog fragt nach dem Status im neuen Typ, vorbelegt nach Rolle (Start → Start, Wartet → Wartet, sonst «nach Antwort»; übrige offene → «nach Antwort»; Ablehnen → Ablehnen, sonst Schliessen; übrige abgeschlossene → Schliessen). Aus dem Eingang und über die Regelaktion «Typ» ohne Dialog: Start.
+  - Zeitgesteuerte Regeln beziehen sich auf konkrete Status (Mehrfachauswahl) und den Eintrag «Wartet auf den Melder (beide Typen)». «Melder erinnern» und «Schliessen» gibt es nur mit diesem Eintrag allein.
+  - Das Ablaufdiagramm zeigt die Ziele zusätzlich als Marken (nur Anzeige, ein Klick springt zum Feld).
+  - Im Portal sieht der Melder den internen Statusnamen (ersetzt die vereinfachte Anzeige), im Eingang «Eingegangen».
+  - Übernahme bestehender Daten: «abgeschlossen» = bisher *Erledigt* oder *Abgelehnt*; Ziele = bisher erster Status der Kategorie; die angezeigte Reihenfolge bleibt; zeitgesteuerte Regeln werden übernommen. Ist der Ablauf eines Typs eingeschränkt, erhält der Ablehnen-Status Pfeile aus allen Status, damit «Ablehnen» wie bisher überall geht.
 - Standardstatus:
-  - Störung: Neu (Neu), In Arbeit (In Arbeit), Wartet auf Melder (Wartend), Gelöst (Erledigt)
-  - Aufgabe: Backlog (Neu), Geplant (Neu), In Arbeit (In Arbeit), Erledigt (Erledigt), Abgelehnt (Abgelehnt)
-- Überarbeitung, bestätigt am 20.10.2026:
-  - Die Kategorie bleibt und steuert weiterhin das Verhalten.
-  - Jeder Status erhält eine Farbe aus einer Palette, vorbelegt mit der Farbe seiner Kategorie. Sie gilt für die Anzeige des Status, die Listen, die Spalten des Boards und das Diagramm.
+  - Störung: Neu (Start), In Arbeit («nach Antwort»), Wartet auf Melder (Wartet), Gelöst (abgeschlossen, Schliessen). Kein Ablehnen.
+  - Aufgabe: Backlog (Start), Geplant, In Arbeit («nach Antwort»), Erledigt (abgeschlossen, Schliessen), Abgelehnt (abgeschlossen, Ablehnen). Kein Wartet.
+- Farben und Ablauf (bestätigt am 20.10.2026):
+  - Jeder Status hat eine Farbe aus einer Palette (neu: blau wenn offen, grün wenn abgeschlossen, frei änderbar). Sie gilt für die Anzeige des Status, die Listen, die Spalten des Boards und das Diagramm.
   - Erlaubte Wechsel («von welchem Status wohin») legt man pro Typ in einem bearbeitbaren Ablaufdiagramm fest: Status als Kästchen anordnen, Pfeile ziehen.
-  - Die Wechsel gelten nur für Änderungen von Hand: Im Status-Feld und auf dem Board sind nur erlaubte Ziele wählbar. Automatisches (Antwort des Melders, Regeln, zeitgesteuerte Regeln, Ablehnen, Typwechsel, Duplikat) geht wie bisher.
-  - Solange nichts festgelegt ist, sind alle Wechsel erlaubt, wie bisher.
-  - Seite (gewünscht am 20.10.2026): je eine Karte für Störung und Aufgabe untereinander, links die Status (anlegen, umbenennen, Farbe, Anzahl Vorgänge, löschen, per Ziehen sortieren und Kategorie wechseln), rechts das Ablaufdiagramm.
-  - Umgesetzt am 20.10.2026, Details: Pro Typ ein Häkchen «Wechsel von Hand nur gemäss Ablauf», anfangs aus; so lassen sich Pfeile vorbereiten, ohne dass sie schon gelten. Pfeil ziehen vom Punkt rechts an einem Status auf einen anderen Status (das ganze Kästchen nimmt ihn an), löschen durch Anklicken und Entf oder Doppelklick. Pfeile laufen von Rand zu Rand; gibt es Hin- und Rückweg zwischen zwei Status, sind beide leicht gebogen und liegen nebeneinander. In «Abgelehnt» führt kein Pfeil (dorthin nur «Ablehnen»). Ist der Ablauf eingeschränkt, sind Status ohne eingehenden Pfeil (ausser Kategorie Neu) gestrichelt markiert, weil man sie von Hand nicht erreicht. Auf dem Board sind beim Ziehen die nicht erlaubten Spalten abgeblendet. Palette mit zehn Farben, hell und dunkel. Diagramm mit Vue Flow.
+  - Die Wechsel gelten nur für Änderungen von Hand: Im Status-Feld und auf dem Board sind nur erlaubte Ziele wählbar. Automatisches (Antwort des Melders, Regeln, zeitgesteuerte Regeln, Ablehnen, Typwechsel, Duplikat) geht immer.
+  - Solange nichts festgelegt ist, sind alle Wechsel erlaubt.
+  - Seite: je eine Karte für Störung und Aufgabe untereinander, links die Status (anlegen, umbenennen, Farbe, abgeschlossen, Anzahl Vorgänge, löschen, per Ziehen sortieren) und die automatischen Wechsel, rechts das Ablaufdiagramm.
+  - Details: Pro Typ ein Häkchen «Wechsel von Hand nur gemäss Ablauf», anfangs aus; so lassen sich Pfeile vorbereiten, ohne dass sie schon gelten. Pfeil ziehen vom Punkt rechts an einem Status auf einen anderen Status (das ganze Kästchen nimmt ihn an), löschen durch Anklicken und Entf oder Doppelklick. Pfeile laufen von Rand zu Rand; gibt es Hin- und Rückweg zwischen zwei Status, sind beide leicht gebogen und liegen nebeneinander. Ein Pfeil in den Ablehnen-Status bestimmt, aus welchen Status «Ablehnen» möglich ist. Ist der Ablauf eingeschränkt, sind Status ohne eingehenden Pfeil (ausser Start) gestrichelt markiert, weil man sie von Hand nicht erreicht. Auf dem Board sind beim Ziehen die nicht erlaubten Spalten abgeblendet. Palette mit zehn Farben, hell und dunkel. Diagramm mit Vue Flow.
 
 ## Ansichten
 
 - Tab Störungen: Unteransichten «Offen» und «Gelöst».
-- Tab Aufgaben: «Board», «Erledigt», «Abgelehnt».
-- Board: «Abgelehnt» ist keine Spalte. Die Spalte «Erledigt» zeigt nur die letzten 14 Tage.
+- Tab Aufgaben: «Board», «Erledigt», «Abgelehnt». «Erledigt» zeigt abgeschlossene Aufgaben ausser dem Ablehnen-Status, «Abgelehnt» den Ablehnen-Status (ohne Ablehnen-Status entfällt die Ansicht, ein direkter Aufruf führt zu «Erledigt»; bestätigt am 20.10.2026).
+- Board: Der Ablehnen-Status ist keine Spalte. Abgeschlossene Spalten zeigen nur die letzten 14 Tage.
 - Ansichten für Abgeschlossenes sind Listen mit Suche und Filter «Nur meine».
 - Volltextsuche über alle Vorgänge.
 
 ## Eingang
 
-- Vorgänge im Eingang haben weder Typ noch Status. Beim Zuweisen erhalten sie den ersten Status der Kategorie *Neu*.
+- Vorgänge im Eingang haben weder Typ noch Status. Beim Zuweisen erhalten sie den Status «Neuer Vorgang erhält» des Typs.
 - «Verwerfen» (Spam, Newsletter): schliesst den Vorgang ohne Typ, bleibt über die Suche auffindbar.
 
 ## Benutzer und Rollen
@@ -72,7 +76,7 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
 
 - Mehrere Postfächer. Antworten gehen standardmässig über das Postfach, in dem der Vorgang angekommen ist.
   Das Antwort-Postfach ist ein Feld am Vorgang und änderbar. Intern erfasste Vorgänge nutzen das Standard-Postfach.
-- Mails an den Melder: Eingangsbestätigung mit Nummer, öffentliche Antworten, Wechsel in die Kategorie *Erledigt*.
+- Mails an den Melder: Eingangsbestätigung mit Nummer, öffentliche Antworten, Wechsel in einen abgeschlossenen Status (ausser dem Ablehnen-Status, siehe Status).
   Keine Mails zu internen Notizen und anderen Statuswechseln. Keine Mails zu Änderungen, die der Melder selbst gemacht hat.
 - Ablehnen: Checkbox «Melder informieren», standardmässig aus.
 - IT: Der Zuständige erhält eine Mail bei Zuweisung und bei Antworten des Melders. Kein Mailversand für neue Vorgänge im Eingang.
@@ -96,7 +100,7 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 - Eigener, schlichter Bereich unter `/portal`: «Meine Vorgänge» (offen/abgeschlossen) und «Neue Meldung». Admin und IT nutzen weiterhin die normale Oberfläche.
 - Mails an Melder enthalten einen Link zum Vorgang im Portal.
 - Neue Meldung: Auswahl «Etwas funktioniert nicht» / «Ich brauche etwas», Titel, Beschreibung, Anhänge, keine Priorität. Die Meldung landet im Eingang mit dem Vorschlag des Melders, die IT bestätigt mit einem Klick oder wählt den anderen Typ. Eingangsbestätigung per Mail.
-- Der Melder sieht Nummer, Titel, Beschreibung, öffentliche Antworten und Anhänge sowie den Status vereinfacht nach Kategorie («Eingegangen», «In Bearbeitung», «Wartet auf Ihre Rückmeldung», «Erledigt», «Abgelehnt»). Nicht sichtbar: interne Notizen, interne Statusnamen, Typ, Zuständiger, Beteiligte. Verworfene Vorgänge erscheinen nicht. Den Ablehnungsgrund sieht er nur, wenn «Melder informieren» gewählt war.
+- Der Melder sieht Nummer, Titel, Beschreibung, öffentliche Antworten und Anhänge sowie den Statusnamen (seit 20.10.2026 der interne Name mit seiner Farbe, im Eingang «Eingegangen»; der Wartet-Status ist hervorgehoben). Nicht sichtbar: interne Notizen, Typ, Zuständiger, Beteiligte. Verworfene Vorgänge erscheinen nicht. Den Ablehnungsgrund sieht er nur, wenn «Melder informieren» gewählt war.
 - Der Melder kann nur antworten (mit Anhängen), das wirkt wie eine Antwort per Mail. Keine Statusänderung, kein Zurückziehen, kein Bearbeiten.
 - Portal freischalten (bestätigt am 20.10.2026): ganz aus, nur für ausgewählte oder für alle.
   - Karte «Portal» unter Verwaltung → Allgemein. «Ausgewählte» sind einzelne Personen (Personensuche wie beim Testbetrieb) und zusätzlich die Mitglieder einer AD-Gruppe.
@@ -110,7 +114,7 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 - Arten: «Bezieht sich auf» (beidseitig), «Behebt» ↔ «Wird behoben durch», «Duplikat von» ↔ «Hat Duplikat».
 - Kein automatisches Schliessen bei «Behebt». Verknüpfen und Lösen erscheinen in beiden Timelines. Wird eine Aufgabe erledigt, die eine Störung behebt, erhält die Störung einen Timeline-Eintrag und ihr Zuständiger eine Mail.
 - **«Duplikat von»** (bestätigt am 15.10.2026):
-  - Das Duplikat wird automatisch geschlossen (erster Status der Kategorie «Erledigt»; ohne Typ erhält es den Typ des Originals). Statt der Erledigt-Mail erhält sein Melder einen Hinweis aufs Original. Diese Mail läuft unter der Nummer des Originals.
+  - Das Duplikat wird automatisch geschlossen (Status «Automatisch schliessen in»; ohne Typ erhält es den Typ des Originals). Statt der Erledigt-Mail erhält sein Melder einen Hinweis aufs Original. Diese Mail läuft unter der Nummer des Originals.
   - **Gleicher Melder → zusammenführen:** Die Meldung des Duplikats (Text und Anhänge) erscheint im Original als Nachricht des Melders («Zusammengeführt aus PW-…»). Hinweis-Mail «… wurde dort hinzugefügt».
   - **Anderer Melder → Umleitung:** Der Melder wird beim Original Beteiligter (CC) und erhält so dessen öffentliche Antworten. Hinweis-Mail «… wird dort weiterbearbeitet».
   - Antworten auf Mails zum Duplikat landen beim Original. Im Portal zeigt das Duplikat «Erledigt» mit dem Hinweis aufs Original, ohne Antwortfeld. Das Original sieht der Melder im Portal nur, wenn er auch dort Melder ist.
@@ -128,7 +132,7 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 - Nur bei Aufgaben, mehrere Checklisten mit Titel pro Aufgabe.
 - Punkte: Text und offen/abgehakt. Gespeichert wird, wer wann abgehakt hat (sichtbar beim Darüberfahren). Kein Timeline-Eintrag pro Haken. Reihenfolge per Ziehen.
 - Fortschritt (z.B. «☑ 3/5») auf den Board-Karten und in den Listen.
-- Wechsel in einen «Erledigt»-Status mit offenen Punkten nur nach Rückfrage. Beim Ablehnen keine Rückfrage.
+- Wechsel in einen abgeschlossenen Status (ausser dem Ablehnen-Status) mit offenen Punkten nur nach Rückfrage. Beim Ablehnen keine Rückfrage.
 - Typwechsel zur Störung: Checklisten bleiben gespeichert, sind ausgeblendet und erscheinen wieder, wenn der Vorgang erneut eine Aufgabe wird (Hinweis im Timeline-Eintrag).
 - Im Portal nicht sichtbar.
 - **Vorlagen** (z.B. «Neuer Mitarbeiter»): vom Admin gepflegt (Name und Punkte), in jeder Aufgabe über «Vorlage einfügen» als neue Checkliste übernehmbar.
@@ -154,8 +158,9 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - Nur Admin verwaltet die Regeln (Verwaltung → Regeln), Reihenfolge per Ziehen, einzeln ein- und ausschaltbar.
 - Jede angewendete Regel hinterlässt einen Timeline-Eintrag.
 - Regeln wirken nur auf neue Ereignisse. Eine Vorschau zeigt, was in den letzten 30 Tagen gepasst hätte.
-- **Zeitgesteuerte Regeln** (18.10.2026, ersetzen die feste Einstellung «Wartet auf Melder»): Auslöser «Vorgang ist seit N Tagen in einem Status der Kategorie Neu, In Arbeit oder Wartend». Gezählt wird ab dem letzten Statuswechsel. Patchwork prüft alle 15 Minuten, und jede Regel greift pro Vorgang einmal je Status.
-  - Aktionen: Priorität und Zuständig, bei «Wartend» zusätzlich «Melder erinnern» und «Schliessen» (erster Status «Erledigt», eigene Mail an den Melder). Wird im selben Durchlauf geschlossen, entfällt die Erinnerung.
+- **Zeitgesteuerte Regeln** (18.10.2026, ersetzen die feste Einstellung «Wartet auf Melder»): Auslöser «Vorgang ist seit N Tagen in …» (seit 20.10.2026: konkrete offene Status beider Typen und/oder «Wartet auf den Melder (beide Typen)», siehe Status). Gezählt wird ab dem letzten Statuswechsel. Patchwork prüft alle 15 Minuten, und jede Regel greift pro Vorgang einmal je Status.
+  - Aktionen: Priorität und Zuständig, nur mit «Wartet auf den Melder» allein zusätzlich «Melder erinnern» und «Schliessen» (Status «Automatisch schliessen in», eigene Mail an den Melder). Wird im selben Durchlauf geschlossen, entfällt die Erinnerung.
+  - Wird ein Status gelöscht, den eine Regel nennt, tritt der Ersatzstatus an seine Stelle, wenn er offen ist, sonst fällt der Status aus der Regel; bleibt nichts übrig, wird die Regel ausgeschaltet.
   - Die Bedingungen beziehen sich auf den Vorgang: Absender = Melder, Betreff = Titel, Text = Beschreibung, Postfach = Antwort-Postfach.
   - Eine bestehende Einstellung «Wartet auf Melder» wurde beim Update in zwei Regeln umgewandelt.
 
@@ -226,6 +231,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 
 - **Eigene interne Notizen bearbeiten:** 5 Minuten lang nach dem Erfassen («Bearbeiten» bei der Notiz). Danach steht «bearbeitet» bei der Zeit. Nur in Patchwork erfasste Notizen, keine öffentlichen Antworten (die sind schon per Mail verschickt) und keine per Mail eingegangenen.
 - **Änderungen zusammenfassen:** Mehrere Änderungen derselben Person kurz hintereinander (z.B. Status und Priorität) erscheinen als eine Zeile in der Timeline. Gespeichert wird weiterhin jede Änderung einzeln.
+  - Bestätigt am 20.10.2026: Ändert dieselbe Person dasselbe Feld darin mehrmals (je höchstens 2 Minuten auseinander), erscheint es nur einmal, vom ersten zum letzten Wert, mit der Zeit der letzten Änderung. Steht am Ende wieder der Ausgangswert, entfällt die Zeile (und die Karte, wenn nichts übrig bleibt). Gilt für Status, Typ, Titel, Priorität, Meldeweg, Zuständig, Melder, Antwort-Postfach und Beschreibung («Beschreibung geändert» einmal); nicht für Beteiligte, Verknüpfungen, Ablehnen, automatische Wechsel und Regeln.
   - Geändert am 20.10.2026: Änderungen stehen in einer grauen Karte, oben Bearbeiter und Zeitpunkt, darunter die Änderungen als Liste. Das gilt für alle Änderungen, auch einzelne, und für Regeln.
 - **Antwort-Postfach:** ein Eintrag pro Postfach, das Standard-Postfach mit dem Zusatz «(Standard)». Ohne eigenes Antwort-Postfach ist das Standard-Postfach gewählt.
 - **Melder und Beteiligte suchen:** nach Name, Benutzername und E-Mail, in Patchwork und im AD (wenn die LDAP-Anmeldung aktiv ist). Eine unbekannte E-Mail-Adresse lässt sich weiterhin als neuer Kontakt eintragen.
@@ -314,6 +320,11 @@ Bestätigt am 19.10.2026:
     - Markdown mit Platzhaltern wie bei den Textbausteinen; zu jeder Vorlage steht, welche Platzhalter es gibt.
     - Liste nach Empfänger gruppiert, Editor mit Vorschau mit Beispieldaten und «Auf Standard zurücksetzen».
     - Das Aussehen der Mail (Rahmen, Schrift) bleibt fest, kein Logo.
+    - Überarbeitung, bestätigt am 20.10.2026 (umgesetzt nach dem Status-Umbau):
+      - Benutzer erhalten eigene Felder **Vorname** und **Nachname**. AD-Konten füllen sie aus givenName und sn (bei der Anmeldung und beim Vorab-Anlegen; Kontakte aus Mails werden bei aktivem LDAP per E-Mail im AD nachgeschlagen). Sonst werden sie aus dem Namen geschätzt («Muster, Anna» bzw. letztes Wort = Nachname). Unter Verwaltung → Benutzer korrigierbar.
+      - Platzhalter nur noch mit Vor- und Nachname: {{Melder Vorname}}, {{Melder Nachname}}, {{Zuständig Vorname}}, {{Zuständig Nachname}} (ohne Zuweisung leer). Bestehendes {{Melder}} in gespeicherten Vorlagen wird zu «{{Melder Vorname}} {{Melder Nachname}}».
+      - Den Platzhalter {{App}} gibt es nicht mehr. Wo er in gespeicherten Vorlagen und den Standard-Fusszeilen steht, wird einmalig der heutige Name aus Verwaltung → Allgemein als Text eingesetzt.
+      - Text der Vorlagen im WYSIWYG-Editor wie bei Antworten (Fett, Kursiv, Listen, Links, Überschriften), ohne Bilder. Platzhalter per Klick an der Cursorposition einfügen, im Editor farbig hervorgehoben. Der Betreff bleibt ein einfaches Textfeld, Platzhalter auch dort per Klick.
 17. Bestätigt am 20.10.2026: **Antworten simulieren** im Testbetrieb:
     - Knopf «Antwort simulieren» in der Ansicht einer Mail unter Verwaltung → Ausgehende Mails, bei jedem Status (versendet, teilweise, zurückgehalten, fehlgeschlagen). Nur für Admins und nur, solange der Testbetrieb aktiv ist.
     - Formular: Absender aus den Empfängern der Mail oder eine freie Adresse (z.B. für eine unbeteiligte Person), Text, Anhänge und ein Häkchen «Als Abwesenheitsnotiz». Die ursprüngliche Mail wird unten zitiert wie in Outlook, damit auch das Entfernen des Zitats geprüft wird.
@@ -335,7 +346,7 @@ Beim Bauen aufgefallene Randfälle:
 1. **Mail von Unbeteiligten auf einen bestehenden Vorgang** (z.B. IT antwortet auf eine Benachrichtigung, oder eine fremde Person nennt `[PW-…]` im Betreff): wird als **interne Notiz** erfasst, ändert den Status nicht und macht die Person nicht zum Beteiligten.
 2. **Erster Abruf eines Postfachs:** Übernommen werden alle Mails ab dem Zeitpunkt «Mails abholen ab», gelesen oder nicht (geändert am 19.10.2026, vorher nur ungelesene). Verarbeitete Mails bleiben unverändert im Postfach: nicht als gelesen markiert, nicht verschoben, nicht gelöscht (geändert am 19.10.2026, vorher als gelesen markiert). Patchwork öffnet den Ordner nur lesend, erkennt danach neue Mails an der IMAP-UID (bei Microsoft 365 über die Delta-Abfrage, siehe Abschnitt Microsoft 365 Punkt 11) und bereits übernommene an der Message-ID. Nach einem Wechsel von Server, Ordner, Benutzername oder Startzeitpunkt beginnt der Abruf wieder ab dem Startzeitpunkt, ohne doppelte Vorgänge.
 3. **Antworten per Mail:** Der zitierte Verlauf wird entfernt und nur der neue Text angezeigt (als Text, ohne HTML-Formatierung). Die Originalmail (.eml) lässt sich herunterladen. Neue Vorgänge aus Mails zeigen das HTML der Mail.
-4. **Antwort des Melders auf eine abgelehnte Aufgabe:** Die Aufgabe bleibt abgelehnt (nur «Wartend» und «Erledigt» öffnen wieder), die Antwort erscheint in der Timeline.
+4. **Antwort des Melders auf eine abgelehnte Aufgabe:** Die Aufgabe bleibt abgelehnt (nur der Wartet-Status und abgeschlossene Status ausser dem Ablehnen-Status öffnen wieder), die Antwort erscheint in der Timeline.
 5. **Newsletter und automatische Mails** (List-Header, Auto-Submitted, Abwesenheitsnotizen, Unzustellbarkeit): keine Eingangsbestätigung. Abwesenheitsnotizen ändern den Status nicht und benachrichtigen niemanden.
 6. **Intern erfasst für jemand anderen** (z.B. telefonische Meldung): Der Melder erhält eine Eingangsbestätigung mit der Nummer.
 7. **Melderwechsel:** Der neue Melder erhält keine Mail.

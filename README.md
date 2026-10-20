@@ -7,7 +7,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 
 - **Ein Vorgang, zwei Typen:** Störung oder Aufgabe, Typwechsel mit einem Klick. Verlauf, Kommentare und Anhänge bleiben erhalten.
 - **Tabs:** Eingang (Mails ohne Typ, mit «+ Neu» für einen Vorgang beliebigen Typs), Störungen (Liste, dringend zuerst; Ansicht «Gelöst»), Aufgaben (Board mit Drag & Drop; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge und hat den Filter «Nur meine».
-- **Status pro Typ** in der Verwaltung bearbeitbar, mit Farbe. Die Kategorie (Neu, In Arbeit, Wartend, Erledigt, Abgelehnt) steuert das Verhalten. Ein Ablaufdiagramm legt auf Wunsch fest, welche Wechsel von Hand erlaubt sind.
+- **Status pro Typ** in der Verwaltung bearbeitbar: flache Liste (Reihenfolge = Board-Spalten), Farbe und Häkchen «abgeschlossen». Pro Typ legen «Automatische Wechsel» fest, welchen Status ein neuer Vorgang erhält, wohin eine Antwort des Melders führt, wohin automatisch geschlossen und abgelehnt wird und welcher Status auf den Melder wartet. Ein Ablaufdiagramm legt auf Wunsch fest, welche Wechsel von Hand erlaubt sind (Pfeile in den Ablehnen-Status steuern «Ablehnen») und zeigt die Ziele als Marken. Beim Typwechsel fragt ein Dialog nach dem neuen Status.
 - **E-Mail rein und raus:** mehrere Postfächer (IMAP/SMTP mit Passwort, Microsoft 365 über Microsoft Graph mit Anmeldung), die Patchwork nur liest (Mails bleiben ungelesen im Postfach), Abruf aus einem wählbaren Ordner ab einem einstellbaren Zeitpunkt, Zuordnung von Antworten über Mail-Header oder `[PW-1234]` im Betreff, Eingangsbestätigung, öffentliche Antworten an Melder und CC-Beteiligte, interne Notizen, Benachrichtigungen an Zuständige, Stummschalten pro Vorgang.
 - **Login:** lokale Benutzer und LDAP/AD (Rolle über AD-Gruppen). Erster Admin über den Einrichtungs-Assistenten.
 - **Benutzer aus dem AD vorab anlegen** (Verwaltung → Benutzer → «+ Benutzer» → «Aus dem AD»), z.B. um Vorgänge zuzuweisen, bevor sich jemand zum ersten Mal anmeldet. Rolle «Aus AD-Gruppen» oder von Hand festgelegt (gilt dann auch bei der Anmeldung).
@@ -22,7 +22,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 
 ## Etappe 2
 
-- **Portal** unter `/portal` für Standard-Benutzer (Anmeldung mit dem AD-Konto): eigene Vorgänge (offen/abgeschlossen) mit vereinfachtem Status, neue Meldungen («Etwas funktioniert nicht» / «Ich brauche etwas»), Antworten mit Anhängen. Neue Meldungen landen mit dem Typ-Vorschlag des Melders im Eingang. Wer das Portal nutzen darf, stellt man unter Verwaltung → Allgemein ein: niemand (Standard), nur ausgewählte (Personen und Mitglieder einer AD-Gruppe) oder alle; ohne Freischaltung enthalten Mails an den Melder keinen Link zum Portal.
+- **Portal** unter `/portal` für Standard-Benutzer (Anmeldung mit dem AD-Konto): eigene Vorgänge (offen/abgeschlossen) mit dem Statusnamen (im Eingang «Eingegangen»), neue Meldungen («Etwas funktioniert nicht» / «Ich brauche etwas»), Antworten mit Anhängen. Neue Meldungen landen mit dem Typ-Vorschlag des Melders im Eingang. Wer das Portal nutzen darf, stellt man unter Verwaltung → Allgemein ein: niemand (Standard), nur ausgewählte (Personen und Mitglieder einer AD-Gruppe) oder alle; ohne Freischaltung enthalten Mails an den Melder keinen Link zum Portal.
 - **Verknüpfungen** zwischen Vorgängen: «Bezieht sich auf», «Behebt / Wird behoben durch», «Duplikat von / Hat Duplikat». Wird ein behebender Vorgang erledigt, erhält der Zuständige des behobenen eine Mail.
 - **Duplikate** werden automatisch geschlossen und zum Original umgeleitet: Bei gleichem Melder wird die Meldung ins Original übernommen, sonst wird der Melder dort Beteiligter. Er erhält einen Hinweis per Mail, und Antworten landen beim Original. Details in [docs/Entscheidungen.md](docs/Entscheidungen.md).
 - **Checklisten** für Aufgaben, mehrere pro Aufgabe, mit Fortschritt auf Board und Listen. Abschliessen mit offenen Punkten nur nach Rückfrage. **Vorlagen** pflegt der Admin unter Verwaltung → Checklisten-Vorlagen.
@@ -32,7 +32,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 ## Etappe 3
 
 - **Regeln** (Verwaltung → Regeln) für neue Mails, neue Portal-Meldungen und Antworten. Bedingungen: Absender bzw. Domain, Betreff, Text, Postfach, AD-Gruppe, mit UND/ODER und Gruppen. Aktionen: Typ, Priorität, Zuständig, Checklisten-Vorlage, Eingangsbestätigung unterdrücken, Verwerfen. Abarbeitung von oben nach unten, Vorschau auf die letzten 30 Tage.
-- **Zeitgesteuerte Regeln:** «seit N Tagen in Neu, In Arbeit oder Wartend», z.B. Eskalation per Priorität und Zuständigem oder bei «Wartet auf Melder» eine Erinnerung und das automatische Schliessen.
+- **Zeitgesteuerte Regeln:** «seit N Tagen in …» mit Auswahl offener Status oder «Wartet auf den Melder», z.B. Eskalation per Priorität und Zuständigem oder beim Warten auf den Melder eine Erinnerung und das automatische Schliessen.
 - **Textbausteine** (Verwaltung → Textbausteine) mit Platzhaltern wie `{{Melder}}`, die sich per Knopf einfügen lassen, im Antwortfeld über «Textbaustein» einfügbar.
 - **Auswertungen** (nur Admin, in der Hauptnavigation): neue und abgeschlossene Vorgänge im Verlauf, offene nach Status, Priorität und Zuständigem, älteste offene Vorgänge, Dauer bis «Gelöst», häufigste Melder. Zeitraum wählbar, Export als CSV, Diagramme als Bild und der ganze Bericht als PDF.
 
@@ -259,7 +259,7 @@ backend/
   src/auth/        Anmeldung (lokal, LDAP), Sitzungen, Einrichtung
   src/items/       Vorgänge: Ansichten, Typwechsel, Status, Timeline
   src/mail/        Postfächer, Abruf und Versand (IMAP/SMTP, Microsoft Graph), Benachrichtigungen
-  src/statuses/    Status pro Typ und Kategorie-Regeln
+  src/statuses/    Status pro Typ, Ziel-Status und Ablauf
   src/tls/         HTTPS: Zertifikatsanforderung, Zertifikat, Server
   src/db/          Schema und Migrationen (drizzle/)
   test/smoke.mjs   End-to-End-Test

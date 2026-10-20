@@ -110,6 +110,16 @@ const status = (type, key) => statuses.find((s) => s.type === type && s.key === 
 const channel = (label) => channels.find((c) => c.label === label);
 const poll = () => api('POST', `/admin/mailboxes/${mailboxId}/poll`);
 const detail = (n) => api('GET', `/items/${n}`);
+const loginAs = async (username, password) => {
+  await api('POST', '/auth/logout');
+  return api('POST', '/auth/login', { username, password });
+};
+const createItem = async (fields, files = []) => {
+  const f = new FormData();
+  for (const [k, v] of Object.entries({ channelId: channel('Telefon').id, ...fields })) f.append(k, v);
+  for (const [name, content] of files) f.append('files', new Blob([content]), name);
+  return (await api('POST', '/items', f)).number;
+};
 
 await step('Einrichtung erforderlich', async () => {
   const info = await api('GET', '/public/info');
@@ -142,6 +152,12 @@ await step('IT-Benutzer anlegen', async () => {
   assert.deepEqual(staff.map((u) => u.name).sort(), ['Ada Admin', 'Ivan IT']);
   statuses = await api('GET', '/statuses');
   assert.equal(statuses.length, 9);
+  // Keine Kategorien mehr: Jeder Status ist offen oder abgeschlossen
+  assert.deepEqual(
+    statuses.filter((s) => s.closed).map((s) => `${s.type}/${s.key}`).sort(),
+    ['incident/resolved', 'task/done', 'task/rejected'],
+  );
+  assert.ok(statuses.every((s) => !('category' in s)));
   channels = await api('GET', '/channels');
   assert.deepEqual(
     channels.map((c) => [c.label, c.icon, c.key]),
@@ -325,11 +341,11 @@ await step('Unbeteiligter Dritter mit Nummer im Betreff wird interne Notiz', asy
   assert.equal(item.status.label, 'Wartet auf Melder');
 });
 
-await step('Typwechsel Störung → Aufgabe übernimmt Status sinngemäss', async () => {
+await step('Typwechsel Störung → Aufgabe ohne Wahl: Status nach seiner Rolle', async () => {
   await api('POST', `/items/${itemNo}/type`, { type: 'task' });
   let item = await detail(itemNo);
   assert.equal(item.type, 'task');
-  assert.equal(item.status.label, 'In Arbeit', 'Wartend → In Arbeit');
+  assert.equal(item.status.label, 'In Arbeit', 'Wartet → «nach Antwort», Aufgaben haben keinen Wartet-Status');
   assert.equal(item.entries.at(-1).kind, 'type');
   assert.ok(item.entries.some((e) => e.kind === 'reply'), 'Timeline bleibt erhalten');
   await api('POST', `/items/${itemNo}/type`, { type: 'incident' });
@@ -399,24 +415,198 @@ await step('Suche', async () => {
   assert.ok((await api('GET', '/items?view=tasks-rejected&q=Firmware')).items.length === 1);
 });
 
-await step('Status bearbeiten mit Pflichtkategorien und Ersatz', async () => {
-  const created = await api('POST', '/statuses', { type: 'task', label: 'Test läuft', category: 'in_progress' });
+await step('Status: anlegen mit «abgeschlossen», umschalten, löschen mit Ersatz', async () => {
+  const created = await api('POST', '/statuses', { type: 'task', label: 'Test läuft', closed: false });
   assert.equal(created.key, 'test_laeuft');
+  assert.deepEqual([created.closed, created.color], [false, 'blue'], 'offen: blau');
+  await api('POST', '/statuses', { type: 'task', label: 'Ohne Angabe' }, { expect: [400] });
   await api('POST', `/items/${t1}/move`, { statusId: created.id });
-  await api('DELETE', `/statuses/${created.id}`, undefined, { expect: [400] });
-  await api('DELETE', `/statuses/${created.id}?replacementId=${status('task', 'done').id}`);
-  const item = await detail(t1);
+  assert.ok(!('toCategory' in (await detail(t1)).entries.at(-1).meta), 'keine Kategorie im Verlauf');
+
+  // «abgeschlossen» umschalten: Abschlussdatum, Zähler, Listen und Board richten sich danach
+  const openTasks = (await api('GET', '/items/counts')).tasks;
+  await api('PATCH', `/statuses/${created.id}`, { closed: true });
+  let item = await detail(t1);
+  assert.equal(item.status.closed, true);
+  assert.ok(item.closedAt, 'abgeschlossen setzt closedAt');
+  assert.equal((await api('GET', '/items/counts')).tasks, openTasks - 1, 'Zähler nur für Offenes');
+  assert.ok((await api('GET', '/items?view=tasks-done')).items.some((i) => i.number === t1), 'abgeschlossen ausser Ablehnen: «Erledigt»');
+  assert.ok(!(await api('GET', '/items?view=tasks-rejected')).items.some((i) => i.number === t1));
+  assert.ok((await api('GET', '/items?view=board')).items.some((i) => i.number === t1), 'abgeschlossene Spalte (letzte 14 Tage)');
+  await api('PATCH', `/statuses/${created.id}`, { closed: false });
+  item = await detail(t1);
+  assert.equal(item.status.closed, false);
+  assert.equal(item.closedAt, null, 'wieder offen leert closedAt');
+  assert.equal((await api('GET', '/items/counts')).tasks, openTasks);
+
+  // Löschen eines verwendeten Status nur mit Ersatz desselben Typs
+  assert.match((await api('DELETE', `/statuses/${created.id}`, {}, { expect: [400] })).message, /Ersatzstatus/);
+  await api('DELETE', `/statuses/${created.id}`, { replacementId: status('incident', 'new').id }, { expect: [400] });
+  await api('DELETE', `/statuses/${created.id}`, { replacementId: status('task', 'done').id });
+  item = await detail(t1);
   assert.equal(item.status.label, 'Erledigt');
-  assert.ok(item.closedAt, 'Ersatz in abgeschlossener Kategorie setzt closedAt');
-  await api('DELETE', `/statuses/${status('incident', 'resolved').id}?replacementId=${status('incident', 'new').id}`, undefined, {
-    expect: [400],
-  });
-  await api('PATCH', `/statuses/${status('task', 'done').id}`, { category: 'in_progress' }, { expect: [400] });
+  assert.ok(item.closedAt, 'abgeschlossener Ersatz setzt closedAt');
+  assert.ok(!(await api('GET', '/statuses')).some((s) => s.id === created.id));
 });
 
-await step('Status: Farben und Ablauf, eingeschränkt gilt er nur für Wechsel von Hand', async () => {
+await step('Status: Ziele für automatische Wechsel lesen, prüfen, setzen und beim Löschen ersetzen', async () => {
+  const i = (key) => status('incident', key).id;
+  const t = (key) => status('task', key).id;
+  const defaults = {
+    incident: { start: i('new'), reply: i('in_progress'), close: i('resolved'), waiting: i('waiting') },
+    task: { start: t('backlog'), reply: t('in_progress'), close: t('done'), reject: t('rejected') },
+  };
+  assert.deepEqual(await api('GET', '/statuses/targets'), defaults);
+  const put = (type, targets, opts) => api('PUT', '/statuses/targets', { type, targets }, opts);
+
+  // Ungültig: offen und abgeschlossen vertauscht, fremder Typ, Ziele, die sich ausschliessen, Pflichtziel fehlt
+  for (const [targets, message] of [
+    [{ ...defaults.task, start: t('done') }, /muss offen sein/],
+    [{ ...defaults.task, close: t('in_progress') }, /muss abgeschlossen sein/],
+    [{ ...defaults.task, reject: t('planned') }, /muss abgeschlossen sein/],
+    [{ ...defaults.task, waiting: t('done') }, /muss offen sein/],
+    [{ ...defaults.task, start: i('new') }, /gehört nicht zu diesem Typ/],
+    [{ ...defaults.task, reject: t('done') }, /verschiedene Status/],
+    [{ ...defaults.task, waiting: t('in_progress') }, /«Wartet auf den Melder»/],
+    [{ ...defaults.task, waiting: t('backlog') }, /neue Vorgänge/],
+  ]) {
+    assert.match((await put('task', targets, { expect: [400] })).message, message);
+  }
+  await put('task', { start: t('backlog'), reply: t('in_progress') }, { expect: [400] });
+  assert.deepEqual(await api('GET', '/statuses/targets'), defaults, 'unverändert');
+
+  // «abgeschlossen» lässt sich nicht umschalten, solange ein Ziel es verbietet
+  assert.match((await api('PATCH', `/statuses/${t('done')}`, { closed: false }, { expect: [400] })).message, /Automatisch schliessen in/);
+  await api('PATCH', `/statuses/${t('rejected')}`, { closed: false }, { expect: [400] });
+  await api('PATCH', `/statuses/${t('backlog')}`, { closed: true }, { expect: [400] });
+  await api('PATCH', `/statuses/${i('waiting')}`, { closed: true }, { expect: [400] });
+
+  // Ziele ändern: anderer Start-Status und ein Wartet-Status für Aufgaben
+  const rueckfrage = await api('POST', '/statuses', { type: 'task', label: 'Rückfrage', closed: false });
+  const changed = { ...defaults.task, start: t('planned'), waiting: rueckfrage.id };
+  assert.deepEqual((await put('task', changed)).task, changed);
+  const n = await createItem({ type: 'task', title: `Rückfrage ${RUN}`, reporterId: (await detail(itemNo)).reporter.id });
+  assert.equal((await detail(n)).status.label, 'Geplant', '«Neuer Vorgang erhält»');
+
+  // Die Antwort des Melders holt den Vorgang aus dem Wartet-Status zurück, aus anderen offenen Status nicht
+  const answer = async (text) => {
+    await sendMail({ from: ANNA, subject: `Re: [PW-${n}] Rückfrage ${RUN}`, text });
+    await sleep(500);
+    await poll();
+    return detail(n);
+  };
+  await api('POST', `/items/${n}/move`, { statusId: rueckfrage.id });
+  assert.equal((await answer('Hier die Angaben.')).status.label, 'In Arbeit', '«Antwort des Melders führt in»');
+  await api('POST', `/items/${n}/move`, { statusId: t('backlog') });
+  const unchanged = await answer('Noch ein Nachtrag.');
+  assert.equal(unchanged.status.label, 'Backlog');
+  assert.ok(unchanged.entries.some((e) => e.kind === 'reply' && e.body === 'Noch ein Nachtrag.'));
+
+  // Typwechsel ohne Wahl: Wartet → Wartet
+  const w = await createItem({ type: 'incident', title: 'Wartet beim Typwechsel' });
+  await api('POST', `/items/${w}/move`, { statusId: i('waiting') });
+  await api('POST', `/items/${w}/type`, { type: 'task' });
+  assert.equal((await detail(w)).status.label, 'Rückfrage', 'Wartet → Wartet');
+
+  // Ziel-Status löschen: nur mit passendem Ersatz für das Ziel, ein freiwilliges Ziel auch ohne
+  const removeRueckfrage = (body, opts) => api('DELETE', `/statuses/${rueckfrage.id}`, body, opts);
+  assert.match((await removeRueckfrage({ replacementId: t('in_progress') }, { expect: [400] })).message, /Wartet auf den Melder/);
+  await removeRueckfrage({ replacementId: t('in_progress'), targets: { waiting: t('in_progress') } }, { expect: [400] });
+  await removeRueckfrage({ replacementId: t('in_progress'), targets: { waiting: null } });
+  assert.equal((await detail(w)).status.label, 'In Arbeit');
+  let targets = await api('GET', '/statuses/targets');
+  assert.deepEqual(targets.task, { ...defaults.task, start: t('planned') }, 'Wartet-Ziel entfernt');
+
+  const archived = await api('POST', '/statuses', { type: 'task', label: 'Archiviert', closed: true });
+  assert.deepEqual([archived.closed, archived.color], [true, 'green'], 'abgeschlossen: grün');
+  await put('task', { ...targets.task, close: archived.id });
+  const removeArchived = (body, opts) => api('DELETE', `/statuses/${archived.id}`, body, opts);
+  assert.match((await removeArchived({}, { expect: [400] })).message, /Automatisch schliessen in/);
+  assert.match((await removeArchived({ targets: { close: null } }, { expect: [400] })).message, /braucht einen Status/);
+  assert.match((await removeArchived({ targets: { close: t('in_progress') } }, { expect: [400] })).message, /muss abgeschlossen sein/);
+  await removeArchived({ targets: { close: t('done') } });
+  targets = await api('GET', '/statuses/targets');
+  assert.equal(targets.task.close, t('done'), 'Ziel umgehängt');
+  // Ebenso bei den Standardstatus: «Gelöst» ist das Schliessen-Ziel der Störungen
+  assert.match(
+    (await api('DELETE', `/statuses/${i('resolved')}`, { replacementId: i('new') }, { expect: [400] })).message,
+    /«Gelöst» ist «Automatisch schliessen in»/,
+  );
+
+  await put('task', defaults.task);
+  assert.deepEqual(await api('GET', '/statuses/targets'), defaults);
+});
+
+await step('Typwechsel: Status nach Rolle vorgeschlagen oder gewählt, Ablehnen-Status nur aus dem Ablehnen-Status', async () => {
+  const i = (key) => status('incident', key).id;
+  const t = (key) => status('task', key).id;
+  const setType = (n, type, statusId, opts) => api('POST', `/items/${n}/type`, { type, ...(statusId ? { statusId } : {}) }, opts);
+  const label = async (n) => (await detail(n)).status.label;
+
+  // Ohne Wahl: Start → Start, übrige offene → «nach Antwort», abgeschlossene → «Automatisch schliessen in»
+  const a = await createItem({ type: 'incident', title: 'Typwechsel A' });
+  await setType(a, 'task');
+  assert.equal(await label(a), 'Backlog');
+  await api('POST', `/items/${a}/move`, { statusId: t('planned') });
+  await setType(a, 'incident');
+  assert.equal(await label(a), 'In Arbeit');
+  await api('POST', `/items/${a}/move`, { statusId: i('resolved') });
+  const { closedAt } = await detail(a);
+  await setType(a, 'task');
+  let d = await detail(a);
+  assert.equal(d.status.label, 'Erledigt');
+  assert.equal(d.closedAt, closedAt, 'zwischen abgeschlossenen Status bleibt das Abschlussdatum');
+
+  // Mit Wahl: jeder Status des Zieltyps, der Ablauf gilt dabei nicht
+  await api('PUT', '/statuses/flow', { type: 'incident', restrict: true, transitions: [] });
+  await setType(a, 'incident', i('waiting'));
+  d = await detail(a);
+  assert.equal(d.status.label, 'Wartet auf Melder');
+  assert.equal(d.closedAt, null);
+  assert.deepEqual([d.entries.at(-1).meta.fromStatus, d.entries.at(-1).meta.toStatus], ['Erledigt', 'Wartet auf Melder']);
+  await api('PUT', '/statuses/flow', { type: 'incident', restrict: false, transitions: [] });
+  await setType(a, 'task', i('new'), { expect: [400] });
+  await setType(a, 'task', t('rejected'), { expect: [400] });
+  assert.equal(await label(a), 'Wartet auf Melder', 'unverändert');
+  await setType(a, 'task', t('done'));
+  assert.ok((await detail(a)).closedAt, 'gewählter abgeschlossener Status setzt das Abschlussdatum');
+
+  // «Ablehnen» gibt es nur mit Ziel, Störungen haben anfangs keins
+  const b = await createItem({ type: 'incident', title: 'Typwechsel B' });
+  assert.match((await api('POST', `/items/${b}/reject`, { reason: 'x', notify: false }, { expect: [400] })).message, /nicht eingerichtet/);
+  const declined = await api('POST', '/statuses', { type: 'incident', label: 'Abgewiesen', closed: true });
+  const incidentTargets = (await api('GET', '/statuses/targets')).incident;
+  await api('PUT', '/statuses/targets', { type: 'incident', targets: { ...incidentTargets, reject: declined.id } });
+  await api('POST', `/items/${b}/reject`, { reason: 'Kein Fehler', notify: false });
+  assert.equal(await label(b), 'Abgewiesen');
+  assert.match((await api('POST', `/items/${b}/reject`, { reason: 'Nochmals', notify: false }, { expect: [400] })).message, /bereits abgelehnt/);
+
+  // Ablehnen → Ablehnen; den Ablehnen-Status des Zieltyps gibt es nur aus dem Ablehnen-Status
+  await setType(b, 'task');
+  assert.equal(await label(b), 'Abgelehnt');
+  await setType(b, 'incident', declined.id);
+  assert.equal(await label(b), 'Abgewiesen');
+  // Ablehnen-Ziel entfernen: Ein Ablehnen-Status ohne Gegenstück im Zieltyp führt in «Automatisch schliessen in»
+  await api('DELETE', `/statuses/${declined.id}`, { replacementId: i('resolved'), targets: { reject: null } });
+  assert.equal(await label(b), 'Gelöst');
+  assert.deepEqual((await api('GET', '/statuses/targets')).incident, incidentTargets);
+  await setType(b, 'task', t('rejected'), { expect: [400] });
+  const c = await createItem({ type: 'task', title: 'Typwechsel C' });
+  await api('POST', `/items/${c}/reject`, { reason: 'Nicht nötig', notify: false });
+  await setType(c, 'incident');
+  assert.equal(await label(c), 'Gelöst');
+
+  // Auch beim Erfassen ist der Ablehnen-Status nicht wählbar
+  const f = new FormData();
+  for (const [k, v] of Object.entries({ type: 'task', title: 'Gleich abgelehnt', channelId: channel('Telefon').id, statusId: t('rejected') })) {
+    f.append(k, v);
+  }
+  await api('POST', '/items', f, { expect: [400] });
+});
+
+await step('Status: Farben und Ablauf, eingeschränkt gilt er für Wechsel von Hand und «Ablehnen»', async () => {
   let list = await api('GET', '/statuses');
-  assert.equal(list.find((s) => s.type === 'task' && s.key === 'backlog').color, 'blue', 'Farbe der Kategorie');
+  assert.equal(list.find((s) => s.type === 'task' && s.key === 'backlog').color, 'blue', 'Standardfarbe');
   assert.equal(list.find((s) => s.type === 'task' && s.key === 'done').color, 'green');
   const backlog = status('task', 'backlog');
   await api('PATCH', `/statuses/${backlog.id}`, { color: 'purple', diagramX: 10, diagramY: 20 });
@@ -431,46 +621,47 @@ await step('Status: Farben und Ablauf, eingeschränkt gilt er nur für Wechsel v
   const inProgress = status('task', 'in_progress');
   const done = status('task', 'done');
   const rejected = status('task', 'rejected');
-  // Ungültige Wechsel: nach «Abgelehnt», in sich selbst, über die Typen hinweg
+  // Ungültige Wechsel: in sich selbst, über die Typen hinweg
   for (const transitions of [
-    [{ fromId: backlog.id, toId: rejected.id }],
     [{ fromId: backlog.id, toId: backlog.id }],
     [{ fromId: backlog.id, toId: status('incident', 'new').id }],
   ]) {
     await api('PUT', '/statuses/flow', { type: 'task', restrict: true, transitions }, { expect: [400] });
   }
+  // Pfeile in den Ablehnen-Status sind erlaubt: Sie bestimmen, woraus «Ablehnen» möglich ist
   const flow = await api('PUT', '/statuses/flow', {
     type: 'task',
     restrict: true,
     transitions: [
       { fromId: backlog.id, toId: inProgress.id },
       { fromId: inProgress.id, toId: done.id },
+      { fromId: inProgress.id, toId: rejected.id },
     ],
   });
   assert.equal(flow.restrict.task, true);
   assert.equal(flow.restrict.incident, false);
-  assert.equal(flow.transitions.length, 2);
+  assert.equal(flow.transitions.length, 3);
 
-  const f = new FormData();
-  f.append('type', 'task');
-  f.append('title', 'Ablauf prüfen');
-  f.append('channelId', channel('Telefon').id);
-  const n = (await api('POST', '/items', f)).number;
+  const n = await createItem({ type: 'task', title: 'Ablauf prüfen' });
   const refused = await api('POST', `/items/${n}/move`, { statusId: done.id }, { expect: [400] });
   assert.match(refused.message, /im Ablauf nicht vorgesehen/);
+  const noReject = await api('POST', `/items/${n}/reject`, { reason: 'Test', notify: false }, { expect: [400] });
+  assert.match(noReject.message, /im Ablauf nicht vorgesehen/, 'kein Pfeil aus «Backlog» in den Ablehnen-Status');
   await api('POST', `/items/${n}/move`, { statusId: inProgress.id });
+  // Auch mit Pfeil führt nur «Ablehnen» (mit Begründung) in den Ablehnen-Status, nicht das Status-Feld oder das Board
+  await api('POST', `/items/${n}/move`, { statusId: rejected.id }, { expect: [400] });
   await api('POST', `/items/${n}/move`, { statusId: done.id });
   assert.equal((await detail(n)).status.color, 'green');
-  // Ablehnen geht immer
-  await api('POST', `/items/${n}/reject`, { reason: 'Test', notify: false });
+  await api('POST', `/items/${n}/reject`, { reason: 'Test', notify: false }, { expect: [400] });
+  const m = await createItem({ type: 'task', title: 'Ablauf: ablehnen' });
+  await api('POST', `/items/${m}/move`, { statusId: inProgress.id });
+  await api('POST', `/items/${m}/reject`, { reason: 'Test', notify: false });
+  assert.equal((await detail(m)).status.label, 'Abgelehnt');
 
-  // loginAs ist hier noch nicht definiert
-  await api('POST', '/auth/logout');
-  await api('POST', '/auth/login', { username: IVAN, password: 'geheim-geheim' });
+  await loginAs(IVAN, 'geheim-geheim');
   assert.equal((await api('GET', '/statuses/flow')).restrict.task, true);
   await api('PUT', '/statuses/flow', { type: 'task', restrict: false, transitions: [] }, { expect: [403] });
-  await api('POST', '/auth/logout');
-  await api('POST', '/auth/login', { username: 'ada@test.local', password: 'geheim-geheim' });
+  await loginAs('ada@test.local', 'geheim-geheim');
   await api('PUT', '/statuses/flow', { type: 'task', restrict: false, transitions: [] });
   await api('PATCH', `/statuses/${backlog.id}`, { color: 'blue' });
 });
@@ -518,7 +709,12 @@ await step('IT-Benutzer hat keinen Zugriff auf Admin-Funktionen', async () => {
   await api('POST', '/auth/logout');
   await api('POST', '/auth/login', { username: IVAN, password: 'geheim-geheim' });
   await api('GET', '/admin/users', undefined, { expect: [403] });
-  await api('POST', '/statuses', { type: 'task', label: 'x', category: 'new' }, { expect: [403] });
+  await api('POST', '/statuses', { type: 'task', label: 'x', closed: false }, { expect: [403] });
+  await api('DELETE', `/statuses/${status('task', 'planned').id}`, {}, { expect: [403] });
+  // Die Ziele liest auch die IT (Knopf «Ablehnen», Vorschlag beim Typwechsel), ändern nur der Admin
+  const targets = await api('GET', '/statuses/targets');
+  assert.equal(targets.task.reject, status('task', 'rejected').id);
+  await api('PUT', '/statuses/targets', { type: 'task', targets: targets.task }, { expect: [403] });
   await api('GET', '/items?view=incidents&mine=1');
 });
 
@@ -528,17 +724,6 @@ await step('Kontakt ohne Passwort kann sich nicht anmelden', async () => {
 });
 
 // ---------------------------------------------------------------- Etappe 2
-
-const loginAs = async (username, password) => {
-  await api('POST', '/auth/logout');
-  return api('POST', '/auth/login', { username, password });
-};
-const createItem = async (fields, files = []) => {
-  const f = new FormData();
-  for (const [k, v] of Object.entries({ channelId: channel('Telefon').id, ...fields })) f.append(k, v);
-  for (const [name, content] of files) f.append('files', new Blob([content]), name);
-  return (await api('POST', '/items', f)).number;
-};
 
 await step('Meldeweg: Pflicht beim Erfassen, automatisch bei Mail, änderbar mit Eintrag, Verwaltung nur für Admin', async () => {
   await loginAs('ada@test.local', 'geheim-geheim');
@@ -615,6 +800,10 @@ await step('Abschliessen mit offenen Punkten nur nach Bestätigung, Ablehnen ohn
   const list = (await detail(other)).checklists[0].id;
   await api('POST', `/checklists/${list}/items`, { text: 'offener Punkt' });
   await api('POST', `/items/${other}/reject`, { reason: 'Nicht nötig', notify: false });
+  assert.equal((await detail(other)).status.label, 'Abgelehnt');
+  // Aus dem Ablehnen-Status in einen abgeschlossenen Status gilt ebenfalls als Abschliessen
+  const fromRejected = await api('POST', `/items/${other}/move`, { statusId: status('task', 'done').id }, { expect: [409] });
+  assert.equal(fromRejected.code, 'OPEN_CHECKLIST');
   assert.equal((await detail(other)).status.label, 'Abgelehnt');
 });
 
@@ -713,7 +902,8 @@ await step('Duplikat vom gleichen Melder: zusammengeführt, Hinweis-Mail, Antwor
   await api('POST', `/items/${dupSame}/links`, { role: 'duplicateOf', otherNumber: dupOriginal });
   const dup = await detail(dupSame);
   assert.equal(dup.type, 'incident', 'Typ vom Original übernommen');
-  assert.equal(dup.status.category, 'done');
+  assert.deepEqual([dup.status.label, dup.status.closed], ['Gelöst', true], '«Automatisch schliessen in»');
+  assert.ok(dup.closedAt);
   assert.equal(dup.entries.at(-1).meta.duplicateOf, dupOriginal);
   assert.equal(dup.entries.at(-1).meta.merged, true);
   const original = await detail(dupOriginal);
@@ -752,7 +942,7 @@ await step('Duplikat von anderem Melder: umgeleitet, Melder und CC werden Beteil
   // diesmal aus Sicht des Originals verknüpft
   await api('POST', `/items/${dupOriginal}/links`, { role: 'hasDuplicate', otherNumber: dupOther });
   const dup = await detail(dupOther);
-  assert.equal(dup.status.category, 'done');
+  assert.deepEqual([dup.status.label, dup.status.closed], ['Gelöst', true]);
   assert.equal(dup.entries.at(-1).meta.merged, false);
   const original = await detail(dupOriginal);
   assert.deepEqual(original.participants.map((u) => u.email).sort(), [BOB, CARLA].sort());
@@ -789,7 +979,7 @@ await step('Duplikat: Original muss offen sein und einer der beiden einen Typ ha
   const one = await inboxNumber('Eingang eins');
   const two = await inboxNumber('Eingang zwei');
   await api('POST', `/items/${two}/links`, { role: 'duplicateOf', otherNumber: one }, { expect: [400] });
-  assert.equal((await detail(t1)).status.category, 'done');
+  assert.equal((await detail(t1)).status.closed, true);
   const closed = await api('POST', `/items/${one}/links`, { role: 'duplicateOf', otherNumber: t1 }, { expect: [400] });
   assert.match(closed.message, /bereits abgeschlossen/);
   assert.equal((await detail(one)).links.length, 0);
@@ -838,9 +1028,11 @@ await step('Portal: Standard-Benutzer mit Passwort meldet sich an, hat keinen IT
 
 await step('Portal: nur eigene Vorgänge und nur Öffentliches', async () => {
   const open = await api('GET', '/portal/items?state=open');
-  assert.ok(open.some((i) => i.number === itemNo));
+  // Der Melder sieht den internen Statusnamen mit seiner Farbe
+  const inProgress = { label: 'In Arbeit', color: 'orange', closed: false, waiting: false };
+  assert.deepEqual(open.find((i) => i.number === itemNo).status, inProgress);
   const d = await api('GET', `/portal/items/${itemNo}`);
-  assert.equal(d.status.label, 'In Bearbeitung');
+  assert.deepEqual(d.status, inProgress);
   assert.ok(d.entries.every((e) => e.kind === 'reply'));
   assert.ok(!JSON.stringify(d).includes('Zertifikat abgelaufen'), 'interne Notiz unsichtbar');
   assert.ok(!JSON.stringify(d).includes('Ich mische mich ein'), 'Notiz von Unbeteiligten unsichtbar');
@@ -849,12 +1041,22 @@ await step('Portal: nur eigene Vorgänge und nur Öffentliches', async () => {
   assert.ok(d.entries.some((e) => e.author === 'IT'), 'Antworten der IT ohne Namen');
   const closed = await api('GET', '/portal/items?state=closed');
   assert.ok(closed.some((i) => i.number === t2) && closed.some((i) => i.number === t3));
+  assert.ok(closed.every((i) => i.status.closed) && open.every((i) => !i.status.closed));
   const notified = await api('GET', `/portal/items/${t3}`);
-  assert.equal(notified.status.key, 'rejected');
+  assert.deepEqual(notified.status, { label: 'Abgelehnt', color: 'red', closed: true, waiting: false });
   assert.ok(notified.entries.some((e) => e.kind === 'rejected' && e.body.includes('Wird extern gelöst')));
   const silent = await api('GET', `/portal/items/${t2}`);
   assert.ok(!silent.entries.some((e) => e.kind === 'rejected'), 'Begründung ohne «Melder informieren» unsichtbar');
   await api('GET', `/portal/items/${task}`, undefined, { expect: [404] });
+
+  // Eine Antwort auf eine abgelehnte Aufgabe öffnet sie nicht wieder
+  const f = new FormData();
+  f.append('body', 'Warum abgelehnt?');
+  await api('POST', `/portal/items/${t3}/replies`, f);
+  const answered = await api('GET', `/portal/items/${t3}`);
+  assert.deepEqual(answered.status, notified.status);
+  assert.equal(answered.closedAt, notified.closedAt);
+  assert.ok(answered.entries.some((e) => e.own && e.body === 'Warum abgelehnt?'));
 });
 
 await step('Portal: Anhänge nur aus eigenen, öffentlichen Inhalten', async () => {
@@ -878,7 +1080,7 @@ await step('Portal: neue Meldung landet mit Vorschlag im Eingang, Bestätigung m
   f.append('files', new Blob(['Foto']), 'foto.txt');
   portalItem = (await api('POST', '/portal/items', f)).number;
   const d = await api('GET', `/portal/items/${portalItem}`);
-  assert.equal(d.status.key, 'received');
+  assert.deepEqual(d.status, { label: 'Eingegangen', color: 'blue', closed: false, waiting: false });
   assert.equal(d.description, 'Seit heute\nflackert er.');
   assert.equal(d.attachments.length, 1);
   const mail = await waitForMail(ANNA, (m) => m.subject === `[PW-${portalItem}] Bildschirm flackert`, 'Bestätigung Portal');
@@ -893,11 +1095,17 @@ await step('Portal: neue Meldung landet mit Vorschlag im Eingang, Bestätigung m
   assert.equal((await detail(portalItem)).suggestedType, null);
 });
 
-await step('Portal: Antwort holt aus «Wartend» zurück und informiert den Zuständigen', async () => {
+await step('Portal: Antwort holt aus «Wartet auf Melder» zurück und informiert den Zuständigen', async () => {
   await api('PATCH', `/items/${portalItem}`, { assigneeId: ivan.id });
   await api('POST', `/items/${portalItem}/move`, { statusId: status('incident', 'waiting').id });
   await loginAs(ANNA, 'anna-passwort-1');
-  assert.equal((await api('GET', `/portal/items/${portalItem}`)).status.key, 'waiting');
+  // Der Wartet-Status ist hervorgehoben
+  assert.deepEqual((await api('GET', `/portal/items/${portalItem}`)).status, {
+    label: 'Wartet auf Melder',
+    color: 'gray',
+    closed: false,
+    waiting: true,
+  });
   const f = new FormData();
   f.append('body', 'Neustart hat nicht geholfen.');
   await api('POST', `/portal/items/${portalItem}/replies`, f);
@@ -928,7 +1136,7 @@ await step('Portal: Duplikate zeigen den Hinweis aufs Original, keine Antwort m�
   await loginAs(ANNA, 'anna-passwort-1');
   const annasDuplicate = await api('GET', `/portal/items/${dupSame}`);
   assert.equal(annasDuplicate.duplicateOf.accessible, true);
-  assert.equal(annasDuplicate.status.key, 'done');
+  assert.deepEqual(annasDuplicate.status, { label: 'Gelöst', color: 'green', closed: true, waiting: false });
   const f = new FormData();
   f.append('body', 'Hallo');
   await api('POST', `/portal/items/${dupSame}/replies`, f, { expect: [400] });
@@ -1161,25 +1369,44 @@ await step('Regeln: neue Portal-Meldung, Verwaltung nur für Admin', async () =>
 
 await step('Zeitgesteuerte Regeln: erinnern, schliessen und eskalieren', async () => {
   const rule = (name, schedule, conditions, actions) => api('POST', '/admin/rules', { name, schedule, conditions, actions });
-  // Erinnern/Schliessen nur bei «Wartend», nicht Ereignis und Zeit gleichzeitig
-  await api('POST', '/admin/rules', { name: 'x', schedule: { category: 'new', days: 1 }, conditions: group('and'), actions: { close: true } }, { expect: [400] });
+  const invalid = (schedule, actions) => api('POST', '/admin/rules', { name: 'x', schedule, conditions: group('and'), actions }, { expect: [400] });
+  const neu = status('incident', 'new').id;
+  // Erinnern/Schliessen nur mit «Wartet auf den Melder» allein
+  await invalid({ days: 1, statusIds: [neu], waiting: false }, { close: true });
+  await invalid({ days: 1, statusIds: [neu], waiting: true }, { remindReporter: true });
+  // Mindestens ein Status, nur bestehende und offene
+  await invalid({ days: 1, statusIds: [], waiting: false }, { priority: 'high' });
+  assert.match((await invalid({ days: 1, statusIds: [status('incident', 'resolved').id] }, { priority: 'high' })).message, /offene Status/);
+  assert.match((await invalid({ days: 1, statusIds: [webcrypto.randomUUID()] }, { priority: 'high' })).message, /existiert nicht/);
+  // Nicht Ereignis und Zeit gleichzeitig
   await api(
     'POST',
     '/admin/rules',
-    { name: 'x', triggers: ['mail_new'], schedule: { category: 'waiting', days: 1 }, conditions: group('and'), actions: { priority: 'high' } },
+    {
+      name: 'x',
+      triggers: ['mail_new'],
+      schedule: { days: 1, statusIds: [], waiting: true },
+      conditions: group('and'),
+      actions: { priority: 'high' },
+    },
     { expect: [400] },
   );
   const created = [
-    await rule('Erinnern', { category: 'waiting', days: 1 }, group('and'), { remindReporter: true }),
-    await rule('Schliessen', { category: 'waiting', days: 3 }, group('and'), { close: true }),
-    await rule('Eskalation', { category: 'new', days: 2 }, group('and', cond('subject', 'contains', 'eskalation')), {
-      priority: 'high',
-      assigneeId: ivan.id,
-    }),
+    await rule('Erinnern', { days: 1, statusIds: [], waiting: true }, group('and'), { remindReporter: true }),
+    await rule('Schliessen', { days: 3, statusIds: [], waiting: true }, group('and'), { close: true }),
+    // Status beider Typen
+    await rule(
+      'Eskalation',
+      { days: 2, statusIds: [neu, status('task', 'backlog').id], waiting: false },
+      group('and', cond('subject', 'contains', 'eskalation')),
+      { priority: 'high', assigneeId: ivan.id },
+    ),
   ];
+  assert.deepEqual(created[0].schedule, { days: 1, statusIds: [], waiting: true });
   const waiting = await createItem({ type: 'incident', title: 'Wartet lange', reporterId: anna.id });
   await api('POST', `/items/${waiting}/move`, { statusId: status('incident', 'waiting').id });
   const fresh = await createItem({ type: 'incident', title: 'Eskalation Drucker', reporterId: anna.id });
+  const freshTask = await createItem({ type: 'task', title: 'Eskalation Lieferung', reporterId: anna.id });
   assert.deepEqual(await api('POST', '/admin/rules/run-timed'), { items: 0, reminded: 0, closed: 0 }, 'noch zu früh');
 
   if (!process.env.SMOKE_DATABASE_URL) {
@@ -1203,31 +1430,100 @@ await step('Zeitgesteuerte Regeln: erinnern, schliessen und eskalieren', async (
       assert.equal(reminded.meta.ruleName, 'Erinnern');
 
       await back(fresh, 3);
-      assert.deepEqual(await api('POST', '/admin/rules/run-timed'), { items: 1, reminded: 0, closed: 0 });
-      const escalated = await detail(fresh);
-      assert.equal(escalated.priority, 'high');
-      assert.equal(escalated.assignee.email, IVAN);
+      await back(freshTask, 3);
+      assert.deepEqual(await api('POST', '/admin/rules/run-timed'), { items: 2, reminded: 0, closed: 0 });
+      for (const n of [fresh, freshTask]) {
+        const escalated = await detail(n);
+        assert.equal(escalated.priority, 'high');
+        assert.equal(escalated.assignee.email, IVAN);
+      }
 
       await back(waiting, 4);
       assert.deepEqual(await api('POST', '/admin/rules/run-timed'), { items: 1, reminded: 0, closed: 1 }, 'schliessen statt erneut erinnern');
       const d = await detail(waiting);
-      assert.equal(d.status.label, 'Gelöst');
+      assert.equal(d.status.label, 'Gelöst', '«Automatisch schliessen in»');
+      assert.ok(d.closedAt);
       assert.equal(d.entries.at(-1).meta.ruleName, 'Schliessen');
       await waitForMail(
         ANNA,
         (m) => m.subject === `[PW-${waiting}] Gelöst: Wartet lange` && m.text.includes('keine Rückmeldung erhalten'),
         'Automatisch geschlossen',
       );
-      const preview = await api('POST', '/admin/rules/preview', { schedule: { category: 'new', days: 2 }, conditions: created[2].conditions });
+      const preview = await api('POST', '/admin/rules/preview', { schedule: created[2].schedule, conditions: created[2].conditions });
       assert.deepEqual(
-        preview.hits.map((h) => [h.number, h.kind]),
-        [[fresh, 'due']],
+        preview.hits.map((h) => [h.number, h.kind]).sort(),
+        [
+          [fresh, 'due'],
+          [freshTask, 'due'],
+        ].sort(),
       );
     } finally {
       await db.end();
     }
   }
   for (const r of created) await api('DELETE', `/admin/rules/${r.id}`);
+});
+
+await step('Zeitgesteuerte Regeln: Status löschen ersetzt ihn in den Regeln oder entfernt ihn', async () => {
+  const neu = status('incident', 'new').id;
+  const inProgress = status('incident', 'in_progress').id;
+  const add = (label) => api('POST', '/statuses', { type: 'incident', label, closed: false });
+  const [supplier, vendor, customer] = [await add('Beim Lieferanten'), await add('Beim Hersteller'), await add('Beim Kunden')];
+  // Passt auf keinen Vorgang, damit die Regeln nichts verändern
+  const never = group('and', cond('subject', 'contains', `nie-${RUN}`));
+  const rule = (name, statusIds, waiting = false) =>
+    api('POST', '/admin/rules', { name, schedule: { days: 30, statusIds, waiting }, conditions: never, actions: { priority: 'high' } });
+  const created = [
+    await rule('Mit Ersatz', [supplier.id, neu]),
+    await rule('Nur gelöschter', [vendor.id]),
+    await rule('Mit Wartet', [vendor.id], true),
+    await rule('Ersatz abgeschlossen', [customer.id]),
+  ];
+  const usage = await api('GET', '/statuses/rules-usage');
+  assert.deepEqual(usage[supplier.id], ['Mit Ersatz']);
+  assert.deepEqual([...usage[vendor.id]].sort(), ['Mit Wartet', 'Nur gelöschter']);
+  // Zeitgesteuerte Regeln gelten nur für offene Status
+  assert.match((await api('PATCH', `/statuses/${supplier.id}`, { closed: true }, { expect: [400] })).message, /Mit Ersatz/);
+
+  await api('DELETE', `/statuses/${supplier.id}`, { replacementId: inProgress });
+  await api('DELETE', `/statuses/${vendor.id}`, {});
+  const item = await createItem({ type: 'incident', title: 'Beim Kunden', statusId: customer.id });
+  await api('DELETE', `/statuses/${customer.id}`, { replacementId: status('incident', 'resolved').id });
+  const d = await detail(item);
+  assert.equal(d.status.label, 'Gelöst');
+  assert.ok(d.closedAt);
+
+  const rules = await api('GET', '/admin/rules');
+  const state = (r) => {
+    const { schedule, active } = rules.find((x) => x.id === r.id);
+    return [schedule.statusIds, schedule.waiting, active];
+  };
+  assert.deepEqual(state(created[0]), [[neu, inProgress], false, true], 'offener Ersatz tritt an die Stelle');
+  assert.deepEqual(state(created[1]), [[], false, false], 'ohne Status ausgeschaltet');
+  assert.deepEqual(state(created[2]), [[], true, true], 'mit «Wartet auf den Melder» bleibt sie aktiv');
+  assert.deepEqual(state(created[3]), [[], false, false], 'abgeschlossener Ersatz fällt weg');
+  assert.deepEqual(await api('GET', '/statuses/rules-usage'), { [neu]: ['Mit Ersatz'], [inProgress]: ['Mit Ersatz'] });
+  for (const r of created) await api('DELETE', `/admin/rules/${r.id}`);
+});
+
+await step('Board: abgeschlossene Spalten zeigen nur die letzten 14 Tage', async () => {
+  const onBoard = async () => (await api('GET', '/items?view=board')).items.some((i) => i.number === t1);
+  assert.equal((await detail(t1)).status.label, 'Erledigt');
+  assert.ok(await onBoard());
+  if (!process.env.SMOKE_DATABASE_URL) {
+    process.stdout.write('(Zeitreise übersprungen, SMOKE_DATABASE_URL fehlt) ');
+    return;
+  }
+  const { default: pg } = await import('pg');
+  const db = new pg.Client({ connectionString: process.env.SMOKE_DATABASE_URL });
+  await db.connect();
+  try {
+    await db.query(`update items set closed_at = now() - interval '15 days' where number = $1`, [t1]);
+    assert.ok(!(await onBoard()), 'vor mehr als 14 Tagen abgeschlossen');
+    assert.ok((await api('GET', '/items?view=tasks-done')).items.some((i) => i.number === t1), 'bleibt unter «Erledigt»');
+  } finally {
+    await db.end();
+  }
 });
 
 await step('Textbausteine: Admin pflegt, IT liest', async () => {
@@ -1256,6 +1552,8 @@ await step('Auswertungen: Kennzahlen pro Zeitraum, CSV, nur für Admin', async (
   assert.ok(r.totals.created >= 20);
   assert.ok(r.totals.closed >= 1);
   assert.ok(r.open.byStatus.length > 0);
+  // Offen heisst: im Eingang oder in einem nicht abgeschlossenen Status
+  assert.ok(r.open.byStatus.every((s) => s.closed === false && !('category' in s)), JSON.stringify(r.open.byStatus));
   assert.equal(r.open.byStatus.reduce((s, x) => s + x.count, 0) + r.open.inbox, r.totals.openNow);
   assert.ok(r.resolution.count >= 1 && r.resolution.medianHours >= 0);
   assert.ok(r.topReporters[0].count >= r.topReporters.at(-1).count);

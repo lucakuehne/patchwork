@@ -155,6 +155,20 @@
       "when": 1792493367581,
       "tag": "0021_ad_rolle",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792497053275,
+      "tag": "0022_status_ziele",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792497096333,
+      "tag": "0023_status_ohne_kategorie",
+      "breakpoints": true
     }
   ]
 }

@@ -70,14 +70,14 @@ export class NotificationsService {
     });
   }
 
-  /** Vorgang wurde in einen Status der Kategorie «Erledigt» gesetzt. */
+  /** Vorgang wurde von Hand in einen abgeschlossenen Status (ausser dem Ablehnen-Status) gesetzt. */
   async done(item: Item, actorId: string, statusLabel: string): Promise<void> {
     const reporter = await this.eligible(item, item.reporterId, actorId);
     if (!reporter) return;
     await this.sendToReporter(item, [reporter.email], [], { template: 'done', values: { Status: statusLabel }, automated: true });
   }
 
-  /** Aufgabe wurde abgelehnt und «Melder informieren» war gewählt. */
+  /** Vorgang wurde abgelehnt und «Melder informieren» war gewählt. */
   async rejected(item: Item, actorId: string, reason: string): Promise<void> {
     const reporter = await this.eligible(item, item.reporterId, actorId);
     if (!reporter) return;

@@ -2,16 +2,18 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { LdapService } from '../auth/ldap.service';
 import { InjectDb, type Db } from '../db/db.module';
-import { items, ruleRuns, rules, statuses, users } from '../db/schema';
+import { items, ruleRuns, rules, users } from '../db/schema';
 import { BossService, QUEUE_AUTOMATION } from '../jobs/boss.service';
 import { SettingsService } from '../settings/settings.service';
+import { StatusesService } from '../statuses/statuses.service';
 import { matchesGroup } from './rule-eval';
 import { RulesService, timedEvent } from './rules.service';
-import { dueTimedRules } from './timed';
+import { dueTimedRules, scheduleCovers, scheduledStatusIds } from './timed';
 
 /**
- * Zeitgesteuerte Regeln (z.B. «wartet seit 7 Tagen → Melder erinnern»), geprüft alle 15 Minuten.
- * Pro Vorgang greift jede Regel einmal je Aufenthalt in einem Status.
+ * Zeitgesteuerte Regeln (z.B. «wartet seit 7 Tagen → Melder erinnern»), geprüft alle 15 Minuten. Eine Regel gilt für
+ * die Status, die sie nennt, und mit «Wartet auf den Melder» für den Wartet-Status jedes Typs. Pro Vorgang greift
+ * jede Regel einmal je Aufenthalt in einem Status.
  */
 @Injectable()
 export class AutomationService implements OnModuleInit {
@@ -22,6 +24,7 @@ export class AutomationService implements OnModuleInit {
     private readonly boss: BossService,
     private readonly settings: SettingsService,
     private readonly rules: RulesService,
+    private readonly statuses: StatusesService,
     private readonly ldap: LdapService,
   ) {}
 
@@ -38,13 +41,15 @@ export class AutomationService implements OnModuleInit {
     );
     if (timed.length === 0) return result;
 
-    const categories = [...new Set(timed.map((r) => r.schedule!.category))];
+    // Kandidaten: Vorgänge in einem Status, den eine Regel nennt, oder im Wartet-Status ihres Typs
+    const targets = await this.statuses.targets();
+    const statusIds = scheduledStatusIds(timed.map((r) => r.schedule!), targets);
+    if (statusIds.length === 0) return result;
     const candidates = await this.db
-      .select({ item: items, category: statuses.category, reporterEmail: users.email })
+      .select({ item: items, reporterEmail: users.email })
       .from(items)
-      .innerJoin(statuses, eq(statuses.id, items.statusId))
       .innerJoin(users, eq(users.id, items.reporterId))
-      .where(and(eq(items.discarded, false), inArray(statuses.category, categories)));
+      .where(and(eq(items.discarded, false), inArray(items.statusId, statusIds)));
     if (candidates.length === 0) return result;
     const runs = await this.db
       .select()
@@ -53,13 +58,14 @@ export class AutomationService implements OnModuleInit {
 
     const checker = this.ldap.groupChecker(await this.settings.get('ldap'));
     try {
-      for (const { item, category, reporterEmail } of candidates) {
+      for (const { item, reporterEmail } of candidates) {
         const alreadyRun = new Set(
           runs
             .filter((r) => r.itemId === item.id && r.statusChangedAt.getTime() === item.statusChangedAt.getTime())
             .map((r) => r.ruleId),
         );
-        const due = dueTimedRules(timed, item, category, now, alreadyRun);
+        const waitingId = item.type ? targets[item.type].waiting : undefined;
+        const due = dueTimedRules(timed, item, waitingId, now, alreadyRun);
         if (due.length === 0) continue;
         const event = timedEvent(item, reporterEmail);
         try {
@@ -72,7 +78,12 @@ export class AutomationService implements OnModuleInit {
           const closeRules = [];
           if (matched.some((r) => r.actions.remindReporter)) {
             for (const rule of timed) {
-              if (rule.actions.close && rule.schedule?.category === category && (await matchesGroup(rule.conditions, event, checker.check))) {
+              if (
+                rule.actions.close &&
+                rule.schedule &&
+                scheduleCovers(rule.schedule, item.statusId, waitingId) &&
+                (await matchesGroup(rule.conditions, event, checker.check))
+              ) {
                 closeRules.push(rule);
               }
             }

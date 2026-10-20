@@ -7,11 +7,12 @@ import ChannelIcon from '../components/ChannelIcon.vue';
 import ItemDescription from '../components/ItemDescription.vue';
 import LinksPanel from '../components/LinksPanel.vue';
 import PersonSearch from '../components/PersonSearch.vue';
-import { moveItem } from '../status-move';
+import { manualStatusChoices, moveItem } from '../status-move';
 import RejectDialog from '../components/RejectDialog.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import TimelineEvents from '../components/TimelineEvents.vue';
 import TimelineMessage from '../components/TimelineMessage.vue';
+import TypeChangeDialog from '../components/TypeChangeDialog.vue';
 import UserPicker from '../components/UserPicker.vue';
 import { formatDateTime, itemRef, PRIORITY_LABELS, TYPE_LABELS } from '../format';
 import { useSession } from '../stores/session';
@@ -58,21 +59,18 @@ async function run(action: () => Promise<unknown>, success?: string) {
   }
 }
 
-// Nur Status, in die der Vorgang laut Ablauf von Hand wechseln darf (dazu der aktuelle)
+// Nur Status, in die der Vorgang laut Ablauf von Hand wechseln darf (dazu der aktuelle), ohne den Ablehnen-Status
 const statusOptions = computed(() => {
   const type = item.value?.type;
   if (!type) return [];
   const current = item.value!.status?.id ?? null;
-  return session
-    .statusesOf(type)
-    .filter((s) => s.category !== 'rejected' && (s.id === current || session.canMove(type, current, s.id)));
+  return manualStatusChoices(session.statusesOf(type), session.statusTargets[type], current, (toId) =>
+    session.canMove(type, current, toId),
+  );
 });
-const canReject = computed(
-  () =>
-    !!item.value?.type &&
-    item.value.status?.category !== 'rejected' &&
-    session.statusesOf(item.value.type).some((s) => s.category === 'rejected'),
-);
+// Steht der Vorgang im Ablehnen-Status, erscheint dieser im Status-Feld als deaktivierte Option
+const inRejectStatus = computed(() => !!item.value?.type && session.isRejectStatus(item.value.status, item.value.type));
+const canReject = computed(() => !!item.value?.type && session.canReject(item.value.type, item.value.status?.id ?? null));
 // Neueste zuerst; Änderungen kurz hintereinander von derselben Person als eine Zeile
 const timeline = computed(() => (item.value ? groupTimeline([...item.value.entries].reverse()) : []));
 // Ein Eintrag pro Postfach; ohne eigenes Antwort-Postfach ist das Standard-Postfach gewählt
@@ -86,8 +84,17 @@ const selectedMailboxId = computed(
   () => item.value?.mailbox?.id ?? session.mailboxes.find((m) => m.isDefault)?.id ?? '',
 );
 
-const setType = (type: ItemType) =>
-  run(() => api.post(`/items/${props.number}/type`, { type }), `Typ ist jetzt «${TYPE_LABELS[type]}»`);
+// Mit Status fragt ein Dialog nach dem Status im neuen Typ; aus dem Eingang gibt es den Start-Status des Typs
+const typeChangeTo = ref<ItemType | null>(null);
+function setType(type: ItemType) {
+  if (item.value?.type && item.value.status) typeChangeTo.value = type;
+  else void run(() => api.post(`/items/${props.number}/type`, { type }), `Typ ist jetzt «${TYPE_LABELS[type]}»`);
+}
+function onTypeChanged() {
+  const type = typeChangeTo.value;
+  typeChangeTo.value = null;
+  void run(async () => undefined, type ? `Typ ist jetzt «${TYPE_LABELS[type]}»` : undefined);
+}
 // Bei offenen Checklisten-Punkten fragt moveItem nach; bei Abbruch wird neu geladen (Auswahl springt zurück)
 const setStatus = (statusId: string) => run(() => moveItem(props.number, { statusId }));
 const patch = (body: Record<string, unknown>) => run(() => api.patch(`/items/${props.number}`, body));
@@ -135,7 +142,7 @@ function onRejected() {
           <span class="mono muted ref">{{ itemRef(item.number) }}</span>
           <span v-if="item.type" class="badge" :class="`type-${item.type}`">{{ TYPE_LABELS[item.type] }}</span>
           <StatusBadge :status="item.status" />
-          <span v-if="item.discarded" class="badge cat-rejected">Verworfen</span>
+          <span v-if="item.discarded" class="badge st-red">Verworfen</span>
         </div>
         <div v-if="editingTitle" class="row">
           <input v-model="titleDraft" class="input title-input" maxlength="500" @keydown.enter="saveTitle" @keydown.esc="editingTitle = false" />
@@ -208,7 +215,7 @@ function onRejected() {
             :disabled="busy"
             @change="setStatus(($event.target as HTMLSelectElement).value)"
           >
-            <option v-if="item.status?.category === 'rejected'" :value="item.status.id" disabled>
+            <option v-if="inRejectStatus && item.status" :value="item.status.id" disabled>
               {{ item.status.label }}
             </option>
             <option v-for="s in statusOptions" :key="s.id" :value="s.id">{{ s.label }}</option>
@@ -326,6 +333,15 @@ function onRejected() {
     </div>
 
     <RejectDialog v-if="rejectOpen && item" :number="item.number" :title="item.title" @close="rejectOpen = false" @done="onRejected" />
+    <TypeChangeDialog
+      v-if="typeChangeTo && item?.type && item.status"
+      :number="item.number"
+      :type="item.type"
+      :status="item.status"
+      :target-type="typeChangeTo"
+      @close="typeChangeTo = null"
+      @done="onTypeChanged"
+    />
   </div>
 </template>
 

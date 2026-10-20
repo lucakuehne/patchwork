@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { PRIORITY_LABELS } from '../format';
+import { manualStatusChoices } from '../status-move';
 import { useSession } from '../stores/session';
 import type { ItemType, Priority, User } from '../types';
 import FilePicker from './FilePicker.vue';
@@ -33,7 +34,12 @@ const saving = ref(false);
 const uploading = ref(false);
 const error = ref('');
 
-const statusOptions = computed(() => session.statusesOf(type.value).filter((s) => s.category !== 'rejected'));
+// Ohne Ablehnen-Status; ohne Auswahl erhält der Vorgang den Status «Neuer Vorgang erhält» des Typs
+const statusOptions = computed(() => manualStatusChoices(session.statusesOf(type.value), session.statusTargets[type.value], null));
+const startLabel = computed(() => {
+  const startId = session.statusTargets[type.value].start;
+  return session.statuses.find((s) => s.id === startId)?.label;
+});
 watch(type, () => (statusId.value = ''));
 
 async function save() {
@@ -109,7 +115,7 @@ async function save() {
       <div class="field">
         <label for="new-status">Status</label>
         <select id="new-status" v-model="statusId" class="select">
-          <option value="">Standard (erster Status «Neu»)</option>
+          <option value="">{{ startLabel ? `Standard («${startLabel}»)` : 'Standard' }}</option>
           <option v-for="s in statusOptions" :key="s.id" :value="s.id">{{ s.label }}</option>
         </select>
       </div>

@@ -1,13 +1,15 @@
-import { CATEGORY_LABELS, PRIORITY_LABELS, TYPE_LABELS } from './format';
+import { PRIORITY_LABELS, TYPE_LABELS } from './format';
 import type {
   ConditionField,
   ConditionOperator,
+  ItemType,
   Rule,
   RuleActions,
   RuleCondition,
   RuleGroup,
+  RuleSchedule,
   RuleTrigger,
-  ScheduleCategory,
+  Status,
 } from './types';
 
 export const TRIGGER_LABELS: Record<RuleTrigger, string> = {
@@ -19,13 +21,44 @@ export const TRIGGER_LABELS: Record<RuleTrigger, string> = {
 export const TRIGGERS = Object.keys(TRIGGER_LABELS) as RuleTrigger[];
 export const isReplyTrigger = (t: RuleTrigger) => t === 'mail_reply' || t === 'portal_reply';
 
-export const SCHEDULE_CATEGORIES: ScheduleCategory[] = ['new', 'in_progress', 'waiting'];
+/** Eintrag für den Status «Wartet auf den Melder» beider Typen (zeitgesteuerte Regeln) */
+export const SCHEDULE_WAITING_LABEL = 'Wartet auf den Melder';
 
-/** Auslöser einer Regel als Text, z.B. «Neue Mail, Antwort per Mail» oder «seit 7 Tagen Wartend» */
-export function describeTrigger(rule: Pick<Rule, 'triggers' | 'schedule'>): string {
+type StatusInfo = Pick<Status, 'id' | 'type' | 'label' | 'closed' | 'position'>;
+
+const TYPE_ORDER: ItemType[] = ['incident', 'task'];
+const byTypeAndPosition = (a: StatusInfo, b: StatusInfo) =>
+  TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type) || a.position - b.position;
+
+/** Zur Wahl für zeitgesteuerte Regeln: die offenen Status je Typ, in der eingestellten Reihenfolge */
+export function scheduleChoices<S extends StatusInfo>(statuses: S[]): { type: ItemType; statuses: S[] }[] {
+  return TYPE_ORDER.map((type) => ({
+    type,
+    statuses: statuses.filter((s) => s.type === type && !s.closed).sort(byTypeAndPosition),
+  })).filter((g) => g.statuses.length > 0);
+}
+
+/** Nur die Status-IDs, die es noch gibt und die offen sind (gelöschte oder abgeschlossene fallen weg) */
+export const openScheduleIds = (ids: string[], statuses: StatusInfo[]) =>
+  ids.filter((id) => statuses.some((s) => s.id === id && !s.closed));
+
+/** «Melder erinnern» und «Schliessen» gibt es nur mit «Wartet auf den Melder» allein */
+export const waitingOnly = (schedule: Pick<RuleSchedule, 'statusIds' | 'waiting'>) =>
+  schedule.waiting && schedule.statusIds.length === 0;
+
+/**
+ * Auslöser einer Regel als Text, z.B. «Neue Mail, Antwort per Mail», «seit 7 Tagen in «Wartet auf den Melder»» oder
+ * «seit 2 Tagen in «Neu» (Störung), «Backlog» (Aufgabe)». Gelöschte Status fallen weg.
+ */
+export function describeTrigger(rule: Pick<Rule, 'triggers' | 'schedule'>, statuses: StatusInfo[]): string {
   if (rule.schedule) {
-    const days = rule.schedule.days === 1 ? '1 Tag' : `${rule.schedule.days} Tagen`;
-    return `seit ${days} in «${CATEGORY_LABELS[rule.schedule.category]}»`;
+    const { days, statusIds, waiting } = rule.schedule;
+    const named = statuses
+      .filter((s) => statusIds.includes(s.id))
+      .sort(byTypeAndPosition)
+      .map((s) => `«${s.label}» (${TYPE_LABELS[s.type]})`);
+    const parts = [...(waiting ? [`«${SCHEDULE_WAITING_LABEL}»`] : []), ...named];
+    return `seit ${days === 1 ? '1 Tag' : `${days} Tagen`} in ${parts.length ? parts.join(', ') : '(Status gelöscht)'}`;
   }
   return rule.triggers.map((t) => TRIGGER_LABELS[t]).join(', ');
 }

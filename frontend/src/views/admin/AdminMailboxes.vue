@@ -565,7 +565,7 @@ function openMicrosoft() {
 
     <div class="card card-body row microsoft">
       <h2>Microsoft 365</h2>
-      <span v-if="microsoftClientId" class="badge cat-done">eingerichtet</span>
+      <span v-if="microsoftClientId" class="badge st-green">eingerichtet</span>
       <span v-else class="badge">noch nicht eingerichtet</span>
       <span class="muted small">
         Postfächer in Microsoft 365 meldet man mit einem Microsoft-Konto an. Dafür braucht es einmalig eine App-Registrierung.
@@ -581,7 +581,7 @@ function openMicrosoft() {
       <div class="row">
         <h2>{{ m.name }}</h2>
         <span class="muted">{{ m.address }}</span>
-        <span v-if="m.isDefault" class="badge cat-new">Standard</span>
+        <span v-if="m.isDefault" class="badge st-blue">Standard</span>
         <span v-if="!m.active" class="badge">inaktiv</span>
         <span class="badge">{{ AUTH_LABELS[m.authType] }}</span>
         <div class="spacer" />

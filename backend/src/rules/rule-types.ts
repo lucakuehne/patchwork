@@ -6,14 +6,14 @@ export const RULE_TRIGGERS = ['mail_new', 'portal_new', 'mail_reply', 'portal_re
 export type RuleTrigger = (typeof RULE_TRIGGERS)[number];
 export const isNewItemTrigger = (t: RuleTrigger) => t === 'mail_new' || t === 'portal_new';
 
-/** Zeitgesteuerte Regeln: Status-Kategorien, für die eine Wartezeit gezählt wird */
-export const SCHEDULE_CATEGORIES = ['new', 'in_progress', 'waiting'] as const;
-export type ScheduleCategory = (typeof SCHEDULE_CATEGORIES)[number];
-
-/** Zeitgesteuert: Vorgang ist seit «days» Tagen (seit dem letzten Statuswechsel) in einem Status der Kategorie */
+/**
+ * Zeitgesteuert: Vorgang ist seit «days» Tagen (seit dem letzten Statuswechsel) in einem der Status «statusIds»
+ * (offene Status beider Typen) oder, mit «waiting», im Status «Wartet auf den Melder» seines Typs.
+ */
 export interface RuleSchedule {
-  category: ScheduleCategory;
   days: number;
+  statusIds: string[];
+  waiting: boolean;
 }
 
 export const CONDITION_FIELDS = ['sender', 'subject', 'body', 'mailbox', 'adGroup'] as const;
@@ -52,9 +52,9 @@ export interface RuleActions {
   checklistTemplateId?: string;
   suppressConfirmation?: boolean;
   discard?: boolean;
-  /** Zeitgesteuert, nur «Wartend»: Erinnerung per Mail an den Melder */
+  /** Zeitgesteuert, nur «Wartet auf den Melder» allein: Erinnerung per Mail an den Melder */
   remindReporter?: boolean;
-  /** Zeitgesteuert, nur «Wartend»: Vorgang schliessen (erster Status «Erledigt»), mit Mail an den Melder */
+  /** Zeitgesteuert, nur «Wartet auf den Melder» allein: schliessen («Automatisch schliessen in»), mit Mail an den Melder */
   close?: boolean;
 }
 
@@ -96,10 +96,17 @@ export const actionsSchema = z
   })
   .refine((a) => Object.values(a).some(Boolean), 'Bitte mindestens eine Aktion wählen');
 
-export const scheduleSchema = z.object({
-  category: z.enum(SCHEDULE_CATEGORIES),
-  days: z.number().int().min(1, 'Mindestens 1 Tag').max(365, 'Höchstens 365 Tage'),
-});
+export const scheduleSchema = z
+  .object({
+    days: z.number().int().min(1, 'Mindestens 1 Tag').max(365, 'Höchstens 365 Tage'),
+    statusIds: z
+      .array(z.uuid())
+      .max(100)
+      .default([])
+      .transform((list) => [...new Set(list)]),
+    waiting: z.boolean().default(false),
+  })
+  .refine((s) => s.waiting || s.statusIds.length > 0, 'Bitte mindestens einen Status wählen');
 
 const triggersSchema = z
   .array(z.enum(RULE_TRIGGERS))
@@ -129,8 +136,8 @@ export const ruleSchema = z
       if (used.some((k) => !TIMED_ACTIONS.includes(k))) {
         ctx.addIssue({ code: 'custom', message: 'Zeitgesteuerte Regeln setzen nur Priorität, Zuständig, Erinnerung oder Schliessen' });
       }
-      if ((r.actions.remindReporter || r.actions.close) && r.schedule.category !== 'waiting') {
-        ctx.addIssue({ code: 'custom', message: 'Erinnern und Schliessen gibt es nur für die Kategorie «Wartend»' });
+      if ((r.actions.remindReporter || r.actions.close) && (!r.schedule.waiting || r.schedule.statusIds.length > 0)) {
+        ctx.addIssue({ code: 'custom', message: 'Erinnern und Schliessen gibt es nur mit «Wartet auf den Melder» allein' });
       }
     } else if (r.actions.remindReporter || r.actions.close) {
       ctx.addIssue({ code: 'custom', message: 'Erinnern und Schliessen gibt es nur bei zeitgesteuerten Regeln' });

@@ -29,13 +29,14 @@ import { ChannelsService } from '../channels/channels.service';
 import { MailboxesService } from '../mail/mailboxes.service';
 import { NotificationsService } from '../mail/notifications.service';
 import { visibleInPortal } from '../portal/portal-visibility';
-import { firstOfCategory, isClosedCategory, mapStatusForTypeChange } from '../statuses/status-rules';
+import { isCompleting, reopensOnReply } from '../statuses/status-rules';
 import { StatusesService } from '../statuses/statuses.service';
 import { StorageService } from '../storage/storage.service';
 import { toPublicUser, UsersService } from '../users/users.service';
 import { duplicateRedirect } from './duplicates';
 import { imageRefs, replaceImages, TEXT_IMAGE_TYPES } from './inline-images';
 import { noteEditRefusal } from './note-rules';
+import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
 import type { RuleRun } from '../rules/rules.service';
 import { assigneeUser, reporterUser, searchCondition, summaryColumns, viewQuery, type View } from './item-views';
 
@@ -100,13 +101,13 @@ export class ItemsService {
     return { items: rows.map((r) => this.toSummary(r)), total };
   }
 
-  /** Anzahl offener Vorgänge je Tab. */
+  /** Anzahl offener Vorgänge je Tab (Status nicht abgeschlossen). */
   async counts() {
     const [row] = await this.db
       .select({
         inbox: sql<number>`count(*) filter (where ${items.type} is null and not ${items.discarded})::int`,
-        incidents: sql<number>`count(*) filter (where ${items.type} = 'incident' and ${statuses.category} in ('new','in_progress','waiting'))::int`,
-        tasks: sql<number>`count(*) filter (where ${items.type} = 'task' and ${statuses.category} in ('new','in_progress','waiting'))::int`,
+        incidents: sql<number>`count(*) filter (where ${items.type} = 'incident' and not ${statuses.closed})::int`,
+        tasks: sql<number>`count(*) filter (where ${items.type} = 'task' and not ${statuses.closed})::int`,
       })
       .from(items)
       .leftJoin(statuses, eq(statuses.id, items.statusId));
@@ -206,7 +207,7 @@ export class ItemsService {
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
       closedAt: item.closedAt,
-      status: status && { id: status.id, label: status.label, category: status.category, color: status.color },
+      status: status && { id: status.id, label: status.label, closed: status.closed, color: status.color },
       reporter: toPublicUser(reporter),
       creator: toPublicUser(creator),
       assignee: assignee && toPublicUser(assignee),
@@ -258,14 +259,9 @@ export class ItemsService {
     const pending: Pending = [];
     const item = await this.db.transaction(async (tx) => {
       await this.channels.get(input.channelId, tx);
-      const all = await this.statuses.list(tx);
-      let status = firstOfCategory(all, input.type, 'new');
-      if (input.statusId) {
-        status = all.find((s) => s.id === input.statusId && s.type === input.type);
-        if (!status) throw new BadRequestException('Der Status passt nicht zum Typ');
-        if (status.category === 'rejected') throw new BadRequestException('Ein neuer Vorgang kann nicht abgelehnt sein');
-      }
-      if (!status) throw new BadRequestException('Für diesen Typ ist kein Status «Neu» definiert');
+      const [all, targets] = await Promise.all([this.statuses.list(tx), this.statuses.targets(tx)]);
+      // Ohne Wahl «Neuer Vorgang erhält», der Ablehnen-Status ist nicht wählbar
+      const status = newItemStatus(all, targets[input.type], input.type, input.statusId);
 
       const reporterId = input.reporterId ?? actor.id;
       await this.users.getById(reporterId, tx);
@@ -286,7 +282,7 @@ export class ItemsService {
           mailboxId: mailbox?.id ?? null,
           source: 'internal',
           channelId: input.channelId,
-          closedAt: isClosedCategory(status.category) ? new Date() : null,
+          closedAt: status.closed ? new Date() : null,
           boardPosition: await this.endOfColumn(tx, status.id),
         })
         .returning();
@@ -380,15 +376,18 @@ export class ItemsService {
     await this.flush(pending);
   }
 
-  /** Typ zuweisen (aus dem Eingang) oder umklassieren. Verlauf, Kommentare und Anhänge bleiben erhalten. */
-  async setType(actor: User, number: number, type: ItemType): Promise<void> {
+  /**
+   * Typ zuweisen (aus dem Eingang) oder umklassieren. Verlauf, Kommentare und Anhänge bleiben erhalten.
+   * Status im neuen Typ: der gewählte («statusId») oder der Vorschlag nach der Rolle des bisherigen Status, aus dem
+   * Eingang «Neuer Vorgang erhält». Als automatischer Wechsel prüft der Typwechsel den Ablauf nicht.
+   */
+  async setType(actor: User, number: number, type: ItemType, statusId?: string | null): Promise<void> {
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, number);
       if (item.type === type && !item.discarded) return;
-      const all = await this.statuses.list(tx);
+      const [all, targets] = await Promise.all([this.statuses.list(tx), this.statuses.targets(tx)]);
       const current = item.statusId ? all.find((s) => s.id === item.statusId) : undefined;
-      const target = current ? mapStatusForTypeChange(all, current, type) : firstOfCategory(all, type, 'new');
-      if (!target) throw new BadRequestException('Für diesen Typ ist kein Status «Neu» definiert');
+      const target = typeChangeStatus(all, targets, current, type, statusId);
 
       await tx
         .update(items)
@@ -397,7 +396,7 @@ export class ItemsService {
           statusId: target.id,
           suggestedType: null,
           discarded: false,
-          closedAt: this.closedAtFor(item, current, target),
+          closedAt: closedAtAfter(item.closedAt, current, target),
           boardPosition: await this.endOfColumn(tx, target.id),
           updatedAt: new Date(),
         })
@@ -420,8 +419,10 @@ export class ItemsService {
 
   /**
    * Status setzen und optional auf dem Board zwischen zwei Karten einordnen.
-   * Ablehnen geht nur über reject(), weil es eine Begründung braucht.
-   * Hat eine Aufgabe offene Checklisten-Punkte, verlangt der Wechsel auf «Erledigt» eine Bestätigung (force).
+   * In den Ablehnen-Status geht es nur über reject(), weil es eine Begründung braucht.
+   * Ein Wechsel, der den Vorgang erledigt (in einen abgeschlossenen Status ausser dem Ablehnen-Status, siehe
+   * isCompleting), schickt die Mail «Erledigt» und meldet sich bei «Behebt»; hat eine Aufgabe offene
+   * Checklisten-Punkte, verlangt er eine Bestätigung (force).
    */
   async move(
     actor: User,
@@ -435,12 +436,10 @@ export class ItemsService {
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, number);
       if (!item.type) throw new BadRequestException('Bitte zuerst einen Typ zuweisen');
-      const all = await this.statuses.list(tx);
-      const target = all.find((s) => s.id === statusId);
-      if (!target || target.type !== item.type) throw new BadRequestException('Der Status passt nicht zum Typ');
-      if (target.category === 'rejected') throw new BadRequestException('Zum Ablehnen bitte «Ablehnen» verwenden');
+      const [all, targets] = await Promise.all([this.statuses.list(tx), this.statuses.targets(tx)]);
+      const target = moveTarget(all, targets[item.type], item.type, statusId);
       const current = all.find((s) => s.id === item.statusId);
-      const completing = target.category === 'done' && current?.category !== 'done';
+      const completing = target.id !== item.statusId && isCompleting(targets[item.type], current, target);
       // Wechsel von Hand nur gemäss Ablauf, falls er für den Typ eingeschränkt ist
       if (target.id !== item.statusId) await this.statuses.assertTransition(item.type, current, target, tx);
 
@@ -464,16 +463,12 @@ export class ItemsService {
       }
       if (target.id !== item.statusId) {
         changes.statusId = target.id;
-        changes.closedAt = this.closedAtFor(item, current, target);
+        changes.closedAt = closedAtAfter(item.closedAt, current, target);
       }
       const [updated] = await tx.update(items).set(changes).where(eq(items.id, item.id)).returning();
 
       if (target.id !== item.statusId) {
-        await this.addEntry(tx, item.id, actor.id, 'status', '', {
-          from: current?.label ?? null,
-          to: target.label,
-          toCategory: target.category,
-        });
+        await this.addEntry(tx, item.id, actor.id, 'status', '', { from: current?.label ?? null, to: target.label });
         if (completing) {
           pending.push(() => this.notifications.done(updated!, actor.id, target.label));
           pending.push(...(await this.onFixingItemCompleted(tx, updated!, actor)));
@@ -515,26 +510,26 @@ export class ItemsService {
     return row?.count ?? 0;
   }
 
+  /**
+   * Ablehnen mit Begründung: in den Status «Ablehnen führt in» des Typs. Ohne dieses Ziel, aus dem Ablehnen-Status
+   * selbst und bei eingeschränktem Ablauf ohne Pfeil in den Ablehnen-Status nicht möglich (siehe rejectTarget).
+   */
   async reject(actor: User, number: number, reason: string, notify: boolean): Promise<void> {
     const pending: Pending = [];
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, number);
       if (!item.type) throw new BadRequestException('Bitte zuerst einen Typ zuweisen');
-      const all = await this.statuses.list(tx);
-      const target = firstOfCategory(all, item.type, 'rejected');
-      if (!target) throw new BadRequestException(`Für den Typ ${TYPE_LABELS[item.type]} gibt es keinen Status «Abgelehnt»`);
-      const current = all.find((s) => s.id === item.statusId);
-      if (current?.id === target.id) throw new BadRequestException('Der Vorgang ist bereits abgelehnt');
+      const current = item.statusId ? await this.statuses.get(item.statusId, tx) : undefined;
+      const target = await this.statuses.rejectTarget(item.type, current, tx);
 
       const [updated] = await tx
         .update(items)
-        .set({ statusId: target.id, closedAt: this.closedAtFor(item, current, target), updatedAt: new Date() })
+        .set({ statusId: target.id, closedAt: closedAtAfter(item.closedAt, current, target), updatedAt: new Date() })
         .where(eq(items.id, item.id))
         .returning();
       const entry = await this.addEntry(tx, item.id, actor.id, 'status', reason, {
         from: current?.label ?? null,
         to: target.label,
-        toCategory: target.category,
         rejected: true,
         notified: notify,
       });
@@ -678,8 +673,8 @@ export class ItemsService {
   }
 
   /**
-   * Antwort des Melders im Portal. Wirkt wie eine Antwort per Mail: holt den Vorgang aus
-   * «Wartend» bzw. «Erledigt» zurück und informiert den Zuständigen.
+   * Antwort des Melders im Portal. Wirkt wie eine Antwort per Mail: holt den Vorgang aus dem Wartet-Status bzw.
+   * aus einem abgeschlossenen Status (ausser dem Ablehnen-Status) zurück und informiert den Zuständigen.
    */
   async portalReply(reporter: User, number: number, body: string, files: UploadedFile[], rules?: RuleRun): Promise<void> {
     if (!body.trim() && files.length === 0) throw new BadRequestException('Der Text ist leer');
@@ -709,16 +704,15 @@ export class ItemsService {
   // ---------------------------------------------------------------- Mail-Eingang
 
   /**
-   * Antwort des Melders oder eines Beteiligten: Aus «Wartend» oder «Erledigt» geht der
-   * Vorgang zurück auf den ersten Status der Kategorie «In Arbeit».
+   * Antwort des Melders oder eines Beteiligten: Aus dem Wartet-Status oder einem abgeschlossenen Status (ausser dem
+   * Ablehnen-Status) geht der Vorgang in den Status «Antwort des Melders führt in» seines Typs.
    */
   async reopenAfterReply(tx: Tx, item: Item, via: 'mail' | 'portal' = 'mail'): Promise<Status | null> {
     if (!item.type || !item.statusId) return null;
-    const all = await this.statuses.list(tx);
-    const current = all.find((s) => s.id === item.statusId);
-    if (!current || (current.category !== 'waiting' && current.category !== 'done')) return null;
-    const target = firstOfCategory(all, item.type, 'in_progress');
-    if (!target) return null;
+    const [current, targets] = await Promise.all([this.statuses.get(item.statusId, tx), this.statuses.targets(tx)]);
+    if (!reopensOnReply(targets[item.type], current)) return null;
+    const target = await this.statuses.targetStatus(item.type, 'reply', tx);
+    if (target.id === current.id) return null;
     await tx
       .update(items)
       .set({
@@ -728,13 +722,7 @@ export class ItemsService {
         updatedAt: new Date(),
       })
       .where(eq(items.id, item.id));
-    await this.addEntry(tx, item.id, null, 'status', '', {
-      from: current.label,
-      to: target.label,
-      toCategory: target.category,
-      reason: 'reply',
-      via,
-    });
+    await this.addEntry(tx, item.id, null, 'status', '', { from: current.label, to: target.label, reason: 'reply', via });
     return target;
   }
 
@@ -891,11 +879,6 @@ export class ItemsService {
     return user;
   }
 
-  private closedAtFor(item: Item, current: Status | undefined, target: Status): Date | null {
-    if (!isClosedCategory(target.category)) return null;
-    return current && isClosedCategory(current.category) && item.closedAt ? item.closedAt : new Date();
-  }
-
   /** Position am Ende einer Board-Spalte (auch für Regeln). */
   async endOfColumn(tx: Tx, statusId: string): Promise<number> {
     const [row] = await tx
@@ -960,7 +943,7 @@ export class ItemsService {
     createdAt: Date;
     updatedAt: Date;
     closedAt: Date | null;
-    status: { id: string | null; label: string | null; category: Status['category'] | null; color: string | null } | null;
+    status: { id: string | null; label: string | null; closed: boolean | null; color: string | null } | null;
     reporter: { id: string; name: string; email: string; role: User['role'] };
     assigneeId: string | null;
     assigneeName: string | null;

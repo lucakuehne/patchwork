@@ -4,15 +4,18 @@ import draggable from 'vuedraggable';
 import { api, errorMessage } from '../../api';
 import ModalDialog from '../../components/ModalDialog.vue';
 import RuleConditionRow from '../../components/RuleConditionRow.vue';
-import { CATEGORY_LABELS, formatDateTime, itemRef, PRIORITY_LABELS, TYPE_LABELS } from '../../format';
+import { formatDateTime, itemRef, PRIORITY_LABELS, TYPE_LABELS } from '../../format';
 import {
   describeActions,
   describeConditions,
   describeTrigger,
   isReplyTrigger,
-  SCHEDULE_CATEGORIES,
+  openScheduleIds,
+  SCHEDULE_WAITING_LABEL,
+  scheduleChoices,
   TRIGGER_LABELS,
   TRIGGERS,
+  waitingOnly,
   type RuleLookups,
 } from '../../rules-text';
 import { useConfirm } from '../../stores/confirm';
@@ -29,7 +32,6 @@ import type {
   RuleGroup,
   RulePreviewHit,
   RuleTrigger,
-  ScheduleCategory,
 } from '../../types';
 
 const session = useSession();
@@ -47,7 +49,9 @@ interface Draft {
   /** Bei Ereignissen (Mail, Portal, Antworten) oder nach Zeit */
   mode: 'event' | 'timed';
   triggers: RuleTrigger[];
-  scheduleCategory: ScheduleCategory;
+  /** Zeitgesteuert: offene Status beider Typen und/oder «Wartet auf den Melder» */
+  scheduleStatusIds: string[];
+  scheduleWaiting: boolean;
   scheduleDays: number;
   conditions: RuleGroup;
   type: ItemType | '';
@@ -73,10 +77,12 @@ const lookups = computed<RuleLookups>(() => ({
 
 async function load() {
   try {
+    // Status neu laden: Zeitgesteuerte Regeln nennen Status, die sich unter Verwaltung → Status ändern können
     const [r, m, t] = await Promise.all([
       api.get<Rule[]>('/admin/rules'),
       api.get<Mailbox[]>('/admin/mailboxes'),
       api.get<ChecklistTemplate[]>('/checklist-templates'),
+      session.loadStatuses(),
     ]);
     rules.value = r;
     mailboxes.value = m;
@@ -135,7 +141,8 @@ function create() {
     active: true,
     mode: 'event',
     triggers: ['mail_new'],
-    scheduleCategory: 'waiting',
+    scheduleStatusIds: [],
+    scheduleWaiting: true,
     scheduleDays: 7,
     conditions: { kind: 'group', op: 'and', children: [newCondition()] },
     type: '',
@@ -157,7 +164,9 @@ function edit(rule: Rule) {
     active: rule.active,
     mode: rule.schedule ? 'timed' : 'event',
     triggers: rule.schedule ? ['mail_new'] : [...rule.triggers],
-    scheduleCategory: rule.schedule?.category ?? 'waiting',
+    // Gelöschte Status lassen sich nicht abwählen, deshalb nur die noch vorhandenen offenen übernehmen
+    scheduleStatusIds: rule.schedule ? openScheduleIds(rule.schedule.statusIds, session.statuses) : [],
+    scheduleWaiting: rule.schedule?.waiting ?? true,
     scheduleDays: rule.schedule?.days ?? 7,
     // Tiefe Kopie (structuredClone geht nicht mit reaktiven Objekten)
     conditions: JSON.parse(JSON.stringify(rule.conditions)) as RuleGroup,
@@ -185,7 +194,18 @@ function toggleTrigger(t: RuleTrigger, on: boolean) {
 }
 
 const timed = computed(() => draft.value?.mode === 'timed');
-const timedWaiting = computed(() => timed.value && draft.value?.scheduleCategory === 'waiting');
+const scheduleOf = (d: Draft) => ({ statusIds: d.scheduleStatusIds, waiting: d.scheduleWaiting });
+/** Erinnern und Schliessen nur mit «Wartet auf den Melder» allein */
+const timedWaiting = computed(() => !!draft.value && timed.value && waitingOnly(scheduleOf(draft.value)));
+/** Zur Wahl: offene Status je Typ */
+const scheduleGroups = computed(() => scheduleChoices(session.statuses));
+/** Status «Wartet auf den Melder» der Typen, als Hinweis beim Eintrag */
+const waitingStatuses = computed(() =>
+  (['incident', 'task'] as ItemType[]).flatMap((type) => {
+    const s = session.statuses.find((x) => x.id === session.targetId(type, 'waiting'));
+    return s ? [`${TYPE_LABELS[type]} «${s.label}»`] : [];
+  }),
+);
 const onlyReplies = computed(
   () => !timed.value && !!draft.value?.triggers.length && draft.value.triggers.every(isReplyTrigger),
 );
@@ -205,8 +225,8 @@ function actionsOf(d: Draft): RuleActions {
   if (d.priority) a.priority = d.priority;
   if (d.assigneeId) a.assigneeId = d.assigneeId;
   if (d.mode === 'timed') {
-    if (d.scheduleCategory === 'waiting' && d.remindReporter) a.remindReporter = true;
-    if (d.scheduleCategory === 'waiting' && d.close) a.close = true;
+    if (waitingOnly(scheduleOf(d)) && d.remindReporter) a.remindReporter = true;
+    if (waitingOnly(scheduleOf(d)) && d.close) a.close = true;
     return a;
   }
   if (d.type) a.type = d.type;
@@ -219,7 +239,7 @@ function actionsOf(d: Draft): RuleActions {
 /** Auslöser: Ereignisse oder Zeit */
 const triggerOf = (d: Draft) => ({
   triggers: d.mode === 'event' ? d.triggers : [],
-  schedule: d.mode === 'timed' ? { category: d.scheduleCategory, days: Number(d.scheduleDays) } : null,
+  schedule: d.mode === 'timed' ? { days: Number(d.scheduleDays), ...scheduleOf(d) } : null,
 });
 
 async function save() {
@@ -282,7 +302,7 @@ async function runPreview() {
           <div class="rule-text">
             <div class="row">
               <strong>{{ element.name }}</strong>
-              <span class="faint small">{{ describeTrigger(element) }}</span>
+              <span class="faint small">{{ describeTrigger(element, session.statuses) }}</span>
             </div>
             <div class="small">
               <template v-if="element.conditions.children.length">
@@ -326,14 +346,29 @@ async function runPreview() {
           <div class="timed">
             Vorgang ist seit
             <input v-model.number="draft.scheduleDays" class="input days" type="number" min="1" max="365" aria-label="Tage" />
-            Tagen in einem Status der Kategorie
-            <select v-model="draft.scheduleCategory" class="select category" aria-label="Kategorie">
-              <option v-for="c in SCHEDULE_CATEGORIES" :key="c" :value="c">{{ CATEGORY_LABELS[c] }}</option>
-            </select>
+            Tagen in …
+          </div>
+          <div class="schedule-statuses" role="group" aria-label="Status">
+            <div class="schedule-group">
+              <label class="checkbox">
+                <input v-model="draft.scheduleWaiting" type="checkbox" />
+                {{ SCHEDULE_WAITING_LABEL }} (beide Typen)
+              </label>
+              <span class="faint small" title="Festgelegt unter Verwaltung → Status, «Automatische Wechsel»">
+                {{ waitingStatuses.length ? `zurzeit ${waitingStatuses.join(', ')}` : 'zurzeit bei keinem Typ festgelegt' }}
+              </span>
+            </div>
+            <div v-for="g in scheduleGroups" :key="g.type" class="schedule-group">
+              <span class="schedule-type">{{ TYPE_LABELS[g.type] }}:</span>
+              <label v-for="s in g.statuses" :key="s.id" class="checkbox">
+                <input v-model="draft.scheduleStatusIds" type="checkbox" :value="s.id" />
+                <span class="badge" :class="`st-${s.color}`">{{ s.label }}</span>
+              </label>
+            </div>
           </div>
           <span class="hint">
-            Gezählt ab dem letzten Statuswechsel. Die Bedingungen beziehen sich auf den Vorgang: Absender = Melder, Betreff = Titel, Text
-            = Beschreibung, Postfach = Antwort-Postfach.
+            Zur Wahl stehen die offenen Status. Gezählt ab dem letzten Statuswechsel. Die Bedingungen beziehen sich auf den Vorgang:
+            Absender = Melder, Betreff = Titel, Text = Beschreibung, Postfach = Antwort-Postfach.
           </span>
         </template>
       </div>
@@ -422,9 +457,9 @@ async function runPreview() {
           </label>
           <label class="checkbox">
             <input v-model="draft.close" type="checkbox" :disabled="!timedWaiting" />
-            Vorgang schliessen (erster Status «Erledigt», Mail an den Melder)
+            Vorgang schliessen (Status «Automatisch schliessen in» des Typs, Mail an den Melder)
           </label>
-          <span v-if="!timedWaiting" class="hint">Erinnern und Schliessen gibt es nur für die Kategorie «Wartend».</span>
+          <span v-if="!timedWaiting" class="hint">Erinnern und Schliessen gibt es nur mit «{{ SCHEDULE_WAITING_LABEL }}» allein.</span>
         </template>
         <template v-else>
           <label class="checkbox">
@@ -517,8 +552,25 @@ async function runPreview() {
   gap: 6px;
   margin-top: 6px;
 }
-.category {
-  width: auto;
+.schedule-statuses {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.schedule-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+.schedule-type {
+  min-width: 70px;
+  font-weight: 600;
+  font-size: 13px;
 }
 .triggers {
   display: flex;

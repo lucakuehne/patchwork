@@ -2,24 +2,22 @@
 import type { PortalStatus } from '../../types';
 
 defineProps<{ status: PortalStatus }>();
-
-const CLASS: Record<PortalStatus['key'], string> = {
-  received: 'cat-new',
-  in_progress: 'cat-in_progress',
-  // Der Melder ist am Zug: hervorheben
-  waiting: 'attention',
-  done: 'cat-done',
-  rejected: 'cat-rejected',
-};
 </script>
 
 <template>
-  <span class="badge" :class="CLASS[status.key]">{{ status.label }}</span>
+  <!-- Wartet der Vorgang auf den Melder, ist er am Zug: hervorheben -->
+  <span
+    class="badge"
+    :class="[`st-${status.color}`, { waiting: status.waiting }]"
+    :title="status.waiting ? 'Wartet auf Ihre Rückmeldung' : undefined"
+  >
+    {{ status.label }}
+  </span>
 </template>
 
 <style scoped>
-.attention {
-  background: var(--accent);
-  color: #fff;
+.waiting {
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1.5px currentColor;
 }
 </style>

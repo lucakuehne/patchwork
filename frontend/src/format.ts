@@ -1,4 +1,4 @@
-import type { ItemType, Priority, Role, StatusCategory } from './types';
+import type { ItemType, Priority, Role } from './types';
 
 export const NUMBER_PREFIX = 'PW';
 export const itemRef = (n: number) => `${NUMBER_PREFIX}-${n}`;
@@ -6,16 +6,6 @@ export const itemRef = (n: number) => `${NUMBER_PREFIX}-${n}`;
 export const TYPE_LABELS: Record<ItemType, string> = { incident: 'Störung', task: 'Aufgabe' };
 export const PRIORITY_LABELS: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
 export const ROLE_LABELS: Record<Role, string> = { admin: 'Admin', it: 'IT', standard: 'Standard' };
-export const CATEGORY_LABELS: Record<StatusCategory, string> = {
-  new: 'Neu',
-  in_progress: 'In Arbeit',
-  waiting: 'Wartend',
-  done: 'Erledigt',
-  rejected: 'Abgelehnt',
-};
-
-/** Reihenfolge der Kategorien, zugleich Gruppierung der Status und der Board-Spalten. */
-export const CATEGORY_ORDER: StatusCategory[] = ['new', 'in_progress', 'waiting', 'done', 'rejected'];
 
 const dateFmt = new Intl.DateTimeFormat('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const dateTimeFmt = new Intl.DateTimeFormat('de-CH', {
