@@ -25,6 +25,7 @@ import { appConfig } from '../config';
 import type { UploadedFile as UploadedFileData } from '../items/items.service';
 import { callbackUrl } from '../mail/microsoft';
 import { isLive } from '../mail/test-delivery';
+import { PortalAccessService } from '../portal/portal-access.service';
 import { StorageService } from '../storage/storage.service';
 import { TlsService } from '../tls/tls.service';
 import { SettingsService, type LdapSettings } from './settings.service';
@@ -40,6 +41,12 @@ const addressList = z
   .transform((list) => [...new Set(list)]);
 /** Testbetrieb: Empfängerkreise für IT-Mitarbeitende und alle übrigen (beide «all» = normaler Betrieb) */
 const mailSchema = z.object({ staff: scope, others: scope, staffEmails: addressList, otherEmails: addressList });
+/** Portal: niemand, ausgewählte (Personen und AD-Gruppe) oder alle */
+const portalSchema = z.object({
+  access: scope,
+  emails: addressList,
+  groupDn: z.string().trim().max(500).default(''),
+});
 const microsoftSchema = z.object({
   clientId: z
     .string()
@@ -107,6 +114,7 @@ export class SettingsController {
     private readonly auth: AuthService,
     private readonly ldap: LdapService,
     private readonly tls: TlsService,
+    private readonly portalAccess: PortalAccessService,
   ) {}
 
   /** Angaben für Login-Seite und Kopfzeile. */
@@ -168,6 +176,21 @@ export class SettingsController {
   @Put('settings/mail')
   async updateMail(@Body(new ZodPipe(mailSchema)) body: z.infer<typeof mailSchema>) {
     await this.settings.set('mail', body);
+    return body;
+  }
+
+  @AdminOnly()
+  @Get('settings/portal')
+  portal() {
+    return this.settings.get('portal');
+  }
+
+  /** Wer das Portal nutzen darf. Gilt sofort, auch für bereits angemeldete Melder. */
+  @AdminOnly()
+  @Put('settings/portal')
+  async updatePortal(@Body(new ZodPipe(portalSchema)) body: z.infer<typeof portalSchema>) {
+    await this.settings.set('portal', body);
+    this.portalAccess.forget();
     return body;
   }
 

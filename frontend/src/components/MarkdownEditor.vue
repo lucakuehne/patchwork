@@ -6,7 +6,7 @@ import { EditorContent, useEditor } from '@tiptap/vue-3';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import type { ImageContext } from '../markdown';
-import { clipboardHasText, imageAlt, textImage } from '../text-image';
+import { clipboardHasText, imageAlt, imageBlock, textImage } from '../text-image';
 
 /**
  * WYSIWYG-Editor mit Toolbar. Gespeichert wird Markdown.
@@ -114,10 +114,7 @@ async function addImages(files: File[]) {
       const uploaded = await api.post<{ id: string; ref: string }>('/uploads/images', form);
       const e = editor.value;
       if (!e || e.isDestroyed) return;
-      e.chain()
-        .focus()
-        .insertContent({ type: 'paragraph', content: [{ type: 'image', attrs: { src: uploaded.ref, alt: imageAlt(file.name) } }] })
-        .run();
+      e.chain().focus().insertContent(imageBlock(uploaded.ref, imageAlt(file.name))).run();
     } catch (err) {
       imageError.value = errorMessage(err);
     } finally {
@@ -365,8 +362,7 @@ defineExpose({ focus, insertMarkdown, insertText });
   text-decoration: underline;
 }
 .content :deep(.md-content img) {
-  display: inline-block;
-  vertical-align: bottom;
+  display: block;
   border: 1px solid var(--border);
   border-radius: 4px;
 }

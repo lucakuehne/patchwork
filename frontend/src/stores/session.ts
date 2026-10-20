@@ -2,13 +2,14 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { api } from '../api';
 import { CATEGORY_ORDER } from '../format';
-import type { Counts, ItemType, MailboxOption, PublicInfo, Status, User } from '../types';
+import type { Channel, Counts, ItemType, MailboxOption, PublicInfo, Status, User } from '../types';
 
 export const useSession = defineStore('session', () => {
   const info = ref<PublicInfo | null>(null);
   const user = ref<User | null>(null);
   const counts = ref<Counts>({ inbox: 0, incidents: 0, tasks: 0 });
   const statuses = ref<Status[]>([]);
+  const channels = ref<Channel[]>([]);
   const staff = ref<User[]>([]);
   const mailboxes = ref<MailboxOption[]>([]);
 
@@ -41,8 +42,15 @@ export const useSession = defineStore('session', () => {
 
   /** Stammdaten nach dem Login. */
   async function loadAppData() {
-    await Promise.all([refreshCounts(), loadStatuses(), loadStaff(), loadMailboxes()]);
+    await Promise.all([refreshCounts(), loadStatuses(), loadChannels(), loadStaff(), loadMailboxes()]);
   }
+
+  async function loadChannels() {
+    channels.value = await api.get<Channel[]>('/channels');
+  }
+
+  /** Meldeweg nach ID, z.B. für Listen (dort steht nur die ID) */
+  const channelById = (id: string | null | undefined) => (id ? channels.value.find((c) => c.id === id) : undefined);
 
   async function refreshCounts() {
     counts.value = await api.get<Counts>('/items/counts');
@@ -74,6 +82,7 @@ export const useSession = defineStore('session', () => {
     user,
     counts,
     statuses,
+    channels,
     staff,
     mailboxes,
     isAdmin,
@@ -87,8 +96,10 @@ export const useSession = defineStore('session', () => {
     loadAppData,
     refreshCounts,
     loadStatuses,
+    loadChannels,
     loadStaff,
     loadMailboxes,
     statusesOf,
+    channelById,
   };
 });

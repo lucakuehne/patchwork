@@ -5,6 +5,7 @@ import { fillSnippet } from '../snippets';
 import { useSession } from '../stores/session';
 import type { ItemDetail, Snippet } from '../types';
 import FilePicker from './FilePicker.vue';
+import KindIcon from './KindIcon.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
 import SnippetPicker from './SnippetPicker.vue';
 
@@ -65,8 +66,12 @@ async function send() {
   <div class="composer card" :class="kind">
     <div class="composer-head">
       <div class="segmented">
-        <button type="button" :class="{ active: kind === 'reply' }" @click="kind = 'reply'">Öffentliche Antwort</button>
-        <button type="button" :class="{ active: kind === 'note' }" @click="kind = 'note'">Interne Notiz</button>
+        <button type="button" :class="{ active: kind === 'reply' }" title="Öffentliche Antwort an den Melder" @click="kind = 'reply'">
+          <KindIcon kind="public" /> Öffentlich
+        </button>
+        <button type="button" :class="{ active: kind === 'note' }" title="Interne Notiz, nur für die IT" @click="kind = 'note'">
+          <KindIcon kind="internal" /> Intern
+        </button>
       </div>
       <span v-if="kind === 'reply'" class="faint small">
         <template v-if="recipients.to.length || recipients.cc.length">

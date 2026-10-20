@@ -124,6 +124,8 @@ function eventText(e: Entry, m: Record<string, unknown>): string {
           return 'die Beschreibung geändert';
         case 'priority':
           return `die Priorität von ${q(m.from)} auf ${q(m.to)} geändert`;
+        case 'channel':
+          return m.from ? `den Meldeweg von ${q(m.from)} auf ${q(m.to)} geändert` : `den Meldeweg ${q(m.to)} eingetragen`;
         case 'assignee':
           return m.to ? `${q(m.to)} als zuständig gesetzt` : `die Zuständigkeit von ${q(m.from)} entfernt`;
         case 'reporter':

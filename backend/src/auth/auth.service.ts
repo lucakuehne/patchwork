@@ -9,6 +9,7 @@ import {
 import { eq, sql } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
 import { users, type User } from '../db/schema';
+import { PORTAL_REFUSED, PortalAccessService } from '../portal/portal-access.service';
 import { SettingsService } from '../settings/settings.service';
 import { hashPassword, MIN_PASSWORD_LENGTH, UsersService, verifyPassword } from '../users/users.service';
 import { LdapAccountStateError, LdapService } from './ldap.service';
@@ -27,6 +28,7 @@ export class AuthService {
     private readonly users: UsersService,
     private readonly settings: SettingsService,
     private readonly ldap: LdapService,
+    private readonly portalAccess: PortalAccessService,
   ) {}
 
   async login(username: string, password: string, ip: string): Promise<User> {
@@ -40,7 +42,8 @@ export class AuthService {
     }
     this.attempts.delete(throttleKey);
     if (!user.active) throw new ForbiddenException('Dieses Konto ist deaktiviert.');
-    // Admin und IT nutzen die Oberfläche, Standard-Benutzer das Portal
+    // Admin und IT nutzen die Oberfläche, Standard-Benutzer das Portal, sofern es für sie freigeschaltet ist
+    if (!(await this.portalAccess.allowed(user))) throw new ForbiddenException(PORTAL_REFUSED);
     return user;
   }
 

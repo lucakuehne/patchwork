@@ -24,6 +24,7 @@ export const summaryColumns = {
   title: items.title,
   priority: items.priority,
   source: items.source,
+  channelId: items.channelId,
   discarded: items.discarded,
   boardPosition: items.boardPosition,
   createdAt: items.createdAt,

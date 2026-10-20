@@ -70,6 +70,18 @@ export interface MailSettings {
   otherEmails: string[];
 }
 
+/**
+ * Portal: wer es nutzen darf. «selected»: die ausgewählten Personen und die Mitglieder der AD-Gruppe.
+ * IT und Admins sind nicht betroffen.
+ */
+export interface PortalSettings {
+  access: 'none' | 'selected' | 'all';
+  /** Ausgewählte Personen (E-Mail-Adressen, klein geschrieben) */
+  emails: string[];
+  /** DN der AD-Gruppe, leer = keine */
+  groupDn: string;
+}
+
 export interface MicrosoftSettings {
   /** Anwendungs-ID (Client-ID) der App-Registrierung in Entra ID für die Anmeldung von Postfächern */
   clientId: string;
@@ -83,6 +95,7 @@ interface SettingsMap {
   logo: LogoSettings | null;
   ldap: LdapSettings;
   mail: MailSettings;
+  portal: PortalSettings;
   microsoft: MicrosoftSettings;
   mailTemplates: MailTemplateOverrides;
 }
@@ -92,6 +105,8 @@ const DEFAULTS: SettingsMap = {
   logo: null,
   ldap: DEFAULT_LDAP,
   mail: { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] },
+  // Ohne Einstellung ist das Portal aus (Entscheid vom 20.10.2026)
+  portal: { access: 'none', emails: [], groupDn: '' },
   microsoft: { clientId: '' },
   mailTemplates: {},
 };

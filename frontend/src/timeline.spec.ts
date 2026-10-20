@@ -46,6 +46,14 @@ describe('groupTimeline', () => {
     expect(eventPart(entry(1)).text).toBe('die Priorität von «Normal» auf «Hoch» geändert');
   });
 
+  it('Meldeweg geändert oder erstmals eingetragen', () => {
+    expect(eventPart(entry(1, { meta: { field: 'channel', from: 'Telefon', to: 'Teams/Chat' } })).text).toBe(
+      'den Meldeweg von «Telefon» auf «Teams/Chat» geändert',
+    );
+    expect(eventPart(entry(1, { meta: { field: 'channel', from: null, to: 'Telefon' } })).text).toBe('den Meldeweg «Telefon» eingetragen');
+    expect(asListItem('den Meldeweg «Telefon» eingetragen')).toBe('Meldeweg «Telefon» eingetragen');
+  });
+
   it('Listenpunkte in der Karte ohne Artikel und gross geschrieben', () => {
     expect(asListItem('die Priorität von «Normal» auf «Hoch» geändert')).toBe('Priorität von «Normal» auf «Hoch» geändert');
     expect(asListItem('den Status von «Neu» auf «In Arbeit» geändert')).toBe('Status von «Neu» auf «In Arbeit» geändert');

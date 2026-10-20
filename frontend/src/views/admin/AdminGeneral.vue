@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { api } from '../../api';
+import PortalSettingsCard from '../../components/PortalSettingsCard.vue';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
 
@@ -82,6 +83,7 @@ async function removeLogo() {
       </div>
       <span class="hint faint">PNG, JPEG, WebP, GIF oder SVG, höchstens 2 MB.</span>
     </div>
+    <PortalSettingsCard />
     <p class="faint small">Den Testbetrieb stellt man unter <RouterLink to="/admin/ausgehende-mails">Ausgehende Mails</RouterLink> ein.</p>
   </div>
 </template>

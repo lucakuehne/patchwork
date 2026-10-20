@@ -479,6 +479,7 @@ h3 {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   text-decoration: none;
 }
 .segmented > :last-child {
@@ -563,7 +564,8 @@ h3 {
 }
 /* Bilder im Text: auf Textbreite verkleinert, ein Klick öffnet sie in voller Grösse */
 .prose .text-image-link {
-  display: inline-block;
+  display: block;
+  width: fit-content;
   max-width: 100%;
   cursor: zoom-in;
 }

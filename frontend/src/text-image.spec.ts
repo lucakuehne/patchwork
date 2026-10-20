@@ -3,7 +3,7 @@ import { Editor } from '@tiptap/core';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import { afterEach, describe, expect, it } from 'vitest';
-import { clipboardHasText, imageAlt, textImage } from './text-image';
+import { clipboardHasText, imageAlt, imageBlock, textImage } from './text-image';
 
 const ID = '0b1e8f2a-1c3d-4e5f-8a9b-0c1d2e3f4a5b';
 let editor: Editor | null = null;
@@ -49,6 +49,15 @@ describe('Bilder im Editor', () => {
       content: [{ type: 'image', attrs: { src: `upload:${ID}`, alt: 'Screenshot.png' } }],
     });
     expect(e.getMarkdown().trim()).toBe(`Hallo\n\n![Screenshot.png](upload:${ID})`);
+  });
+
+  it('setzt den Cursor nach dem Bild in eine neue Zeile, ohne leeren Absatz im Markdown', () => {
+    const e = create('Hallo');
+    e.commands.focus('end');
+    e.commands.insertContent(imageBlock(`upload:${ID}`, 'Screenshot.png'));
+    expect(e.getMarkdown().trim()).toBe(`Hallo\n\n![Screenshot.png](upload:${ID})`);
+    e.commands.insertContent('Darunter');
+    expect(e.getMarkdown().trim()).toBe(`Hallo\n\n![Screenshot.png](upload:${ID})\n\nDarunter`);
   });
 
   it('übernimmt aus eingefügtem HTML nur Bilder von Patchwork', () => {

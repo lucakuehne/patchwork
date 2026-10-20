@@ -65,9 +65,11 @@ samba-tool user disable dora >/dev/null
 samba-tool group add patchwork-it >/dev/null
 samba-tool group add patchwork-admin >/dev/null
 samba-tool group add it-team >/dev/null
+samba-tool group add patchwork-portal >/dev/null
 samba-tool group addmembers patchwork-it lena,it-team,dora >/dev/null
 samba-tool group addmembers patchwork-admin otto >/dev/null
 samba-tool group addmembers it-team nina >/dev/null
+samba-tool group addmembers patchwork-portal sam >/dev/null
 for entry in "Lena Lind" "Otto Ober" "Nina Nested" "Sam Standard" "Dora Deaktiviert"; do
   printf 'dn: CN=%s,CN=Users,DC=test,DC=patchwork\nchangetype: modify\nreplace: displayName\ndisplayName: %s\n' "$entry" "$entry" |
     ldbmodify -H /var/lib/samba/private/sam.ldb >/dev/null

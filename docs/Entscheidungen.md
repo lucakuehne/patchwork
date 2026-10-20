@@ -32,6 +32,12 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
 - Standardstatus:
   - Störung: Neu (Neu), In Arbeit (In Arbeit), Wartet auf Melder (Wartend), Gelöst (Erledigt)
   - Aufgabe: Backlog (Neu), Geplant (Neu), In Arbeit (In Arbeit), Erledigt (Erledigt), Abgelehnt (Abgelehnt)
+- Überarbeitung, bestätigt am 20.10.2026 (noch nicht umgesetzt):
+  - Die Kategorie bleibt und steuert weiterhin das Verhalten.
+  - Jeder Status erhält eine Farbe aus einer Palette, vorbelegt mit der Farbe seiner Kategorie. Sie gilt für die Anzeige des Status, die Listen, die Spalten des Boards und das Diagramm.
+  - Erlaubte Wechsel («von welchem Status wohin») legt man pro Typ in einem bearbeitbaren Ablaufdiagramm fest: Status als Kästchen anordnen, Pfeile ziehen.
+  - Die Wechsel gelten nur für Änderungen von Hand: Im Status-Feld und auf dem Board sind nur erlaubte Ziele wählbar. Automatisches (Antwort des Melders, Regeln, zeitgesteuerte Regeln, Ablehnen, Typwechsel, Duplikat) geht wie bisher.
+  - Solange nichts festgelegt ist, sind alle Wechsel erlaubt, wie bisher.
 
 ## Ansichten
 
@@ -90,6 +96,7 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
   - Ohne Zugang wird die Anmeldung abgelehnt, mit dem Hinweis «Das Portal ist für Sie nicht freigeschaltet. Bitte wenden Sie sich per Mail an die IT.». Für IT und Admins ändert sich nichts.
   - In Mails an Melder ohne Zugang entfällt die Link-Zeile zum Portal.
   - Nach dem Update ist das Portal aus (Parallelbetrieb mit HelpSpot).
+  - Technisch: Geprüft wird bei der Anmeldung und bei jedem Aufruf im Portal; eine Änderung gilt sofort, auch für laufende Sitzungen. Die Mitgliedschaft in der AD-Gruppe fragt Patchwork über das Dienstkonto im Verzeichnis ab (auch verschachtelt, wie unter LDAP eingestellt) und merkt sie sich 5 Minuten. Antwortet das Verzeichnis nicht, gibt es keinen Zugang.
 
 ### Verknüpfungen
 
@@ -188,6 +195,11 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - Beim internen Erfassen («+ Neu», «+ Störung», «+ Aufgabe») Pflichtfeld ohne Vorbelegung.
 - In der Seitenleiste änderbar, mit Eintrag in der Timeline wie bei der Priorität. Angezeigt bei der ursprünglichen Meldung («per Telefon»), in den Listen als eigene Spalte nur mit dem Symbol, in den Auswertungen als Diagramm «Neue Vorgänge nach Meldeweg».
 - Bestehende Vorgänge: aus Mails «E-Mail», aus dem Portal «Portal», intern erfasste ohne Angabe («–»), nachtragbar.
+- Umgesetzt am 20.10.2026, Details:
+  - Symbole aus einer festen Auswahl von zehn (Briefumschlag, Bildschirm, Telefon, Handy, Person, Sprechblase, Videokamera, Dokument, Glocke, Punkte).
+  - Beim internen Erfassen steht «Portal» nicht zur Auswahl (setzt Patchwork selbst), «E-Mail» schon (z.B. eine Mail an die eigene Adresse).
+  - Löschen wie bei den Status: Wird der Meldeweg verwendet, wählt man einen Ersatz. Simulierte Mails erhalten «E-Mail».
+  - In den Listen heisst die Spalte «Meldeweg», sie zeigt nur das Symbol, die Bezeichnung beim Darüberfahren. Im CSV-Export eine eigene Spalte.
 
 ## Bilder im Text (bestätigt am 20.10.2026)
 

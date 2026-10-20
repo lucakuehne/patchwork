@@ -36,6 +36,14 @@ export function textImage(options: { context: () => ImageContext; origin: string
   }).configure({ inline: true });
 }
 
+/**
+ * Inhalt zum Einfügen eines Bilds: das Bild in einem eigenen Absatz und darunter ein leerer, in dem der Cursor
+ * danach steht. So schreibt man unter dem Bild weiter statt daneben.
+ */
+export function imageBlock(src: string, alt: string) {
+  return [{ type: 'paragraph', content: [{ type: 'image', attrs: { src, alt } }] }, { type: 'paragraph' }];
+}
+
 /** Alternativtext aus dem Dateinamen; eckige Klammern und Zeilenumbrüche würden das Markdown des Bilds zerbrechen. */
 export function imageAlt(filename: string): string {
   return filename.replace(/[[\]\r\n]+/g, ' ').trim() || 'Bild';

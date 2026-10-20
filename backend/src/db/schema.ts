@@ -133,6 +133,19 @@ export const statuses = pgTable(
   (t) => [unique('statuses_type_key_uq').on(t.type, t.key)],
 );
 
+/**
+ * Meldewege (wie ein Vorgang gemeldet wurde), in der Verwaltung pflegbar, mit Symbol aus einer festen Auswahl.
+ * «key» = mail bzw. portal: setzt Patchwork selbst, lässt sich nicht löschen.
+ */
+export const channels = pgTable('channels', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  key: text('key').unique(),
+  label: text('label').notNull(),
+  icon: text('icon').notNull(),
+  position: integer('position').notNull(),
+  createdAt: createdAt(),
+});
+
 export const items = pgTable(
   'items',
   {
@@ -156,6 +169,8 @@ export const items = pgTable(
     /** Postfach, über das geantwortet wird. */
     mailboxId: uuid('mailbox_id').references(() => mailboxes.id, { onDelete: 'set null' }),
     source: itemSource('source').notNull(),
+    /** Meldeweg; null = ohne Angabe (intern erfasst vor der Einführung) */
+    channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'restrict' }),
     /** Typ-Vorschlag des Melders aus dem Portal, bis die IT ihn bestätigt */
     suggestedType: itemType('suggested_type'),
     /** Aus einer im Testbetrieb simulierten Mail entstanden */
@@ -488,6 +503,7 @@ export const snippets = pgTable('snippets', {
 export type User = typeof users.$inferSelect;
 export type Item = typeof items.$inferSelect;
 export type Status = typeof statuses.$inferSelect;
+export type Channel = typeof channels.$inferSelect;
 export type Entry = typeof entries.$inferSelect;
 export type Mailbox = typeof mailboxes.$inferSelect;
 export type OutgoingMailRow = typeof outgoingMails.$inferSelect;

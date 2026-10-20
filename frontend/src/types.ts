@@ -73,6 +73,18 @@ export interface Status {
   position: number;
 }
 
+/** Symbole für Meldewege (siehe ChannelIcon.vue) */
+export type ChannelIcon = 'mail' | 'portal' | 'phone' | 'mobile' | 'person' | 'chat' | 'video' | 'letter' | 'alert' | 'other';
+
+/** Meldeweg eines Vorgangs; «key» mail bzw. portal setzt Patchwork selbst */
+export interface Channel {
+  id: string;
+  key: 'mail' | 'portal' | null;
+  label: string;
+  icon: ChannelIcon;
+  position: number;
+}
+
 export interface StatusRef {
   id: string;
   label: string;
@@ -86,6 +98,8 @@ export interface ItemSummary {
   title: string;
   priority: Priority;
   source: 'mail' | 'portal' | 'internal';
+  /** Meldeweg (siehe session.channelById), null = ohne Angabe */
+  channelId: string | null;
   discarded: boolean;
   boardPosition: number;
   createdAt: string;
@@ -207,6 +221,8 @@ export interface ItemDetail {
   descriptionHtml: string | null;
   priority: Priority;
   source: 'mail' | 'portal' | 'internal';
+  /** Meldeweg, null = ohne Angabe */
+  channel: { id: string; label: string; icon: ChannelIcon } | null;
   suggestedType: ItemType | null;
   /** Im Testbetrieb aus einer simulierten Mail entstanden */
   simulated: boolean;
@@ -358,6 +374,13 @@ export interface OutgoingMailDetail extends OutgoingMail {
   attachments: { index: number; filename: string; contentType: string; size: number }[];
 }
 
+/** Wer das Portal nutzen darf: niemand, ausgewählte (Personen und Mitglieder der AD-Gruppe) oder alle */
+export interface PortalSettings {
+  access: 'none' | 'selected' | 'all';
+  emails: string[];
+  groupDn: string;
+}
+
 /** Gespeicherte Mail zum Anschauen (z.B. Originalmail einer Nachricht) */
 export interface MailView {
   headers: { from: string; to: string[]; cc: string[]; subject: string; date: string | null };
@@ -504,4 +527,6 @@ export interface Report {
   };
   resolution: { count: number; medianHours: number | null; averageHours: number | null };
   topReporters: { name: string; email: string; count: number }[];
+  /** Neue Vorgänge im Zeitraum nach Meldeweg; label null = ohne Angabe */
+  byChannel: { label: string | null; icon: ChannelIcon | null; count: number }[];
 }

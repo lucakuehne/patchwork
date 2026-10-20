@@ -28,6 +28,8 @@ export interface Report {
   /** Dauer bis «Gelöst» bei Störungen, die im Zeitraum gelöst wurden (keine abgelehnten) */
   resolution: { count: number; medianHours: number | null; averageHours: number | null };
   topReporters: { name: string; email: string; count: number }[];
+  /** Neue Vorgänge im Zeitraum nach Meldeweg; label null = ohne Angabe */
+  byChannel: { label: string | null; icon: string | null; count: number }[];
 }
 
 /** Offen = im Eingang (ohne Status) oder in einem Status ausserhalb «Erledigt»/«Abgelehnt» */
@@ -81,7 +83,7 @@ export class ReportsService {
       if (f) f.closed[r.type as ItemType] += r.n;
     }
 
-    const [byStatus, inbox, byPriority, byAssignee, oldest, oldestTotal, resolution, topReporters] = await Promise.all([
+    const [byStatus, inbox, byPriority, byAssignee, oldest, oldestTotal, resolution, topReporters, byChannel] = await Promise.all([
       this.rows<{ type: ItemType; label: string; category: StatusCategory; count: number }>(sql`
         select s.type::text as type, s.label, s.category::text as category, count(i.id)::int as count
         from items i join statuses s on s.id = i.status_id
@@ -124,6 +126,12 @@ export class ReportsService {
         group by u.id, u.name, u.email
         order by count desc, u.name
         limit 10`),
+      this.rows<{ label: string | null; icon: string | null; count: number }>(sql`
+        select c.label, c.icon, count(*)::int as count
+        from items i left join channels c on c.id = i.channel_id
+        where i.discarded = false and i.created_at >= ${from}::timestamptz and i.created_at < ${to}::timestamptz
+        group by c.id, c.label, c.icon, c.position
+        order by c.position nulls last`),
     ]);
 
     const openNow = byStatus.reduce((sum, s) => sum + s.count, 0) + (inbox[0]?.n ?? 0);
@@ -142,6 +150,7 @@ export class ReportsService {
         averageHours: resolution[0]?.average === null || resolution[0]?.average === undefined ? null : Number(resolution[0].average),
       },
       topReporters,
+      byChannel,
     };
   }
 
@@ -156,16 +165,18 @@ export class ReportsService {
       reporter: string;
       reporterEmail: string;
       assignee: string | null;
+      channel: string | null;
       createdAt: Date;
       closedAt: Date | null;
     }>(sql`
       select i.number, i.type::text as type, i.title, s.label as status, i.priority::text as priority,
-        r.name as reporter, r.email as "reporterEmail", a.name as assignee,
+        r.name as reporter, r.email as "reporterEmail", a.name as assignee, c.label as channel,
         i.created_at as "createdAt", i.closed_at as "closedAt"
       from items i
       left join statuses s on s.id = i.status_id
       join users r on r.id = i.reporter_id
       left join users a on a.id = i.assignee_id
+      left join channels c on c.id = i.channel_id
       where i.discarded = false and i.created_at >= ${p.from.toISOString()}::timestamptz and i.created_at < ${p.to.toISOString()}::timestamptz
       order by i.number`);
     const dateTime = new Intl.DateTimeFormat('de-CH', {
@@ -176,7 +187,7 @@ export class ReportsService {
       hour: '2-digit',
       minute: '2-digit',
     });
-    const header = ['Nummer', 'Typ', 'Titel', 'Status', 'Priorität', 'Melder', 'E-Mail Melder', 'Zuständig', 'Erfasst', 'Abgeschlossen'];
+    const header = ['Nummer', 'Typ', 'Titel', 'Status', 'Priorität', 'Melder', 'E-Mail Melder', 'Zuständig', 'Meldeweg', 'Erfasst', 'Abgeschlossen'];
     const lines = rows.map((r) => [
       `PW-${r.number}`,
       r.type ? TYPE_LABELS[r.type] : 'Eingang',
@@ -186,6 +197,7 @@ export class ReportsService {
       r.reporter,
       r.reporterEmail,
       r.assignee ?? '',
+      r.channel ?? '',
       dateTime.format(new Date(r.createdAt)),
       r.closedAt ? dateTime.format(new Date(r.closedAt)) : '',
     ]);

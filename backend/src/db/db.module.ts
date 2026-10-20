@@ -1,4 +1,4 @@
-import { Global, Inject, Module, OnApplicationShutdown } from '@nestjs/common';
+import { Global, Inject, Logger, Module, OnApplicationShutdown } from '@nestjs/common';
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { appConfig } from '../config';
@@ -17,7 +17,13 @@ export const InjectDb = () => Inject(DB);
   providers: [
     {
       provide: PG_POOL,
-      useFactory: () => new Pool({ connectionString: appConfig.databaseUrl, max: 10 }),
+      useFactory: () => {
+        const pool = new Pool({ connectionString: appConfig.databaseUrl, max: 10 });
+        // Bricht eine ruhende Verbindung ab (z.B. Neustart der Datenbank), verwirft der Pool sie und öffnet bei Bedarf
+        // eine neue. Ohne diesen Handler würde der Fehler Patchwork beenden.
+        pool.on('error', (err) => new Logger('Datenbank').warn(`Verbindung abgebrochen: ${err.message}`));
+        return pool;
+      },
     },
     {
       provide: DB,

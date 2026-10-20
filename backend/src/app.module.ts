@@ -3,6 +3,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthService } from './auth/auth.service';
+import { ChannelsController } from './channels/channels.controller';
+import { ChannelsService } from './channels/channels.service';
 import { LdapService } from './auth/ldap.service';
 import { SessionService } from './auth/session.service';
 import { DbModule } from './db/db.module';
@@ -27,6 +29,7 @@ import { MailboxesController, MailboxOptionsController, MicrosoftCallbackControl
 import { MailboxesService } from './mail/mailboxes.service';
 import { MicrosoftAuthService } from './mail/microsoft-auth.service';
 import { NotificationsService } from './mail/notifications.service';
+import { PortalAccessService } from './portal/portal-access.service';
 import { PortalController } from './portal/portal.controller';
 import { PortalService } from './portal/portal.service';
 import { ReportsController } from './reports/reports.controller';
@@ -56,6 +59,7 @@ import { UsersService } from './users/users.service';
     SettingsController,
     UsersController,
     StatusesController,
+    ChannelsController,
     ItemsController,
     ChecklistsController,
     LinksController,
@@ -82,10 +86,12 @@ import { UsersService } from './users/users.service';
     StorageService,
     UsersService,
     StatusesService,
+    ChannelsService,
     ItemsService,
     ChecklistsService,
     LinksService,
     PortalService,
+    PortalAccessService,
     BossService,
     MaintenanceService,
     MailTransportService,

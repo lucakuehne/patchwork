@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
 import { formatAge, formatDate, itemRef, TYPE_LABELS } from '../format';
+import { useSession } from '../stores/session';
 import type { ItemSummary } from '../types';
+import ChannelIcon from './ChannelIcon.vue';
 import PriorityLabel from './PriorityLabel.vue';
 import StatusBadge from './StatusBadge.vue';
 
@@ -16,7 +18,13 @@ const props = defineProps<{
 defineSlots<{ actions?(props: { item: ItemSummary }): unknown }>();
 
 const router = useRouter();
+const session = useSession();
 const open = (item: ItemSummary) => router.push({ name: 'item', params: { number: item.number } });
+// In der Liste nur das Symbol, die Bezeichnung beim Darüberfahren
+const channelProps = (item: ItemSummary) => {
+  const channel = session.channelById(item.channelId)!;
+  return { icon: channel.icon, title: `Meldeweg: ${channel.label}` };
+};
 </script>
 
 <template>
@@ -29,6 +37,7 @@ const open = (item: ItemSummary) => router.push({ name: 'item', params: { number
           <th v-if="showType">Typ</th>
           <th v-if="showStatus">Status</th>
           <th>Priorität</th>
+          <th class="channel-head">Meldeweg</th>
           <th>Melder</th>
           <th>Zuständig</th>
           <th v-if="showClosed">Abgeschlossen</th>
@@ -54,6 +63,10 @@ const open = (item: ItemSummary) => router.push({ name: 'item', params: { number
           </td>
           <td v-if="showStatus"><StatusBadge :status="item.status" /></td>
           <td><PriorityLabel :priority="item.priority" /></td>
+          <td class="channel-cell">
+            <ChannelIcon v-if="session.channelById(item.channelId)" v-bind="channelProps(item)" />
+            <span v-else class="faint" title="Meldeweg ohne Angabe">–</span>
+          </td>
           <td class="nowrap" :title="item.reporter.email">{{ item.reporter.name }}</td>
           <td class="nowrap">
             <span v-if="item.assignee">{{ item.assignee.name }}</span>
@@ -70,3 +83,12 @@ const open = (item: ItemSummary) => router.push({ name: 'item', params: { number
     <div v-else class="empty">{{ emptyText ?? 'Keine Vorgänge' }}</div>
   </div>
 </template>
+
+<style scoped>
+.channel-head,
+.channel-cell {
+  width: 1%;
+  text-align: center;
+  color: var(--text-muted);
+}
+</style>

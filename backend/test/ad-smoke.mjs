@@ -5,7 +5,7 @@
 //   docker run -d --name patchwork-ad -p 11389:389 -p 11636:636 -e REALM=TEST.PATCHWORK -e DOMAIN=TESTPW \
 //     -e ADMINPASS='Adm1n-Passw0rd!' smblds/smblds:latest
 //   Testkonten: svc-patchwork, lena (IT), otto (Admin), nina (IT über verschachtelte Gruppe it-team),
-//   sam (ohne Gruppe), dora (deaktiviert), nomail (ohne E-Mail) – siehe README.
+//   sam (Standard, Gruppe patchwork-portal), dora (deaktiviert), nomail (ohne E-Mail) – siehe README.
 //
 //   node test/ad-smoke.mjs <Basis-URL> <Admin-E-Mail> <Admin-Passwort> <Pfad zu ca.pem>
 import assert from 'node:assert/strict';
@@ -66,6 +66,8 @@ if (current.url && !current.url.includes('localhost:11389') && !current.url.incl
   console.error(`Abbruch: Die Instanz hat bereits LDAP-Einstellungen (${current.url}). Bitte eine Test-Instanz verwenden.`);
   process.exit(3);
 }
+// Standard-Benutzer melden sich im Portal an; ohne Einstellung ist es aus
+await call(admin, 'PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '' });
 
 const diagnose = async (overrides = {}, username, password) => {
   const body = { ...settings, ...overrides, username, password };
@@ -114,7 +116,8 @@ await step('Rolle Standard: Grund wird genannt, Gruppen zur Übernahme angeboten
   const sam = await diagnose({}, 'sam');
   assert.equal(sam.user.status, 'warning');
   assert.match(sam.user.message, /weder Mitglied der Admin- noch der IT-Gruppe/);
-  assert.deepEqual(sam.user.groups, []);
+  // sam ist nur in der Gruppe für das Portal
+  assert.deepEqual(sam.user.groups, [`CN=patchwork-portal,CN=Users,${BASE_DN}`]);
   const noGroups = await diagnose({ adminGroupDn: '', itGroupDn: '' }, 'lena');
   assert.equal(noGroups.user.status, 'warning');
   assert.match(noGroups.user.message, /weder eine Admin- noch eine IT-Gruppe eingetragen/);
@@ -215,6 +218,17 @@ await step('Anmeldungen über AD (gespeicherte Einstellungen)', async () => {
   await login('nomail', 'Nomail-Passw0rd!', [401]);
   const disabled = await login('dora', 'Dora-Passw0rd!', [403]);
   assert.match(JSON.stringify(disabled.data), /deaktiviert/);
+});
+
+await step('Portal nur für ausgewählte: Mitglieder der Portal-Gruppe ja, andere nicht, IT immer', async () => {
+  const portal = (groupDn) => call(admin, 'PUT', '/settings/portal', { access: 'selected', emails: [], groupDn });
+  await portal(`CN=patchwork-portal,CN=Users,${BASE_DN}`);
+  assert.equal((await login('sam', 'Sam-Passw0rd!')).data.role, 'standard', 'Mitglied der Portal-Gruppe');
+  await portal(settings.itGroupDn);
+  const refused = await login('sam', 'Sam-Passw0rd!', [403]);
+  assert.match(JSON.stringify(refused.data), /nicht freigeschaltet/);
+  assert.equal((await login('lena', 'Lena-Passw0rd!')).data.role, 'it', 'IT ist nicht betroffen');
+  await call(admin, 'PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '' });
 });
 
 await step('Regel mit AD-Gruppe: Meldungen von IT-Mitgliedern (auch verschachtelt) erhalten Priorität hoch', async () => {

@@ -105,7 +105,9 @@ let mailboxId;
 let ivan;
 let itemNo;
 let statuses;
+let channels;
 const status = (type, key) => statuses.find((s) => s.type === type && s.key === key);
+const channel = (label) => channels.find((c) => c.label === label);
 const poll = () => api('POST', `/admin/mailboxes/${mailboxId}/poll`);
 const detail = (n) => api('GET', `/items/${n}`);
 
@@ -140,6 +142,18 @@ await step('IT-Benutzer anlegen', async () => {
   assert.deepEqual(staff.map((u) => u.name).sort(), ['Ada Admin', 'Ivan IT']);
   statuses = await api('GET', '/statuses');
   assert.equal(statuses.length, 9);
+  channels = await api('GET', '/channels');
+  assert.deepEqual(
+    channels.map((c) => [c.label, c.icon, c.key]),
+    [
+      ['E-Mail', 'mail', 'mail'],
+      ['Portal', 'portal', 'portal'],
+      ['Telefon', 'phone', null],
+      ['Persönlich (Walk-In)', 'person', null],
+      ['Teams/Chat', 'chat', null],
+      ['Sonstiges', 'other', null],
+    ],
+  );
 });
 
 await step('Postfach anlegen und testen', async () => {
@@ -202,6 +216,8 @@ await step('Mail mit CC landet im Eingang, Bestätigung an Melder', async () => 
   assert.deepEqual(counts, { inbox: 1, incidents: 0, tasks: 0 });
   const confirmation = await waitForMail(ANNA, (m) => m.subject === `[PW-${itemNo}] VPN verbindet nicht`, 'Bestätigung');
   assert.ok(/auto-submitted: auto-generated/i.test(confirmation.headers));
+  // Das Portal ist ohne Einstellung aus: kein Link dorthin
+  assert.ok(!confirmation.source.includes('/portal/v/'), 'ohne Portal keine Link-Zeile');
 });
 
 await step('Abgeholte Mail bleibt ungelesen im Postfach', async () => {
@@ -340,6 +356,7 @@ await step('Intern erfasste Aufgaben und Board-Reihenfolge', async () => {
     f.append('type', 'task');
     f.append('title', title);
     f.append('description', 'Beschreibung');
+    f.append('channelId', channel('Telefon').id);
     return (await api('POST', '/items', f)).number;
   };
   t1 = await create('Account für neuen Mitarbeiter');
@@ -457,10 +474,48 @@ const loginAs = async (username, password) => {
 };
 const createItem = async (fields, files = []) => {
   const f = new FormData();
-  for (const [k, v] of Object.entries(fields)) f.append(k, v);
+  for (const [k, v] of Object.entries({ channelId: channel('Telefon').id, ...fields })) f.append(k, v);
   for (const [name, content] of files) f.append('files', new Blob([content]), name);
   return (await api('POST', '/items', f)).number;
 };
+
+await step('Meldeweg: Pflicht beim Erfassen, automatisch bei Mail, änderbar mit Eintrag, Verwaltung nur für Admin', async () => {
+  await loginAs('ada@test.local', 'geheim-geheim');
+  const missing = new FormData();
+  missing.append('type', 'task');
+  missing.append('title', 'Ohne Meldeweg');
+  assert.match((await api('POST', '/items', missing, { expect: [400] })).message, /Meldeweg/);
+  assert.equal((await detail(itemNo)).channel.label, 'E-Mail');
+  assert.deepEqual((await detail(t1)).channel, { id: channel('Telefon').id, label: 'Telefon', icon: 'phone' });
+  assert.equal((await api('GET', '/items?view=search&q=Firmware')).items[0].channelId, channel('Telefon').id);
+
+  await api('PATCH', `/items/${t1}`, { channelId: channel('Persönlich (Walk-In)').id });
+  const changed = await detail(t1);
+  assert.equal(changed.channel.icon, 'person');
+  assert.deepEqual(changed.entries.at(-1).meta, { field: 'channel', from: 'Telefon', to: 'Persönlich (Walk-In)' });
+
+  // Verwaltung: hinzufügen, ändern, sortieren, löschen mit Ersatz; E-Mail und Portal bleiben
+  const added = await api('POST', '/channels', { label: 'Monitoring', icon: 'alert' });
+  await api('POST', '/channels', { label: 'monitoring', icon: 'alert' }, { expect: [400] });
+  await api('POST', '/channels', { label: 'Fax', icon: 'unbekannt' }, { expect: [400] });
+  assert.equal((await api('PATCH', `/channels/${added.id}`, { label: 'Überwachung', icon: 'video' })).label, 'Überwachung');
+  await api('PATCH', `/items/${t1}`, { channelId: added.id });
+  assert.equal((await api('GET', '/channels/usage'))[added.id], 1);
+  await api('DELETE', `/channels/${added.id}`, undefined, { expect: [400] });
+  await api('DELETE', `/channels/${added.id}?replacementId=${channel('Telefon').id}`);
+  assert.equal((await detail(t1)).channel.label, 'Telefon');
+  await api('DELETE', `/channels/${channel('E-Mail').id}`, undefined, { expect: [400] });
+  const ids = (await api('GET', '/channels')).map((c) => c.id);
+  await api('PUT', '/channels/order', { ids: [...ids].reverse() });
+  assert.equal((await api('GET', '/channels'))[0].id, ids.at(-1));
+  await api('PUT', '/channels/order', { ids });
+  await api('PUT', '/channels/order', { ids: ids.slice(1) }, { expect: [400] });
+
+  await loginAs(IVAN, 'geheim-geheim');
+  assert.equal((await api('GET', '/channels')).length, 6);
+  await api('POST', '/channels', { label: 'Brief', icon: 'letter' }, { expect: [403] });
+  await loginAs('ada@test.local', 'geheim-geheim');
+});
 
 let task;
 let taskListId;
@@ -627,6 +682,8 @@ await step('Duplikat vom gleichen Melder: zusammengeführt, Hinweis-Mail, Antwor
 });
 
 await step('Duplikat von anderem Melder: umgeleitet, Melder und CC werden Beteiligte beim Original', async () => {
+  // Mit Portal enthält der Hinweis den Link zum Duplikat
+  await api('PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '' });
   await sendMail({ from: BOB, cc: [CARLA], subject: 'Drucker 3. OG streikt', text: 'Bei mir auch.' });
   await sleep(500);
   await poll();
@@ -660,6 +717,7 @@ await step('Duplikat von anderem Melder: umgeleitet, Melder und CC werden Beteil
   const reply = (await detail(dupOriginal)).entries.find((e) => e.body === 'Danke!');
   assert.equal(reply.kind, 'reply');
   assert.equal(reply.author.email, BOB);
+  await api('PUT', '/settings/portal', { access: 'none', emails: [], groupDn: '' });
 });
 
 await step('Duplikat: Original muss offen sein und einer der beiden einen Typ haben', async () => {
@@ -678,9 +736,37 @@ await step('Duplikat: Original muss offen sein und einer der beiden einen Typ ha
 });
 
 let anna;
-await step('Portal: Standard-Benutzer mit Passwort meldet sich an, hat keinen IT-Zugriff', async () => {
+await step('Portal freischalten: aus, nur ausgewählte, für alle', async () => {
+  assert.deepEqual(await api('GET', '/settings/portal'), { access: 'none', emails: [], groupDn: '' });
   anna = (await api('GET', '/admin/users')).find((u) => u.email === ANNA);
   await api('PATCH', `/admin/users/${anna.id}`, { password: 'anna-passwort-1' });
+  await api('POST', '/auth/logout');
+  const refused = await api('POST', '/auth/login', { username: ANNA, password: 'anna-passwort-1' }, { expect: [403] });
+  assert.match(refused.message, /nicht freigeschaltet/);
+
+  await loginAs('ada@test.local', 'geheim-geheim');
+  await api('PUT', '/settings/portal', { access: 'selected', emails: [ANNA.toUpperCase()], groupDn: '' });
+  assert.deepEqual((await api('GET', '/settings/portal')).emails, [ANNA]);
+  await loginAs(ANNA, 'anna-passwort-1');
+  assert.equal((await api('GET', '/portal/items?state=open')).some((i) => i.number === itemNo), true);
+  // Wird der Zugang entzogen, gilt das sofort, auch für die laufende Sitzung
+  const annaCookie = cookie;
+  cookie = ''; // Annas Sitzung nicht abmelden
+  await loginAs('ada@test.local', 'geheim-geheim');
+  await api('PUT', '/settings/portal', { access: 'selected', emails: [], groupDn: '' });
+  const adaCookie = cookie;
+  cookie = annaCookie;
+  assert.match((await api('GET', '/portal/items?state=open', undefined, { expect: [403] })).message, /nicht freigeschaltet/);
+  cookie = adaCookie;
+  // IT und Admins sind nicht betroffen
+  await loginAs(IVAN, 'geheim-geheim');
+  await api('GET', '/portal/items?state=open');
+  await loginAs('ada@test.local', 'geheim-geheim');
+  await api('PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '' });
+  await api('PUT', '/settings/portal', { access: 'irgendwer', emails: [] }, { expect: [400] });
+});
+
+await step('Portal: Standard-Benutzer mit Passwort meldet sich an, hat keinen IT-Zugriff', async () => {
   const me = await loginAs(ANNA, 'anna-passwort-1');
   assert.equal(me.role, 'standard');
   assert.equal((await api('GET', '/auth/me')).user.role, 'standard');
@@ -741,6 +827,7 @@ await step('Portal: neue Meldung landet mit Vorschlag im Eingang, Bestätigung m
   const inboxItem = (await api('GET', '/items?view=inbox')).items.find((i) => i.number === portalItem);
   assert.equal(inboxItem.suggestedType, 'incident');
   assert.equal(inboxItem.source, 'portal');
+  assert.equal(inboxItem.channelId, channel('Portal').id, 'Meldeweg Portal');
   await api('POST', `/items/${portalItem}/type`, { type: 'incident' });
   assert.equal((await detail(portalItem)).suggestedType, null);
 });
@@ -1120,7 +1207,11 @@ await step('Auswertungen: Kennzahlen pro Zeitraum, CSV, nur für Admin', async (
   const bytes = new Uint8Array(await res.arrayBuffer());
   assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf], 'BOM für Excel');
   const csv = new TextDecoder().decode(bytes);
-  assert.ok(csv.startsWith('Nummer;Typ;Titel;Status;Priorität;Melder;E-Mail Melder;Zuständig;Erfasst;Abgeschlossen'));
+  assert.ok(csv.startsWith('Nummer;Typ;Titel;Status;Priorität;Melder;E-Mail Melder;Zuständig;Meldeweg;Erfasst;Abgeschlossen'));
+  // Neue Vorgänge nach Meldeweg, zusammen alle neuen Vorgänge des Zeitraums
+  assert.ok(r.byChannel.some((c) => c.label === 'E-Mail' && c.icon === 'mail' && c.count >= 1));
+  assert.ok(r.byChannel.some((c) => c.label === 'Telefon' && c.count >= 1));
+  assert.equal(r.byChannel.reduce((sum, c) => sum + c.count, 0), r.totals.created);
   assert.match(csv, /\r\nPW-1;Störung;VPN verbindet nicht;/);
   await api('GET', `/admin/reports?from=${encodeURIComponent(to)}&to=${encodeURIComponent(from)}`, undefined, { expect: [400] });
   await api('GET', `/admin/reports?${query.replace('Europe%2FZurich', 'Mond%2FKrater')}`, undefined, { expect: [400] });
@@ -1483,6 +1574,7 @@ await step('Testbetrieb: Antworten und neue Mails simulieren, verarbeitet wie ec
   const item = await detail(created.item.number);
   assert.equal(item.simulated, true);
   assert.equal(item.reporter.name, 'Nina Simuliert');
+  assert.equal(item.channel.label, 'E-Mail');
   assert.equal(item.description, 'Drucker streikt');
   const noSubject = await api('POST', '/admin/incoming-mails/simulate', simulation({ mailboxId, from: newSender, text: 'x' }), { expect: [400] });
   assert.match(noSubject.message, /Betreff/);

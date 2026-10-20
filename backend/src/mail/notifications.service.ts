@@ -5,6 +5,7 @@ import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
 import { attachments, mailMessages, mutes, participants, statuses, users, type Item, type User } from '../db/schema';
 import { embedImageTags, imagesAsText, imageSize, type EmbeddedImage } from '../items/inline-images';
+import { PortalAccessService } from '../portal/portal-access.service';
 import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
 import { itemRef, subjectFor } from './mail-content';
@@ -45,6 +46,7 @@ export class NotificationsService {
     private readonly settings: SettingsService,
     private readonly templates: MailTemplatesService,
     private readonly storage: StorageService,
+    private readonly portalAccess: PortalAccessService,
   ) {}
 
   /** Eingangsbestätigung an den Melder. */
@@ -203,15 +205,23 @@ export class NotificationsService {
 
     const portalUrl = `${appConfig.publicUrl}/portal/v/${mail.portalNumber ?? item.number}`;
     const values = { ...(await this.itemValues(item, portalUrl)), ...mail.values };
-    const [template, link, footer] = await Promise.all([
+    const [template, link, footer, reporter] = await Promise.all([
       this.templates.get(mail.template),
       this.templates.get('reporterLink'),
       this.templates.get('reporterFooter'),
+      this.user(item.reporterId),
     ]);
+    // Link-Zeile zum Portal nur, wenn das Portal für den Melder freigeschaltet ist
+    const withLink = !!reporter && (await this.portalAccess.allowed(reporter));
     const { text, html, inline } = await this.embedImages(
       item,
       composeMail(
-        { body: mail.written ?? template.body ?? '', link: link.body ?? '', footer: footer.body ?? '', written: mail.written !== undefined },
+        {
+          body: mail.written ?? template.body ?? '',
+          link: withLink ? (link.body ?? '') : '',
+          footer: footer.body ?? '',
+          written: mail.written !== undefined,
+        },
         values,
       ),
     );

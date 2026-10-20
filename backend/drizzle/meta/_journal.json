@@ -120,6 +120,20 @@
       "when": 1792484846790,
       "tag": "0016_eingehende_mails",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792487457428,
+      "tag": "0017_meldeweg",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792487459155,
+      "tag": "0018_meldeweg_daten",
+      "breakpoints": true
     }
   ]
 }

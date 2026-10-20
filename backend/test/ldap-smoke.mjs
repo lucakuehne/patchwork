@@ -59,6 +59,8 @@ if (current.url && !current.url.includes('localhost:10389')) {
   console.error(`Abbruch: Die Instanz hat bereits LDAP-Einstellungen (${current.url}). Bitte eine Test-Instanz verwenden.`);
   process.exit(3);
 }
+// Standard-Benutzer melden sich im Portal an; ohne Einstellung ist es aus
+await call(admin, 'PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '' });
 const diagnose = async (overrides, username, password) =>
   (await call(admin, 'POST', '/settings/ldap/test', { ...settings, ...overrides, username, password })).data.checks;
 const byKey = (checks) => Object.fromEntries(checks.map((c) => [c.key, c]));

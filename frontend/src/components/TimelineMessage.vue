@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
-import { formatDateTime, initials, itemRef } from '../format';
+import { formatDateTime, itemRef } from '../format';
 import { renderMailHtml, renderMarkdown } from '../markdown';
 import { useSession } from '../stores/session';
 import { NOTE_EDIT_MINUTES } from '../timeline';
@@ -9,9 +9,10 @@ import type { Entry } from '../types';
 import AttachmentList from './AttachmentList.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
 import OriginalMailDialog from './OriginalMailDialog.vue';
+import TimelineHead from './TimelineHead.vue';
 
 /** Öffentliche Antwort oder interne Notiz in der Timeline. Eigene Notizen lassen sich kurz nach dem Erfassen bearbeiten. */
-const props = defineProps<{ entry: Entry; itemNumber: number; reporterId: string }>();
+const props = defineProps<{ entry: Entry; itemNumber: number }>();
 const emit = defineEmits<{ changed: [] }>();
 const session = useSession();
 
@@ -43,16 +44,18 @@ const html = computed(() => {
   return renderMarkdown(props.entry.body);
 });
 
+// Art des Eintrags: «Öffentlich» oder «Intern», dahinter, woher er kommt
 const label = computed(() => {
   if (props.entry.kind === 'note') {
-    if (meta.value.external) return 'Mail von nicht beteiligter Person · als interne Notiz erfasst';
-    return fromMail.value ? 'Mail · interne Notiz' : 'Interne Notiz';
+    if (meta.value.external) return 'Intern · Mail von nicht beteiligter Person';
+    return fromMail.value ? 'Intern · per Mail' : 'Intern';
   }
-  if (meta.value.automated) return 'Automatische Antwort per Mail';
-  if (meta.value.source === 'merge') return `Zusammengeführt aus ${itemRef(Number(meta.value.mergedFrom))} «${String(meta.value.mergedTitle ?? '')}»`;
-  if (meta.value.source === 'portal') return 'Antwort des Melders im Portal';
-  if (fromMail.value) return props.entry.author?.id === props.reporterId ? 'Antwort des Melders per Mail' : 'Antwort per Mail';
-  return 'Öffentliche Antwort';
+  if (meta.value.automated) return 'Öffentlich · automatische Mail';
+  if (meta.value.source === 'merge') {
+    return `Öffentlich · zusammengeführt aus ${itemRef(Number(meta.value.mergedFrom))} «${String(meta.value.mergedTitle ?? '')}»`;
+  }
+  if (meta.value.source === 'portal') return 'Öffentlich · im Portal';
+  return fromMail.value ? 'Öffentlich · per Mail' : 'Öffentlich';
 });
 
 // Eigene, in Patchwork erfasste Notiz: «Bearbeiten» nur in den ersten Minuten
@@ -108,30 +111,37 @@ async function save() {
 
 <template>
   <div class="message" :class="[entry.kind, { automated: meta.automated }]">
-    <div class="msg-head">
-      <span class="avatar">{{ initials(author) }}</span>
-      <strong>{{ author }}</strong>
-      <span class="kind">{{ label }}</span>
-      <span v-if="meta.simulated" class="badge simulated" title="Im Testbetrieb simuliert, nicht wirklich per Mail eingegangen">
-        simuliert
-      </span>
-      <span class="spacer" />
-      <button
-        v-if="canEdit && !editing"
-        class="edit-btn"
-        type="button"
-        :title="`Möglich bis ${formatDateTime(new Date(editDeadline).toISOString())}`"
-        @click="startEdit"
-      >
-        Bearbeiten
-      </button>
-      <button v-if="entry.originalMessageId" class="link-btn small" type="button" @click="showOriginal = true">
-        Originalmail
-      </button>
-      <span class="faint small">{{ formatDateTime(entry.createdAt) }}</span>
-      <span v-if="entry.editedAt" class="faint small" :title="`Bearbeitet am ${formatDateTime(entry.editedAt)}`">· bearbeitet</span>
-      <span v-if="deliveryBadge" class="badge" :class="deliveryBadge.kind" :title="deliveryBadge.title">{{ deliveryBadge.text }}</span>
-    </div>
+    <TimelineHead
+      :name="author"
+      :system="!entry.author"
+      :kind="label"
+      :icon="entry.kind === 'note' ? 'internal' : 'public'"
+      :time="entry.createdAt"
+    >
+      <template #badges>
+        <span v-if="meta.simulated" class="badge simulated" title="Im Testbetrieb simuliert, nicht wirklich per Mail eingegangen">
+          simuliert
+        </span>
+        <span v-if="deliveryBadge" class="badge" :class="deliveryBadge.kind" :title="deliveryBadge.title">{{ deliveryBadge.text }}</span>
+      </template>
+      <template #actions>
+        <button
+          v-if="canEdit && !editing"
+          class="link-btn small"
+          type="button"
+          :title="`Möglich bis ${formatDateTime(new Date(editDeadline).toISOString())}`"
+          @click="startEdit"
+        >
+          Bearbeiten
+        </button>
+        <button v-if="entry.originalMessageId" class="link-btn small" type="button" @click="showOriginal = true">
+          Originalmail
+        </button>
+      </template>
+      <template #after-time>
+        <span v-if="entry.editedAt" class="faint small" :title="`Bearbeitet am ${formatDateTime(entry.editedAt)}`">· bearbeitet</span>
+      </template>
+    </TimelineHead>
     <div v-if="editing" class="stack">
       <MarkdownEditor v-model="draft" v-model:uploading="uploading" :min-height="90" autofocus @submit="save" />
       <div v-if="error" class="error-box">{{ error }}</div>
@@ -174,30 +184,8 @@ async function save() {
 .message.automated {
   opacity: 0.75;
 }
-.msg-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.kind {
-  font-size: 12px;
-  color: var(--text-muted);
-}
 .small {
   font-size: 12px;
-}
-.edit-btn {
-  border: none;
-  background: none;
-  padding: 0;
-  font: inherit;
-  font-size: 12px;
-  color: var(--note-text);
-  cursor: pointer;
-}
-.edit-btn:hover {
-  text-decoration: underline;
 }
 .badge.held {
   background: var(--warning-soft);

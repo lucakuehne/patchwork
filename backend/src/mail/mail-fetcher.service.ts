@@ -3,6 +3,7 @@ import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { ImapFlow } from 'imapflow';
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
 import { createHash } from 'node:crypto';
+import { ChannelsService } from '../channels/channels.service';
 import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
 import {
@@ -76,6 +77,7 @@ export class MailFetcherService implements OnModuleInit {
     private readonly storage: StorageService,
     private readonly rules: RulesService,
     private readonly graph: GraphMailService,
+    private readonly channels: ChannelsService,
   ) {}
 
   async onModuleInit() {
@@ -421,6 +423,7 @@ export class MailFetcherService implements OnModuleInit {
           reporterId: reporter.id,
           mailboxId: mailbox.id,
           source: 'mail',
+          channelId: await this.channels.idByKey('mail', tx),
           simulated,
         })
         .returning();

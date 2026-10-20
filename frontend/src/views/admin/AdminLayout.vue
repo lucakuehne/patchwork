@@ -9,6 +9,7 @@
       <RouterLink to="/admin/ausgehende-mails">Ausgehende Mails</RouterLink>
       <RouterLink to="/admin/e-mail-vorlagen">E-Mail-Vorlagen</RouterLink>
       <RouterLink to="/admin/status">Status</RouterLink>
+      <RouterLink to="/admin/meldewege">Meldewege</RouterLink>
       <RouterLink to="/admin/regeln">Regeln</RouterLink>
       <RouterLink to="/admin/checklisten">Checklisten-Vorlagen</RouterLink>
       <RouterLink to="/admin/textbausteine">Textbausteine</RouterLink>

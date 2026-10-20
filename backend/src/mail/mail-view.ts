@@ -23,7 +23,7 @@ export async function mailView(raw: Buffer, attachmentUrl: (index: number) => st
   }
   return {
     headers: {
-      from: parsed.from?.text ?? '',
+      from: list(parsed.from).join(', '),
       to: list(parsed.to),
       cc: list(parsed.cc),
       subject: parsed.subject ?? '',

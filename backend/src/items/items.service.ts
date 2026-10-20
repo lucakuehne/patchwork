@@ -25,6 +25,7 @@ import {
   type Status,
   type User,
 } from '../db/schema';
+import { ChannelsService } from '../channels/channels.service';
 import { MailboxesService } from '../mail/mailboxes.service';
 import { NotificationsService } from '../mail/notifications.service';
 import { visibleInPortal } from '../portal/portal-visibility';
@@ -61,6 +62,7 @@ export class ItemsService {
   constructor(
     @InjectDb() private readonly db: Db,
     private readonly statuses: StatusesService,
+    private readonly channels: ChannelsService,
     private readonly users: UsersService,
     private readonly mailboxes: MailboxesService,
     private readonly notifications: NotificationsService,
@@ -113,7 +115,7 @@ export class ItemsService {
 
   async detail(number: number, viewer: User) {
     const item = await this.byNumber(number);
-    const [status, reporter, creator, assignee, mailbox] = await Promise.all([
+    const [status, reporter, creator, assignee, mailbox, channel] = await Promise.all([
       item.statusId ? this.statuses.get(item.statusId) : null,
       this.users.getById(item.reporterId),
       this.users.getById(item.creatorId),
@@ -125,6 +127,7 @@ export class ItemsService {
             .where(eq(mailboxes.id, item.mailboxId))
             .then((r) => r[0] ?? null)
         : null,
+      item.channelId ? this.channels.get(item.channelId) : null,
     ]);
 
     const [participantRows, entryRows, attachmentRows, muteRows, mailRows, deliveryRows] = await Promise.all([
@@ -196,6 +199,7 @@ export class ItemsService {
       descriptionHtml: item.descriptionHtml,
       priority: item.priority,
       source: item.source,
+      channel: channel && { id: channel.id, label: channel.label, icon: channel.icon },
       suggestedType: item.suggestedType,
       simulated: item.simulated,
       discarded: item.discarded,
@@ -246,11 +250,14 @@ export class ItemsService {
       reporterId?: string | null;
       assigneeId?: string | null;
       statusId?: string | null;
+      /** Meldeweg, beim internen Erfassen Pflicht */
+      channelId: string;
     },
     files: UploadedFile[],
   ): Promise<Item> {
     const pending: Pending = [];
     const item = await this.db.transaction(async (tx) => {
+      await this.channels.get(input.channelId, tx);
       const all = await this.statuses.list(tx);
       let status = firstOfCategory(all, input.type, 'new');
       if (input.statusId) {
@@ -278,6 +285,7 @@ export class ItemsService {
           assigneeId: input.assigneeId ?? null,
           mailboxId: mailbox?.id ?? null,
           source: 'internal',
+          channelId: input.channelId,
           closedAt: isClosedCategory(status.category) ? new Date() : null,
           boardPosition: await this.endOfColumn(tx, status.id),
         })
@@ -305,6 +313,7 @@ export class ItemsService {
       assigneeId?: string | null;
       reporterId?: string;
       mailboxId?: string | null;
+      channelId?: string;
     },
   ): Promise<void> {
     const pending: Pending = [];
@@ -326,6 +335,12 @@ export class ItemsService {
       if (patch.priority !== undefined && patch.priority !== item.priority) {
         changes.priority = patch.priority;
         log.push({ field: 'priority', from: PRIORITY_LABELS[item.priority], to: PRIORITY_LABELS[patch.priority] });
+      }
+      if (patch.channelId !== undefined && patch.channelId !== item.channelId) {
+        const before = item.channelId ? await this.channels.get(item.channelId, tx) : null;
+        const after = await this.channels.get(patch.channelId, tx);
+        changes.channelId = patch.channelId;
+        log.push({ field: 'channel', from: before?.label ?? null, to: after.label });
       }
       if (patch.assigneeId !== undefined && patch.assigneeId !== item.assigneeId) {
         const before = item.assigneeId ? await this.users.getById(item.assigneeId, tx) : null;
@@ -647,6 +662,7 @@ export class ItemsService {
           reporterId: reporter.id,
           mailboxId: mailbox?.id ?? null,
           source: 'portal',
+          channelId: await this.channels.idByKey('portal', tx),
         })
         .returning();
       await this.saveFiles(tx, created!.id, null, files);
@@ -936,6 +952,7 @@ export class ItemsService {
     title: string;
     priority: Priority;
     source: Item['source'];
+    channelId: string | null;
     discarded: boolean;
     boardPosition: number;
     createdAt: Date;
@@ -956,6 +973,7 @@ export class ItemsService {
       title: r.title,
       priority: r.priority,
       source: r.source,
+      channelId: r.channelId,
       discarded: r.discarded,
       boardPosition: r.boardPosition,
       createdAt: r.createdAt,

@@ -25,6 +25,9 @@ const priority = ref<Priority>('normal');
 const reporter = ref<User | null>(session.user);
 const assigneeId = ref('');
 const statusId = ref('');
+// Meldeweg: Pflicht, bewusst ohne Vorbelegung; «Portal» setzt Patchwork selbst
+const channelId = ref('');
+const channelOptions = computed(() => session.channels.filter((c) => c.key !== 'portal'));
 const files = ref<File[]>([]);
 const saving = ref(false);
 const uploading = ref(false);
@@ -39,6 +42,10 @@ async function save() {
     error.value = 'Bitte einen Titel eingeben.';
     return;
   }
+  if (!channelId.value) {
+    error.value = 'Bitte den Meldeweg wählen.';
+    return;
+  }
   saving.value = true;
   try {
     const form = new FormData();
@@ -49,6 +56,7 @@ async function save() {
     if (reporter.value) form.append('reporterId', reporter.value.id);
     if (assigneeId.value) form.append('assigneeId', assigneeId.value);
     if (statusId.value) form.append('statusId', statusId.value);
+    form.append('channelId', channelId.value);
     for (const f of files.value) form.append('files', f, f.name);
     const result = await api.post<{ number: number }>('/items', form);
     emit('created', result.number);
@@ -103,6 +111,13 @@ async function save() {
         <select id="new-status" v-model="statusId" class="select">
           <option value="">Standard (erster Status «Neu»)</option>
           <option v-for="s in statusOptions" :key="s.id" :value="s.id">{{ s.label }}</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="new-channel">Meldeweg</label>
+        <select id="new-channel" v-model="channelId" class="select" required>
+          <option value="" disabled>Bitte wählen …</option>
+          <option v-for="c in channelOptions" :key="c.id" :value="c.id">{{ c.label }}</option>
         </select>
       </div>
     </div>

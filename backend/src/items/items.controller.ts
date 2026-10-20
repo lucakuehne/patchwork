@@ -61,6 +61,8 @@ const createSchema = z.object({
   reporterId: nullableUuid.optional(),
   assigneeId: nullableUuid.optional(),
   statusId: nullableUuid.optional(),
+  /** Meldeweg, Pflicht beim internen Erfassen */
+  channelId: z.uuid({ error: 'Bitte den Meldeweg wählen.' }),
 });
 
 const updateSchema = z.object({
@@ -70,6 +72,7 @@ const updateSchema = z.object({
   assigneeId: nullableUuid.optional(),
   reporterId: z.uuid().optional(),
   mailboxId: nullableUuid.optional(),
+  channelId: z.uuid().optional(),
 });
 
 const moveSchema = z.object({

@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { api } from '../api';
 import ChecklistsPanel from '../components/ChecklistsPanel.vue';
 import CommentComposer from '../components/CommentComposer.vue';
+import ChannelIcon from '../components/ChannelIcon.vue';
 import ItemDescription from '../components/ItemDescription.vue';
 import LinksPanel from '../components/LinksPanel.vue';
 import PersonSearch from '../components/PersonSearch.vue';
@@ -149,13 +150,7 @@ function onRejected() {
         <!-- Neuestes zuoberst; sonst die ursprüngliche Meldung als ältester Eintrag zuunterst -->
         <div class="timeline">
           <template v-for="block in timeline" :key="block.kind === 'message' ? block.entry.id : block.entries[0]!.id">
-            <TimelineMessage
-              v-if="block.kind === 'message'"
-              :entry="block.entry"
-              :item-number="item.number"
-              :reporter-id="item.reporter.id"
-              @changed="load"
-            />
+            <TimelineMessage v-if="block.kind === 'message'" :entry="block.entry" :item-number="item.number" @changed="load" />
             <TimelineEvents v-else :entries="block.entries" />
           </template>
         </div>
@@ -228,6 +223,23 @@ function onRejected() {
           >
             <option v-for="(label, key) in PRIORITY_LABELS" :key="key" :value="key">{{ label }}</option>
           </select>
+        </div>
+
+        <div class="field">
+          <label for="item-channel">Meldeweg</label>
+          <div class="channel-select">
+            <ChannelIcon v-if="item.channel" :icon="item.channel.icon" />
+            <select
+              id="item-channel"
+              class="select"
+              :value="item.channel?.id ?? ''"
+              :disabled="busy"
+              @change="patch({ channelId: ($event.target as HTMLSelectElement).value })"
+            >
+              <option v-if="!item.channel" value="" disabled>– ohne Angabe –</option>
+              <option v-for="c in session.channels" :key="c.id" :value="c.id">{{ c.label }}</option>
+            </select>
+          </div>
         </div>
 
         <div class="field">
@@ -383,6 +395,16 @@ function onRejected() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.channel-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+.channel-select .select {
+  flex: 1;
+  min-width: 0;
 }
 .meta {
   display: flex;

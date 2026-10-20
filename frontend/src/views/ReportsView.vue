@@ -119,6 +119,17 @@ const assigneeSpec = computed<ChartSpec | null>(() => {
   };
 });
 
+const channelSpec = computed<ChartSpec | null>(() => {
+  const r = report.value;
+  if (!r) return null;
+  return {
+    title: 'Neue Vorgänge nach Meldeweg',
+    horizontal: true,
+    labels: r.byChannel.map((c) => c.label ?? 'ohne Angabe'),
+    datasets: [{ label: 'Neu', data: r.byChannel.map((c) => c.count), color: COLORS.task }],
+  };
+});
+
 const priorities = computed(() =>
   (['high', 'normal', 'low'] as Priority[]).map((p) => ({
     priority: p,
@@ -161,7 +172,7 @@ function exportChart(spec: ChartSpec, height: number) {
 async function exportPdf() {
   const r = report.value;
   const p = period.value;
-  if (!r || !p || !flowSpec.value || !statusSpec.value || !assigneeSpec.value) return;
+  if (!r || !p || !flowSpec.value || !statusSpec.value || !assigneeSpec.value || !channelSpec.value) return;
   exporting.value = true;
   try {
     const { reportPdf } = await import('../report-pdf');
@@ -183,6 +194,7 @@ async function exportPdf() {
         { spec: flowSpec.value, height: 95 },
         { spec: statusSpec.value, height: Math.min(150, 25 + statusSpec.value.labels.length * 9) },
         { spec: assigneeSpec.value, height: Math.min(150, 25 + assigneeSpec.value.labels.length * 9) },
+        { spec: channelSpec.value, height: Math.min(150, 25 + channelSpec.value.labels.length * 9) },
       ],
       tables: [
         {
@@ -314,6 +326,20 @@ async function exportPdf() {
             </tbody>
           </table>
         </section>
+        <section v-if="channelSpec" class="card card-body">
+          <div class="row section-head">
+            <h2>{{ channelSpec.title }}</h2>
+            <span class="spacer" />
+            <button class="btn btn-sm" type="button" @click="exportChart(channelSpec, barChartHeight(channelSpec.labels.length))">
+              Als Bild
+            </button>
+          </div>
+          <ReportChart v-if="channelSpec.labels.length" :spec="channelSpec" :height="barChartHeight(channelSpec.labels.length)" />
+          <div v-else class="faint">Keine Meldungen im Zeitraum.</div>
+        </section>
+      </div>
+
+      <div class="two">
         <section class="card card-body">
           <h2>Häufigste Melder im Zeitraum</h2>
           <table v-if="report.topReporters.length" class="table">

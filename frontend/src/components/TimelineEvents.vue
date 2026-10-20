@@ -4,6 +4,7 @@ import { formatDateTime } from '../format';
 import { renderMarkdown } from '../markdown';
 import { asListItem, automaticStatusText, eventPart, type EventPart } from '../timeline';
 import type { Entry } from '../types';
+import TimelineHead from './TimelineHead.vue';
 
 /**
  * Graue Karte mit einer oder mehreren Änderungen kurz hintereinander von derselben Person (neueste zuerst):
@@ -39,10 +40,7 @@ const times = computed(() =>
 
 <template>
   <div class="events">
-    <div class="head">
-      <strong>{{ author }}</strong>
-      <span class="faint" :title="times">{{ formatDateTime(latest.createdAt) }}</span>
-    </div>
+    <TimelineHead :name="author" :system="!!rule || !latest.author" :time="latest.createdAt" :time-title="times" />
     <ul class="changes">
       <li v-for="(part, i) in parts" :key="i">
         {{ asListItem(part.text) }}<RouterLink v-if="part.link" class="other" :to="part.link.to">{{ part.link.text }}</RouterLink>
@@ -60,17 +58,6 @@ const times = computed(() =>
   padding: 8px 12px;
   font-size: 13px;
   color: var(--text-muted);
-}
-.head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 4px;
-  color: var(--text);
-}
-.head .faint {
-  font-size: 12px;
 }
 .changes {
   margin: 0;

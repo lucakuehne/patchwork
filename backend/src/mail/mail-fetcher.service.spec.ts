@@ -51,7 +51,19 @@ function setup(serverUidValidity = 7) {
   };
   const transport = { imapClient: async () => folder.client };
   const unused = undefined as never;
-  const fetcher = new MailFetcherService(unused, unused, mailboxes as never, transport as never, unused, unused, unused, unused, unused);
+  const fetcher = new MailFetcherService(
+    unused,
+    unused,
+    mailboxes as never,
+    transport as never,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused,
+  );
   const ingested: number[] = [];
   vi.spyOn(fetcher, 'ingest').mockImplementation(async (_mailbox, raw) => {
     ingested.push(Number(raw.toString()));
