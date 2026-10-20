@@ -26,6 +26,8 @@ const TARGET_HINTS: Record<StatusTarget, string> = {
     'Aktion «Ablehnen» mit Begründung. Der Status ist nur so erreichbar, eine Antwort öffnet ihn nicht wieder. Ohne Status gibt es kein «Ablehnen».',
   waiting: 'Eine Antwort holt den Vorgang zurück, das Portal hebt ihn hervor, zeitgesteuerte Regeln können erinnern und schliessen.',
 };
+/** Ziele mit Auswahlfeld; «Neuer Vorgang erhält» setzt man im Diagramm mit dem Startpfeil */
+const FIELD_TARGETS = STATUS_TARGETS.filter((t) => t !== 'start');
 const noneLabel = (target: StatusTarget) => (target === 'reject' ? '– kein Ablehnen –' : '– keiner –');
 const isRequired = (target: StatusTarget) => REQUIRED_TARGETS.includes(target);
 
@@ -102,7 +104,9 @@ function closedLock(status: Status): string | undefined {
   if (!target) return undefined;
   return (
     `«${status.label}» ist «${TARGET_LABELS[target]}» und muss ${TARGET_CLOSED[target] ? 'abgeschlossen' : 'offen'} bleiben. ` +
-    'Zuerst unter «Automatische Wechsel» einen anderen Status wählen.'
+    (target === 'start'
+      ? 'Zuerst im Diagramm den Startpfeil auf einen anderen Status ziehen.'
+      : 'Zuerst unter «Automatische Wechsel» einen anderen Status wählen.')
   );
 }
 
@@ -148,11 +152,18 @@ async function saveTargets(type: ItemType) {
   syncTargets();
 }
 
-const targetFieldId = (type: ItemType, target: StatusTarget) => `target-${type}-${target}`;
+/** Startpfeil im Diagramm auf einen anderen Status gezogen */
+function setStart(type: ItemType, statusId: string) {
+  targetDraft.value[type].start = statusId;
+  void saveTargets(type);
+}
 
-/** Zum Feld eines Ziels im Block «Automatische Wechsel» springen (Schilder und Marken im Diagramm) */
+const targetFieldId = (type: ItemType, target: StatusTarget) => `target-${type}-${target}`;
+const diagramId = (type: ItemType) => `diagram-${type}`;
+
+/** Zum Feld eines Ziels springen (Schilder und Marken im Diagramm); beim Start zum Diagramm mit dem Startpfeil */
 function jumpTo(type: ItemType, target: StatusTarget) {
-  const field = document.getElementById(targetFieldId(type, target));
+  const field = document.getElementById(target === 'start' ? diagramId(type) : targetFieldId(type, target));
   if (!field) return;
   field.scrollIntoView({ behavior: 'smooth', block: 'center' });
   field.focus({ preventScroll: true });
@@ -344,7 +355,7 @@ async function confirmRemove() {
 
           <section class="block">
             <h3>Automatische Wechsel</h3>
-            <div v-for="t in STATUS_TARGETS" :key="t" class="field">
+            <div v-for="t in FIELD_TARGETS" :key="t" class="field">
               <label :for="targetFieldId(type, t)">
                 {{ TARGET_LABELS[t] }}<span v-if="isRequired(t)" class="required" title="Pflicht"> *</span>
               </label>
@@ -373,10 +384,13 @@ async function confirmRemove() {
                 : 'Zurzeit ist jeder Wechsel erlaubt. Die Pfeile gelten erst, wenn dieses Häkchen gesetzt ist; Pfeile in den Ablehnen-Status bestimmen dann, aus welchen Status «Ablehnen» möglich ist.'
             }}
             Die übrigen automatischen Wechsel (Antworten, Regeln, Typwechsel, Duplikate) gehen immer. Pfeil ziehen: vom Punkt
-            rechts an einem Status auf einen anderen; löschen: anklicken und Entf drücken oder doppelklicken. Ein Klick auf eine
-            Marke springt zum Feld unter «Automatische Wechsel».
+            rechts an einem Status auf einen anderen; löschen: anklicken und Entf drücken oder doppelklicken. Den Startpfeil auf
+            einen anderen offenen Status ziehen: Neue Vorgänge erhalten dann diesen Status. Ein Klick auf eine Marke springt zum
+            Feld unter «Automatische Wechsel».
           </span>
           <StatusFlowDiagram
+            :id="diagramId(type)"
+            tabindex="-1"
             class="diagram"
             :statuses="session.statusesOf(type)"
             :transitions="transitionsOf(type)"
@@ -385,6 +399,7 @@ async function confirmRemove() {
             @transitions="saveFlow(type, session.statusFlow.restrict[type], $event)"
             @move="moveNode"
             @target="jumpTo(type, $event)"
+            @start="setStart(type, $event)"
           />
         </div>
       </div>

@@ -6,6 +6,9 @@ export type View = 'inbox' | 'incidents' | 'incidents-closed' | 'board' | 'tasks
 export interface User {
   id: string;
   name: string;
+  /** Vor- und Nachname für Platzhalter in Mails und Textbausteinen */
+  firstName: string;
+  lastName: string;
   email: string;
   role: Role;
 }
@@ -33,6 +36,9 @@ export interface PersonPick {
 export interface DirectoryPerson {
   dn: string;
   name: string;
+  /** Aus givenName/sn, sonst aus dem Namen geschätzt */
+  firstName: string;
+  lastName: string;
   email: string;
   role: Role;
 }
@@ -140,7 +146,7 @@ export interface ItemSummary {
   closedAt: string | null;
   status: StatusRef | null;
   reporter: User;
-  assignee: { id: string; name: string } | null;
+  assignee: Pick<User, 'id' | 'name' | 'firstName' | 'lastName'> | null;
   /** Typ-Vorschlag des Melders aus dem Portal */
   suggestedType: ItemType | null;
   /** Fortschritt der Checklisten (nur Aufgaben mit Checklisten) */

@@ -7,15 +7,26 @@ import { onBeforeUnmount, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import type { ImageContext } from '../markdown';
 import { clipboardHasText, imageAlt, imageBlock, textImage } from '../text-image';
+import { allowPlaceholderLinks, normalizePlaceholderHref, PlaceholderHighlight } from '../text-placeholders';
 
 /**
  * WYSIWYG-Editor mit Toolbar. Gespeichert wird Markdown.
  * Bilder im Text («images»): über den Knopf «Bild», aus der Zwischenablage (Ctrl+V) oder per Hineinziehen. Sie werden
  * sofort hochgeladen und stehen im Text als «upload:<id>», bis der Text gespeichert ist. «context»: Portal oder IT.
+ * Ohne «images» gibt es den Knopf nicht, eingefügte oder abgelegte Bilder werden ignoriert.
+ * «template» (E-Mail-Vorlagen, Textbausteine): Platzhalter wie {{Titel}} farbig hervorgehoben, Links auch mit einem
+ * Platzhalter als Ziel, z.B. [Meldung ansehen]({{Link}}).
  */
 const props = withDefaults(
-  defineProps<{ placeholder?: string; minHeight?: number; autofocus?: boolean; images?: boolean; context?: ImageContext }>(),
-  { placeholder: '', minHeight: 120, autofocus: false, images: true, context: 'staff' },
+  defineProps<{
+    placeholder?: string;
+    minHeight?: number;
+    autofocus?: boolean;
+    images?: boolean;
+    context?: ImageContext;
+    template?: boolean;
+  }>(),
+  { placeholder: '', minHeight: 120, autofocus: false, images: true, context: 'staff', template: false },
 );
 const model = defineModel<string>({ required: true });
 /** Solange ein Bild hochgeladen wird, wartet das Senden */
@@ -28,6 +39,8 @@ const pending = ref(0);
 const imageError = ref('');
 const fileInput = ref<HTMLInputElement | null>(null);
 watch(pending, (count) => (uploading.value = count > 0));
+/** Cursor gesetzt, seit der Text geladen wurde (sonst fügt insertText am Ende ein) */
+let cursorSet = false;
 
 const editor = useEditor({
   content: model.value,
@@ -39,11 +52,17 @@ const editor = useEditor({
       underline: false,
       horizontalRule: false,
       heading: { levels: [2, 3] },
-      link: { openOnClick: false, autolink: true, defaultProtocol: 'https' },
+      link: {
+        openOnClick: false,
+        autolink: true,
+        defaultProtocol: 'https',
+        ...(props.template ? { isAllowedUri: allowPlaceholderLinks } : {}),
+      },
     }),
     Markdown.configure({ markedOptions: { gfm: true, breaks: true } }),
     Placeholder.configure({ placeholder: () => props.placeholder }),
     ...(props.images ? [textImage({ context: () => props.context, origin: window.location.origin })] : []),
+    ...(props.template ? [PlaceholderHighlight] : []),
   ],
   editorProps: {
     attributes: { class: 'prose md-content', spellcheck: 'true' },
@@ -57,19 +76,25 @@ const editor = useEditor({
     },
     handlePaste: (_view, event) => {
       const data = event.clipboardData;
-      if (!props.images || !data || data.files.length === 0 || clipboardHasText(data)) return false;
-      void addImages(Array.from(data.files));
+      if (!data || data.files.length === 0 || clipboardHasText(data)) return false;
+      // Ohne Bilder im Text wird ein eingefügtes Bild ignoriert
+      if (props.images) void addImages(Array.from(data.files));
       return true;
     },
     handleDrop: (view, event, _slice, moved) => {
       const files = Array.from(event.dataTransfer?.files ?? []);
-      if (!props.images || moved || files.length === 0) return false;
+      if (moved || files.length === 0) return false;
       event.preventDefault();
+      // Ohne Bilder im Text werden abgelegte Dateien ignoriert
+      if (!props.images) return true;
       const target = view.posAtCoords({ left: event.clientX, top: event.clientY });
       if (target) editor.value?.commands.setTextSelection(target.pos);
       void addImages(files);
       return true;
     },
+  },
+  onFocus: () => {
+    cursorSet = true;
   },
   onUpdate: ({ editor: e }) => {
     model.value = e.isEmpty ? '' : e.getMarkdown().trim();
@@ -81,7 +106,9 @@ watch(model, (value) => {
   const e = editor.value;
   if (!e) return;
   const current = e.isEmpty ? '' : e.getMarkdown().trim();
-  if (value !== current) e.commands.setContent(value, { contentType: 'markdown', emitUpdate: false });
+  if (value === current) return;
+  e.commands.setContent(value, { contentType: 'markdown', emitUpdate: false });
+  cursorSet = e.isFocused;
 });
 
 // Neuer Platzhalter (z.B. beim Wechsel öffentlich/intern): Ansicht neu zeichnen, sonst bleibt der alte stehen
@@ -135,9 +162,16 @@ function insertMarkdown(markdown: string) {
   editor.value?.chain().focus().insertContent(markdown, { contentType: 'markdown' }).run();
 }
 
-/** Fügt Text im laufenden Absatz an der Cursorposition ein (z.B. Platzhalter wie {{Melder}}). */
+/**
+ * Fügt Text im laufenden Absatz an der Cursorposition ein (z.B. Platzhalter wie {{Titel}}), ohne gesetzten Cursor am
+ * Ende. Ein markierter Text wird ersetzt.
+ */
 function insertText(text: string) {
-  editor.value?.chain().focus().insertContent({ type: 'text', text }).run();
+  editor.value
+    ?.chain()
+    .focus(cursorSet ? null : 'end')
+    .insertContent({ type: 'text', text })
+    .run();
 }
 
 function setLink() {
@@ -150,7 +184,7 @@ function setLink() {
     e.chain().focus().extendMarkRange('link').unsetLink().run();
     return;
   }
-  e.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run();
+  e.chain().focus().extendMarkRange('link').setLink({ href: normalizePlaceholderHref(url) }).run();
 }
 
 interface Tool {
@@ -368,6 +402,13 @@ defineExpose({ focus, insertMarkdown, insertText });
 }
 .content :deep(.md-content img.ProseMirror-selectednode) {
   outline: 2px solid var(--accent);
+}
+/* Platzhalter wie {{Titel}} in Vorlagen und Textbausteinen */
+.content :deep(.md-content .placeholder-token) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 3px;
+  padding: 0 1px;
 }
 .image-status {
   display: flex;

@@ -208,7 +208,7 @@ await step('Personensuche im AD: Name und Benutzername, ohne deaktivierte Konten
   );
 });
 
-await step('Aus dem AD vorab anlegen: Rolle aus den Gruppen oder von Hand, gilt bei der Anmeldung', async () => {
+await step('Aus dem AD vorab anlegen: Rolle aus den Gruppen oder von Hand, gilt bei der Anmeldung; Vor- und Nachname aus dem AD', async () => {
   await call(admin, 'PUT', '/settings/ldap', settings);
   // Suche nur im AD
   const { people } = (await call(admin, 'GET', '/people/search?q=nina&scope=directory')).data;
@@ -217,20 +217,27 @@ await step('Aus dem AD vorab anlegen: Rolle aus den Gruppen oder von Hand, gilt 
   const nina = (await call(admin, 'GET', '/admin/users/directory?email=nina@test.patchwork')).data;
   assert.equal(nina.role, 'it');
   assert.equal(nina.name, 'Nina Nested');
+  assert.deepEqual([nina.firstName, nina.lastName], ['Nina', 'Nested'], 'Vor- und Nachname aus givenName und sn');
   const created = (await call(admin, 'POST', '/admin/users/directory', { email: 'nina@test.patchwork', role: 'auto' })).data;
   assert.equal(created.authSource, 'ldap');
   assert.equal(created.role, 'it');
   assert.equal(created.roleManual, false);
   assert.equal(created.lastLoginAt, null);
+  assert.deepEqual([created.firstName, created.lastName], ['Nina', 'Nested']);
+  const lena = (await call(admin, 'POST', '/admin/users/directory', { email: 'lena@test.patchwork', role: 'auto' })).data;
+  assert.deepEqual([lena.name, lena.firstName, lena.lastName, lena.role], ['Lena Lind', 'Lena', 'Lind', 'it']);
   const staff = (await call(admin, 'GET', '/users/staff')).data;
   assert.ok(staff.some((u) => u.email === 'nina@test.patchwork'), 'sofort bei «Zuständig»');
   await call(admin, 'POST', '/admin/users/directory', { email: 'nina@test.patchwork', role: 'auto' }, [409]);
   await call(admin, 'GET', '/admin/users/directory?email=dora@test.patchwork', undefined, [404]);
-  // sam (Standard im AD) als Kontakt aus einer Mail, dann von Hand als IT: Kontakt wird übernommen, Rolle bleibt beim Login
+  // sam (Standard im AD) als Kontakt aus einer Mail, dann von Hand als IT: Kontakt wird übernommen, Rolle bleibt beim Login.
+  // Vor- und Nachname des neuen Kontakts per E-Mail im AD nachgeschlagen (geschätzt wäre es «sam» ohne Nachnamen).
   const contact = (await call(admin, 'POST', '/users/contacts', { email: 'sam@test.patchwork', name: 'sam' })).data;
+  assert.deepEqual([contact.name, contact.firstName, contact.lastName], ['sam', 'Sam', 'Standard']);
   const sam = (await call(admin, 'POST', '/admin/users/directory', { email: 'sam@test.patchwork', role: 'it' })).data;
   assert.equal(sam.id, contact.id, 'Kontakt übernommen');
   assert.equal(sam.name, 'Sam Standard');
+  assert.deepEqual([sam.firstName, sam.lastName], ['Sam', 'Standard']);
   assert.deepEqual([sam.role, sam.roleManual], ['it', true]);
   assert.equal((await login('sam', 'Sam-Passw0rd!')).data.role, 'it', 'von Hand festgelegt');
   // Zurück auf «Aus AD-Gruppen»: Rolle sofort aus dem AD
@@ -242,10 +249,18 @@ await step('Aus dem AD vorab anlegen: Rolle aus den Gruppen oder von Hand, gilt 
   await call(admin, 'PATCH', `/admin/users/${local.id}`, { role: 'auto' }, [400]);
 });
 
-await step('Anmeldungen über AD (gespeicherte Einstellungen)', async () => {
+await step('Anmeldungen über AD (gespeicherte Einstellungen), Vor- und Nachname bei jeder Anmeldung aus dem AD', async () => {
   await call(admin, 'PUT', '/settings/ldap', settings);
-  assert.equal((await login('lena', 'Lena-Passw0rd!')).data.role, 'it');
-  assert.equal((await login('otto@test.patchwork', 'Otto-Passw0rd!')).data.role, 'admin');
+  // Von Hand geändert gilt bis zur nächsten Anmeldung
+  const lenaId = (await call(admin, 'GET', '/admin/users')).data.find((u) => u.email === 'lena@test.patchwork').id;
+  const renamed = (await call(admin, 'PATCH', `/admin/users/${lenaId}`, { firstName: 'Helena', lastName: 'Linde' })).data;
+  assert.deepEqual([renamed.firstName, renamed.lastName], ['Helena', 'Linde']);
+  const lena = (await login('lena', 'Lena-Passw0rd!')).data;
+  assert.equal(lena.role, 'it');
+  assert.deepEqual([lena.name, lena.firstName, lena.lastName], ['Lena Lind', 'Lena', 'Lind']);
+  const otto = (await login('otto@test.patchwork', 'Otto-Passw0rd!')).data;
+  assert.equal(otto.role, 'admin');
+  assert.deepEqual([otto.firstName, otto.lastName], ['Otto', 'Ober'], 'neu angelegt bei der ersten Anmeldung');
   assert.equal((await login('nina', 'Nina-Passw0rd!')).data.role, 'it');
   await login('lena', 'falsch', [401]);
   assert.equal((await login('sam', 'Sam-Passw0rd!')).data.role, 'standard', 'Standard-Benutzer: Portal');

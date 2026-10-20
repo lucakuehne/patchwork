@@ -47,21 +47,20 @@ export interface TemplateText {
 
 const p = (name: string, description: string, example: string): Placeholder => ({ name, description, example });
 
+const NUMBER = p('Nummer', 'Nummer des Vorgangs', 'PW-123');
+const TITLE = p('Titel', 'Titel des Vorgangs', 'Drucker druckt nicht');
 const ITEM = [
-  p('Nummer', 'Nummer des Vorgangs', 'PW-123'),
-  p('Titel', 'Titel des Vorgangs', 'Drucker druckt nicht'),
+  NUMBER,
+  TITLE,
   p('Status', 'Aktueller Status', 'Erledigt'),
-  p('Melder', 'Name des Melders', 'Anna Muster'),
-  p('App', 'Name der Anwendung (Verwaltung → Allgemein)', 'Patchwork'),
+  p('Melder Vorname', 'Vorname des Melders', 'Anna'),
+  p('Melder Nachname', 'Nachname des Melders', 'Muster'),
+  p('Zuständig Vorname', 'Vorname des Zuständigen, leer ohne Zuweisung', 'Ivan'),
+  p('Zuständig Nachname', 'Nachname des Zuständigen, leer ohne Zuweisung', 'IT'),
 ];
 const PORTAL_LINK = p('Link', 'Link zur Meldung im Portal', 'https://patchwork.firma.local/portal/v/123');
 const STAFF_LINK = p('Link', 'Link zum Vorgang in Patchwork', 'https://patchwork.firma.local/v/123');
-const FRAME = (link: Placeholder) => [
-  p('Nummer', 'Nummer des Vorgangs', 'PW-123'),
-  p('Titel', 'Titel des Vorgangs', 'Drucker druckt nicht'),
-  link,
-  p('App', 'Name der Anwendung (Verwaltung → Allgemein)', 'Patchwork'),
-];
+const FRAME = (link: Placeholder) => [NUMBER, TITLE, link];
 
 export const TEMPLATES: TemplateDefinition[] = [
   {
@@ -130,7 +129,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Duplikat: im Original weiterbearbeitet',
     description:
       'An Melder und Beteiligte eines Duplikats mit anderem Melder; sie erhalten künftig die Updates des Originals. ' +
-      'Nummer und Titel gehören zum Original.',
+      'Nummer und Titel gehören zum Original, Vor- und Nachname des Melders zum Duplikat.',
     subject: '{{Titel}}',
     body:
       'Guten Tag\n\nIhre Meldung {{Duplikat}} betrifft dasselbe wie {{Original}} und wird dort weiterbearbeitet. ' +
@@ -190,7 +189,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Fusszeile (Melder)',
     description: 'Klein gesetzt am Ende jeder Mail an Melder und Beteiligte. Einfacher Text ohne Formatierung.',
     subject: null,
-    body: '{{App}} · {{Nummer}}\nBitte lassen Sie bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.',
+    body: 'Bitte lassen Sie bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.',
     plain: true,
     placeholders: FRAME(PORTAL_LINK),
   },
@@ -200,10 +199,11 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Zugewiesen',
     description: 'An den neu Zuständigen, wenn ihm jemand oder eine Regel einen Vorgang zuweist.',
     subject: 'Zugewiesen: {{Titel}}',
-    body: 'Zugewiesen: {{Nummer}} «{{Titel}}»\nZugewiesen durch: {{Zugewiesen durch}}\nMelder: {{Melder}} ({{Melder E-Mail}})',
+    body:
+      'Zugewiesen: {{Nummer}} «{{Titel}}»\nZugewiesen durch: {{Zugewiesen durch}}\n' +
+      'Melder: {{Melder Vorname}} {{Melder Nachname}} ({{Melder E-Mail}})',
     placeholders: [
       ...ITEM,
-      p('Zuständig', 'Name des neu Zuständigen', 'Ivan IT'),
       p('Zugewiesen durch', 'Wer zugewiesen hat (Person oder Regel)', 'Ada Admin'),
       p('Melder E-Mail', 'E-Mail-Adresse des Melders', 'anna.muster@firma.ch'),
       STAFF_LINK,
@@ -257,7 +257,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Fusszeile (IT)',
     description: 'Klein gesetzt am Ende jeder Mail an IT-Mitarbeitende. Einfacher Text ohne Formatierung.',
     subject: null,
-    body: '{{App}} · Benachrichtigung zu {{Nummer}}',
+    body: 'Benachrichtigung zu {{Nummer}}',
     plain: true,
     placeholders: FRAME(STAFF_LINK),
   },
@@ -270,10 +270,24 @@ const MARKDOWN_VALUES = new Set(['link', 'nummer', 'begründung']);
 
 const escapeMarkdown = (value: string) => value.replace(/[\\`*_{}[\]()#+\-.!|<>~]/g, '\\$&');
 
+/** Name eines Platzhalters zum Vergleichen: Gross-/Kleinschreibung und mehrfache Leerzeichen spielen keine Rolle. */
+const placeholderKey = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+
 /** Ersetzt {{Name}} (Gross-/Kleinschreibung egal); unbekannte Platzhalter bleiben stehen. */
 export function fill(template: string, values: Record<string, string>): string {
-  const lookup = new Map(Object.entries(values).map(([name, value]) => [name.toLowerCase(), value]));
-  return template.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (all, name: string) => lookup.get(name.toLowerCase()) ?? all);
+  const lookup = new Map(Object.entries(values).map(([name, value]) => [placeholderKey(name), value]));
+  return template.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (all, name: string) => lookup.get(placeholderKey(name)) ?? all);
+}
+
+/**
+ * Vor- und Nachname einer Person für {{Melder Vorname}}, {{Melder Nachname}} usw.
+ * Ohne Person (z.B. Vorgang ohne Zuständigen) bleiben beide leer.
+ */
+export function personValues(
+  role: 'Melder' | 'Zuständig',
+  person: { firstName: string; lastName: string } | null | undefined,
+): Record<string, string> {
+  return { [`${role} Vorname`]: person?.firstName.trim() ?? '', [`${role} Nachname`]: person?.lastName.trim() ?? '' };
 }
 
 /** Werte für die HTML-Fassung: Text aus Titeln, Namen und Antworten erscheint wörtlich, nicht als Markdown. */
@@ -283,28 +297,79 @@ function forMarkdown(values: Record<string, string>): Record<string, string> {
   );
 }
 
-/** Text der Mail: Links aus Markdown als «Text: Adresse». */
-const linksAsText = (markdown: string) => markdown.replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, '$1: $2');
+/** Werte für die Textfassung: wörtlich, Markdown-Werte (z.B. die Begründung aus dem Editor) wie der übrige Text. */
+function forText(values: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [name, MARKDOWN_VALUES.has(name.toLowerCase()) ? markdownAsText(value) : value]),
+  );
+}
+
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", nbsp: '\u00a0' };
+
+/**
+ * Bild (bleibt stehen, die Textfassung nennt es später als «[Bild: Name]»), maskiertes Zeichen wie «\*» oder «\[»
+ * und HTML-Entität wie «&amp;» oder «&nbsp;» (leerer Absatz). So schreibt der Editor Markdown.
+ */
+const TEXT_SYNTAX = /(!\[(?:\\.|[^\\\]\n])*\]\([^)\s]*\))|\\([!-/:-@[-`{-~])|&(amp|lt|gt|quot|#39|nbsp);/g;
+
+/**
+ * Markdown aus dem Editor für die Textfassung der Mail: ohne Maskierungen und Entitäten, Zeilenumbrüche ohne die zwei
+ * Leerzeichen davor, höchstens eine Leerzeile am Stück. Fett, Listen usw. bleiben als Markdown stehen.
+ */
+export function markdownAsText(markdown: string): string {
+  return markdown
+    .replace(TEXT_SYNTAX, (all, image?: string, escaped?: string, entity?: string) => image ?? escaped ?? ENTITIES[entity ?? ''] ?? all)
+    .replace(/[ \t\u00a0]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * Markdown-Link (kein Bild) mit Text (auch mit maskierten Zeichen wie «\]»), Ziel (auch in «<…>» oder ein Platzhalter
+ * wie {{Link}}, auch mit Leerzeichen) und allfälligem Titel.
+ */
+const LINK =
+  /(?<!!)\[((?:\\.|[^\\\]\n])*)\]\(\s*(?:<([^<>\n]*)>|(\{\{[^{}\n]*\}\}|[^\s)]+))(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\s*\)/g;
+
+/** Text der Mail: Links aus Markdown als «Text: Adresse», ohne Text (oder wenn er die Adresse ist) nur die Adresse. */
+function linksAsText(markdown: string): string {
+  return markdown.replace(LINK, (_all, label: string, angle?: string, bare?: string) => {
+    const target = (angle ?? bare ?? '').trim();
+    const text = label.trim();
+    return text && text !== target ? `${text}: ${target}` : target;
+  });
+}
 
 /**
  * Fertige Mail aus Text, Link-Zeile und Fusszeile (Vorlagen mit Platzhaltern), als Text und als HTML.
  * Im Text stehen die Werte wörtlich, im HTML maskiert, damit z.B. ein «*» im Titel keine Formatierung auslöst.
- * «written»: Text des Bearbeiters (öffentliche Antwort), unverändert übernommen.
+ * Text und Link-Zeile sind Markdown aus dem Editor, die Fusszeile einfacher Text.
+ * «written»: Text des Bearbeiters (öffentliche Antwort), ohne Platzhalter übernommen.
  */
 export function composeMail(
   parts: { body: string; link: string; footer: string; written?: boolean },
   values: Record<string, string>,
 ): { text: string; html: string } {
-  const plain = (template: string) => fill(template, values).trim();
+  const textValues = forText(values);
+  const plain = (template: string) => fill(markdownAsText(template), textValues).trim();
   const markdown = (template: string) => fill(template, forMarkdown(values)).trim();
-  const body = parts.written ? parts.body.trim() : plain(parts.body);
+  // Links im Text wie in der Link-Zeile als «Text: Adresse»
+  const body = parts.written ? markdownAsText(linksAsText(parts.body)).trim() : plain(linksAsText(parts.body));
   const bodyMarkdown = parts.written ? parts.body.trim() : markdown(parts.body);
-  const link = plain(parts.link);
-  const footer = plain(parts.footer);
+  const link = plain(linksAsText(parts.link));
+  const footer = fill(parts.footer, values).trim();
   return {
-    text: [body, linksAsText(link), footer ? `-- \n${footer}` : ''].filter(Boolean).join('\n\n'),
+    text: [body, link, footer ? `-- \n${footer}` : ''].filter(Boolean).join('\n\n'),
     html: htmlMail(`${renderMarkdown(bodyMarkdown)}${renderMarkdown(markdown(parts.link))}`, footer),
   };
+}
+
+/**
+ * Entspricht der Text dem Standard? Der Editor schreibt Zeilenumbrüche innerhalb eines Absatzes als «  \n»; das ist
+ * derselbe Text wie mit «\n».
+ */
+export function sameText(a: string, b: string): boolean {
+  const comparable = (text: string) => text.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').trim();
+  return comparable(a) === comparable(b);
 }
 
 /** Werte der Platzhalter für die Vorschau. */

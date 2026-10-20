@@ -95,6 +95,11 @@ export interface MicrosoftSettings {
 /** E-Mail-Vorlagen: angepasste Betreffs und Texte pro Vorlage; fehlt ein Eintrag, gilt der Standard. */
 export type MailTemplateOverrides = Record<string, { subject?: string; body?: string }>;
 
+/** Vor- und Nachname: wann bestehende Kontakte einmalig im AD nachgeschlagen wurden (null = noch nicht) */
+export interface UserNamesSettings {
+  directorySyncedAt: string | null;
+}
+
 interface SettingsMap {
   general: GeneralSettings;
   logo: LogoSettings | null;
@@ -104,6 +109,7 @@ interface SettingsMap {
   statusFlow: StatusFlowSettings;
   microsoft: MicrosoftSettings;
   mailTemplates: MailTemplateOverrides;
+  userNames: UserNamesSettings;
 }
 
 const DEFAULTS: SettingsMap = {
@@ -117,6 +123,7 @@ const DEFAULTS: SettingsMap = {
   statusFlow: { restrict: { incident: false, task: false } },
   microsoft: { clientId: '' },
   mailTemplates: {},
+  userNames: { directorySyncedAt: null },
 };
 
 @Injectable()

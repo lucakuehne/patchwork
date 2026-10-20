@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { api, errorMessage } from '../../api';
 import ModalDialog from '../../components/ModalDialog.vue';
 import PersonSearch from '../../components/PersonSearch.vue';
@@ -7,6 +7,7 @@ import { formatDateTime, ROLE_LABELS } from '../../format';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
 import type { AdminUser, DirectoryPerson, PersonPick, Role } from '../../types';
+import { followName } from '../../user-names';
 
 const session = useSession();
 const toast = useToast();
@@ -18,6 +19,9 @@ const ldapEnabled = ref(false);
 interface Draft {
   id: string | null;
   name: string;
+  /** Für die Platzhalter in E-Mail-Vorlagen und Textbausteinen */
+  firstName: string;
+  lastName: string;
   email: string;
   /** «auto» = Rolle aus den AD-Gruppen (nur AD-Konten) */
   role: Role | 'auto';
@@ -29,6 +33,18 @@ interface Draft {
 const draft = ref<Draft | null>(null);
 const error = ref('');
 const saving = ref(false);
+
+/** Neues lokales Konto: Vor- und Nachname folgen dem eingetippten Namen, bis man sie selbst ändert */
+const namesManual = ref({ firstName: false, lastName: false });
+
+watch(
+  () => draft.value?.name,
+  (name) => {
+    const d = draft.value;
+    if (!d || d.id || d.authSource !== 'local' || name === undefined) return;
+    Object.assign(d, followName(name, d, namesManual.value));
+  },
+);
 
 /** Neuer Benutzer: aus dem AD (vorab, ohne Anmeldung) oder lokales Konto */
 const mode = ref<'directory' | 'local'>('local');
@@ -84,13 +100,27 @@ function setMode(value: 'directory' | 'local') {
     draft.value.authSource = value === 'directory' ? 'ldap' : 'local';
     draft.value.role = value === 'directory' ? 'auto' : 'it';
     draft.value.name = '';
+    draft.value.firstName = '';
+    draft.value.lastName = '';
     draft.value.email = '';
   }
+  namesManual.value = { firstName: false, lastName: false };
 }
 
 function create() {
   error.value = '';
-  draft.value = { id: null, name: '', email: '', role: 'it', active: true, password: '', authSource: 'local', hasPassword: false };
+  draft.value = {
+    id: null,
+    name: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    role: 'it',
+    active: true,
+    password: '',
+    authSource: 'local',
+    hasPassword: false,
+  };
   setMode(ldapEnabled.value ? 'directory' : 'local');
 }
 
@@ -150,14 +180,16 @@ async function save() {
   saving.value = true;
   error.value = '';
   try {
+    const names = { firstName: d.firstName, lastName: d.lastName };
     if (d.id) {
-      const body: Record<string, unknown> = { name: d.name, email: d.email, role: d.role, active: d.active };
+      const body: Record<string, unknown> = { name: d.name, ...names, email: d.email, role: d.role, active: d.active };
       if (d.password) body.password = d.password;
       await api.patch(`/admin/users/${d.id}`, body);
     } else if (person.value) {
+      // Name, Vor- und Nachname kommen aus dem AD
       await api.post('/admin/users/directory', { email: person.value.email, role: d.role });
     } else {
-      await api.post('/admin/users', { name: d.name, email: d.email, role: d.role, password: d.password || undefined });
+      await api.post('/admin/users', { name: d.name, ...names, email: d.email, role: d.role, password: d.password || undefined });
     }
     draft.value = null;
     toast.success('Gespeichert');
@@ -260,6 +292,22 @@ async function removePassword() {
           <input id="u-name" v-model="draft.name" class="input" />
         </div>
         <div class="field">
+          <div class="grid-2">
+            <div class="field">
+              <label for="u-first">Vorname</label>
+              <input id="u-first" v-model="draft.firstName" class="input" maxlength="100" @input="namesManual.firstName = true" />
+            </div>
+            <div class="field">
+              <label for="u-last">Nachname</label>
+              <input id="u-last" v-model="draft.lastName" class="input" maxlength="100" @input="namesManual.lastName = true" />
+            </div>
+          </div>
+          <span class="hint">
+            Für die Platzhalter in E-Mail-Vorlagen und Textbausteinen.
+            <template v-if="draft.authSource === 'ldap'">Sie kommen wie Name und E-Mail bei jeder Anmeldung aus dem AD.</template>
+          </span>
+        </div>
+        <div class="field">
           <label for="u-email">E-Mail</label>
           <input id="u-email" v-model="draft.email" class="input" type="email" :disabled="draft.authSource === 'ldap'" />
         </div>
@@ -273,8 +321,8 @@ async function removePassword() {
           <option value="standard">{{ draft.authSource === 'ldap' ? 'Standard – nur Portal' : 'Standard – ohne Anmeldung' }}</option>
         </select>
         <span v-if="draft.authSource === 'ldap'" class="hint">
-          Von Hand gewählt bleibt die Rolle bei jeder Anmeldung, «Aus AD-Gruppen» folgt den Gruppen im AD. Name und E-Mail
-          kommen bei der Anmeldung aus dem AD.
+          Von Hand gewählt bleibt die Rolle bei jeder Anmeldung, «Aus AD-Gruppen» folgt den Gruppen im AD.
+          <template v-if="choosingPerson">Name, Vorname, Nachname und E-Mail kommen aus dem AD, beim Anlegen und bei jeder Anmeldung.</template>
         </span>
       </div>
       <div v-if="adError" class="error-box">{{ adError }}</div>

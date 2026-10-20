@@ -4,6 +4,7 @@ import {
   composeMail,
   exampleValues,
   fill,
+  sameText,
   templateByKey,
   TEMPLATES,
   type TemplateDefinition,
@@ -52,7 +53,10 @@ export class MailTemplatesService {
     });
   }
 
-  /** Speichert eine Vorlage; entspricht sie dem Standard, gilt wieder der Standard. */
+  /**
+   * Speichert eine Vorlage; entspricht sie dem Standard, gilt wieder der Standard. Zeilenumbrüche aus dem Editor («  \n»)
+   * zählen dabei nicht als Abweichung.
+   */
   async save(key: TemplateKey, input: TemplateText): Promise<void> {
     const definition = this.definition(key);
     const overrides = { ...(await this.settings.get('mailTemplates')) };
@@ -60,7 +64,7 @@ export class MailTemplatesService {
     if (definition.subject !== null && input.subject !== null && normalize(input.subject) !== definition.subject) {
       entry.subject = normalize(input.subject);
     }
-    if (definition.body !== null && input.body !== null && normalize(input.body) !== definition.body) {
+    if (definition.body !== null && input.body !== null && !sameText(input.body, definition.body)) {
       entry.body = normalize(input.body);
     }
     if (Object.keys(entry).length > 0) overrides[key] = entry;
@@ -84,13 +88,12 @@ export class MailTemplatesService {
     const reporter = definition.group === 'reporter';
     const shown: TemplateKey = definition.subject === null ? (reporter ? 'confirmation' : 'assigned') : key;
     const version = async (k: TemplateKey): Promise<TemplateText> => (k === key ? draft : this.get(k));
-    const [main, link, footer, { appName }] = await Promise.all([
+    const [main, link, footer] = await Promise.all([
       version(shown),
       version(reporter ? 'reporterLink' : 'staffLink'),
       version(reporter ? 'reporterFooter' : 'staffFooter'),
-      this.settings.get('general'),
     ]);
-    const values: Record<string, string> = { ...exampleValues(this.definition(shown)), ...exampleValues(definition), App: appName };
+    const values: Record<string, string> = { ...exampleValues(this.definition(shown)), ...exampleValues(definition) };
     const composed = composeMail(
       {
         body: shown === 'reply' ? EXAMPLE_REPLY : (main.body ?? ''),

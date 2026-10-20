@@ -5,6 +5,7 @@ import { connect as tlsConnect, type ConnectionOptions, type TLSSocket } from 'n
 import { decryptSecret } from '../common/crypto';
 import type { UserRole } from '../db/schema';
 import type { LdapSettings } from '../settings/settings.service';
+import { splitName } from '../users/user-names';
 import {
   AD_ACCOUNT_STATE_CODES,
   adDataCode,
@@ -18,7 +19,13 @@ import {
   type Explained,
 } from './ldap-errors';
 
-export interface LdapIdentity {
+/** Vor- und Nachname einer Person (Platzhalter in Mails und Textbausteinen). */
+export interface PersonNames {
+  firstName: string;
+  lastName: string;
+}
+
+export interface LdapIdentity extends PersonNames {
   dn: string;
   name: string;
   email: string;
@@ -57,6 +64,30 @@ const AD_ENABLED_ONLY = '(!(userAccountControl:1.2.840.113556.1.4.803:=2))';
 /** Maskiert Werte für LDAP-Filter (RFC 4515). */
 export function escapeFilterValue(value: string): string {
   return value.replace(/[\\*()\0]/g, (c) => `\\${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
+}
+
+/** Attribute für Vor- und Nachname, gleich in Active Directory und OpenLDAP (inetOrgPerson). */
+const NAME_ATTRIBUTES = ['givenName', 'sn'];
+
+/** Filter für das Konto zu einer E-Mail-Adresse: alle Konten, die der Benutzerfilter zulässt, bei AD nur aktive. */
+export function mailFilter(
+  cfg: Pick<LdapSettings, 'userFilter' | 'mailAttribute'>,
+  email: string,
+  isAd: boolean,
+): string {
+  const accounts = cfg.userFilter.split('{{username}}').join('*');
+  return `(&${accounts}(${cfg.mailAttribute}=${escapeFilterValue(email.trim())})${isAd ? AD_ENABLED_ONLY : ''})`;
+}
+
+/**
+ * Vor- und Nachname aus givenName und sn. Fehlen beide (z.B. Dienstkonten), werden sie aus dem Anzeigenamen geschätzt,
+ * ohne Anzeigenamen aus dem Teil der E-Mail-Adresse vor dem @ (siehe splitName).
+ */
+export function directoryNames(values: { givenName: string; sn: string; name: string; email: string }): PersonNames {
+  const firstName = values.givenName.trim();
+  const lastName = values.sn.trim();
+  if (firstName || lastName) return { firstName, lastName };
+  return splitName(values.name.trim() || values.email.split('@')[0]!);
 }
 
 /** Person aus dem Verzeichnis für die Auswahl als Melder oder Beteiligter. */
@@ -119,6 +150,18 @@ function allValues(entry: Entry, attribute: string): string[] {
 }
 
 const sameDn = (a: string, b: string) => a.replace(/\s*,\s*/g, ',').toLowerCase() === b.replace(/\s*,\s*/g, ',').toLowerCase();
+
+/** Name, Vor- und Nachname eines Kontos im Verzeichnis; ohne Anzeigenamen gilt die E-Mail-Adresse als Name. */
+function namesOf(entry: Entry, cfg: LdapSettings, email: string): PersonNames & { name: string } {
+  const name = firstValue(entry, cfg.nameAttribute).trim();
+  return {
+    name: name || email,
+    ...directoryNames({ givenName: firstValue(entry, 'givenName'), sn: firstValue(entry, 'sn'), name, email }),
+  };
+}
+
+/** Attribute ohne doppelte Einträge (z.B. wenn givenName als Attribut für den Namen eingestellt ist). */
+const uniqueAttributes = (...attributes: string[]) => [...new Map(attributes.map((a) => [a.toLowerCase(), a])).values()];
 
 /** TLS-Optionen für LDAPS bzw. STARTTLS: Zertifikatsprüfung, eigene CA, Servername. */
 function tlsOptionsFor(cfg: LdapSettings, host: string): ConnectionOptions {
@@ -207,7 +250,7 @@ export class LdapService {
       return {
         dn: entry.dn,
         email,
-        name: firstValue(entry, cfg.nameAttribute) || email,
+        ...namesOf(entry, cfg, email),
         role: await this.resolveRole(client, cfg, entry),
       };
     } finally {
@@ -264,19 +307,43 @@ export class LdapService {
     try {
       await this.bindServiceAccount(client, cfg);
       const isAd = (await this.readRootDse(client))?.isAd ?? false;
-      const accounts = cfg.userFilter.split('{{username}}').join('*');
-      const filter = `(&${accounts}(${cfg.mailAttribute}=${escapeFilterValue(email.trim())})${isAd ? AD_ENABLED_ONLY : ''})`;
-      const attributes = ['dn', cfg.nameAttribute, cfg.mailAttribute, 'memberOf'];
-      const { entries, more } = await this.searchLimited(client, cfg.baseDn, filter, attributes, 1);
+      const attributes = uniqueAttributes('dn', cfg.nameAttribute, cfg.mailAttribute, 'memberOf', ...NAME_ATTRIBUTES);
+      const { entries, more } = await this.searchLimited(client, cfg.baseDn, mailFilter(cfg, email, isAd), attributes, 1);
       const entry = entries[0];
       if (!entry || more) return null;
       const found = firstValue(entry, cfg.mailAttribute).trim().toLowerCase();
       return {
         dn: entry.dn,
         email: found,
-        name: firstValue(entry, cfg.nameAttribute).trim() || found,
+        ...namesOf(entry, cfg, found),
         role: await this.resolveRole(client, cfg, entry),
       };
+    } finally {
+      await client.unbind().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Vor- und Nachname zu E-Mail-Adressen (neue Kontakte aus Mails), eine Verbindung für alle Adressen. Adressen ohne
+   * eindeutiges Konto (bei Active Directory ohne aktives Konto) fehlen im Ergebnis. Schlüssel in Kleinbuchstaben.
+   */
+  async lookupNames(cfg: LdapSettings, emails: string[]): Promise<Map<string, PersonNames>> {
+    const names = new Map<string, PersonNames>();
+    const wanted = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+    if (wanted.length === 0) return names;
+    const client = await openClient(cfg);
+    try {
+      await this.bindServiceAccount(client, cfg);
+      const isAd = (await this.readRootDse(client))?.isAd ?? false;
+      const attributes = uniqueAttributes(cfg.nameAttribute, cfg.mailAttribute, ...NAME_ATTRIBUTES);
+      for (const email of wanted) {
+        const { entries, more } = await this.searchLimited(client, cfg.baseDn, mailFilter(cfg, email, isAd), attributes, 1);
+        const entry = entries[0];
+        if (!entry || more) continue;
+        const { firstName, lastName } = namesOf(entry, cfg, email);
+        names.set(email, { firstName, lastName });
+      }
+      return names;
     } finally {
       await client.unbind().catch(() => undefined);
     }
@@ -684,7 +751,7 @@ export class LdapService {
       scope: 'sub',
       filter,
       sizeLimit: 2,
-      attributes: ['dn', cfg.nameAttribute, cfg.mailAttribute, 'memberOf'],
+      attributes: uniqueAttributes('dn', cfg.nameAttribute, cfg.mailAttribute, 'memberOf', ...NAME_ATTRIBUTES),
     });
     if (searchEntries.length !== 1) return null;
     return searchEntries[0] ?? null;

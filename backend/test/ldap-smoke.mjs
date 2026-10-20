@@ -137,15 +137,33 @@ await step('Personensuche im Verzeichnis: Name und Anmeldename, ohne Konten ohne
   assert.ok(!(await searchPeople('s')).people.some((p) => p.source === 'directory'), 'Verzeichnis erst ab 2 Zeichen');
 });
 
+await step('Vor- und Nachname aus givenName und sn: vorab angelegt und neue Kontakte', async () => {
+  // Aus dem Namen geschätzt wäre es «Otto von» / «Ober»
+  const otto = (await call(admin, 'POST', '/admin/users/directory', { email: 'otto@test.local', role: 'auto' })).data;
+  assert.deepEqual(
+    [otto.name, otto.firstName, otto.lastName, otto.role, otto.authSource],
+    ['Otto von Ober', 'Otto', 'von Ober', 'admin', 'ldap'],
+  );
+  // Neuer Kontakt (z.B. Absender einer Mail): im Verzeichnis per E-Mail nachgeschlagen, der Name bleibt
+  const sam = (await call(admin, 'POST', '/users/contacts', { email: 'sam@test.local', name: 'sam' })).data;
+  assert.deepEqual([sam.name, sam.firstName, sam.lastName], ['sam', 'Sam', 'Standard']);
+  // Ohne Konto im Verzeichnis aus dem Namen geschätzt
+  const extern = (await call(admin, 'POST', '/users/contacts', { email: 'muster@extern.test', name: 'Muster, Anna' })).data;
+  assert.deepEqual([extern.firstName, extern.lastName], ['Anna', 'Muster']);
+});
+
 await step('Login IT-Benutzer (Benutzername)', async () => {
   const res = await login('lena', 'lena-passwort');
   assert.equal(res.data.role, 'it');
   assert.equal(res.data.email, 'lena@test.local');
   assert.equal(res.data.name, 'Lena Lind');
+  assert.deepEqual([res.data.firstName, res.data.lastName], ['Lena', 'Lind'], 'aus givenName und sn');
 });
 
 await step('Login Admin-Benutzer (E-Mail)', async () => {
-  assert.equal((await login('otto@test.local', 'otto-passwort')).data.role, 'admin');
+  const otto = (await login('otto@test.local', 'otto-passwort')).data;
+  assert.equal(otto.role, 'admin');
+  assert.deepEqual([otto.firstName, otto.lastName], ['Otto', 'von Ober']);
 });
 
 await step('Falsches Passwort, Standard-Benutzer (Portal), ohne Mail', async () => {
@@ -160,7 +178,8 @@ await step('Benutzerliste zeigt LDAP-Benutzer', async () => {
   assert.equal(lena.authSource, 'ldap');
   assert.equal(lena.role, 'it');
   const sam = users.find((u) => u.email === 'sam@test.local');
-  assert.equal(sam.role, 'standard', 'Standard-Benutzer wird beim ersten Login angelegt');
+  assert.equal(sam.role, 'standard', 'Kontakt wird beim ersten Login zum LDAP-Benutzer');
+  assert.deepEqual([sam.authSource, sam.name, sam.firstName, sam.lastName], ['ldap', 'Sam Standard', 'Sam', 'Standard']);
 });
 
 await step('Personensuche: bekannte Konten erscheinen als Patchwork-Benutzer mit Anmeldename', async () => {

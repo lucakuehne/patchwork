@@ -11,6 +11,7 @@ import { InjectDb, type Db } from '../db/db.module';
 import { users, type User } from '../db/schema';
 import { PORTAL_REFUSED, PortalAccessService } from '../portal/portal-access.service';
 import { SettingsService } from '../settings/settings.service';
+import { splitName } from '../users/user-names';
 import { roleAtLogin } from '../users/user-roles';
 import { hashPassword, MIN_PASSWORD_LENGTH, UsersService, verifyPassword } from '../users/users.service';
 import { LdapAccountStateError, LdapService } from './ldap.service';
@@ -74,10 +75,12 @@ export class AuthService {
       throw new ForbiddenException('Für diese E-Mail-Adresse besteht bereits ein lokales Konto.');
     }
 
-    // Anlegen bzw. mit dem Kontakt aus Mails (gleiche E-Mail) zusammenführen; Rolle aus den AD-Gruppen,
-    // ausser sie ist von Hand festgelegt
+    // Anlegen bzw. mit dem Kontakt aus Mails (gleiche E-Mail) zusammenführen; Name, Vor- und Nachname aus dem AD,
+    // Rolle aus den AD-Gruppen, ausser sie ist von Hand festgelegt
     const values = {
       name: identity.name,
+      firstName: identity.firstName,
+      lastName: identity.lastName,
       email: identity.email,
       role: roleAtLogin(existing, identity.role),
       authSource: 'ldap' as const,
@@ -115,7 +118,15 @@ export class AuthService {
       if ((row?.count ?? 0) > 0) throw new ForbiddenException('Patchwork ist bereits eingerichtet.');
 
       const email = input.email.trim().toLowerCase();
-      const values = { name: input.name.trim(), email, role: 'admin' as const, authSource: 'local' as const, passwordHash };
+      const name = input.name.trim();
+      const values = {
+        name,
+        ...splitName(name),
+        email,
+        role: 'admin' as const,
+        authSource: 'local' as const,
+        passwordHash,
+      };
       const [created] = await tx
         .insert(users)
         .values(values)

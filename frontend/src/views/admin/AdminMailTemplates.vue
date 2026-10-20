@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { api, errorMessage } from '../../api';
+import MarkdownEditor from '../../components/MarkdownEditor.vue';
 import { useConfirm } from '../../stores/confirm';
 import { useToast } from '../../stores/toast';
 import type { MailTemplate } from '../../types';
 
-/** Betreff und Text der Mails, die Patchwork verschickt, mit Platzhaltern und Vorschau. */
+/**
+ * Betreff und Text der Mails, die Patchwork verschickt, mit Platzhaltern und Vorschau. Der Text steht im WYSIWYG-Editor
+ * (gespeichert als Markdown), die Fusszeilen als einfacher Text.
+ */
 const toast = useToast();
 const confirm = useConfirm();
 const templates = ref<MailTemplate[]>([]);
@@ -15,7 +19,9 @@ const preview = ref<{ subject: string; html: string } | null>(null);
 const previewError = ref('');
 const saving = ref(false);
 const subjectInput = ref<HTMLInputElement | null>(null);
+/** Fusszeilen: einfacher Text */
 const bodyInput = ref<HTMLTextAreaElement | null>(null);
+const bodyEditor = ref<InstanceType<typeof MarkdownEditor> | null>(null);
 /** Wohin «Platzhalter einfügen» schreibt: das zuletzt benutzte Feld */
 const target = ref<'subject' | 'body'>('body');
 let previewTimer: number | undefined;
@@ -27,6 +33,11 @@ const GROUPS = [
 ] as const;
 
 const current = computed(() => templates.value.find((t) => t.key === currentKey.value) ?? null);
+/** Text für den Editor (nur bei Vorlagen mit Text angezeigt) */
+const bodyText = computed({
+  get: () => draft.value.body ?? '',
+  set: (value: string) => (draft.value.body = value),
+});
 const dirty = computed(
   () => !!current.value && (draft.value.subject !== current.value.subject || draft.value.body !== current.value.body),
 );
@@ -132,6 +143,10 @@ function discard() {
 /** Platzhalter an der Cursorposition im zuletzt benutzten Feld einfügen. */
 async function insert(name: string) {
   const token = `{{${name}}}`;
+  if (target.value === 'body' && bodyEditor.value) {
+    bodyEditor.value.insertText(token);
+    return;
+  }
   const field = target.value === 'subject' ? subjectInput.value : bodyInput.value;
   const key = target.value;
   const value = draft.value[key];
@@ -150,8 +165,9 @@ async function insert(name: string) {
     <h1>E-Mail-Vorlagen</h1>
     <p class="muted intro">
       Betreff und Text der Mails, die Patchwork verschickt. Platzhalter wie <code v-text="'{{Titel}}'" /> ersetzt Patchwork beim
-      Versand. Vor jeden Betreff setzt Patchwork die Nummer des Vorgangs, z.B. <code>[PW-123]</code>, damit Antworten richtig
-      zugeordnet werden. Der Text ist Markdown, z.B. <code>**fett**</code> oder <code>[Link](https://…)</code>.
+      Versand, eingefügt werden sie per Klick an der Cursorposition. Vor jeden Betreff setzt Patchwork die Nummer des Vorgangs,
+      z.B. <code>[PW-123]</code>, damit Antworten richtig zugeordnet werden. Für einen Link auf den Vorgang den Text markieren,
+      «Link» wählen und als Adresse <code v-text="'{{Link}}'" /> eintragen.
     </p>
 
     <div class="layout">
@@ -193,15 +209,21 @@ async function insert(name: string) {
           </div>
         </div>
 
-        <div v-if="current.body !== null" class="field">
-          <label for="tpl-body">{{ current.plain ? 'Text (ohne Formatierung)' : 'Text (Markdown)' }}</label>
-          <textarea
-            id="tpl-body"
-            ref="bodyInput"
-            v-model="draft.body"
-            class="textarea mono"
-            :rows="current.plain ? 3 : 10"
-            @focus="target = 'body'"
+        <div v-if="current.body !== null && current.plain" class="field">
+          <label for="tpl-body">Text (ohne Formatierung)</label>
+          <textarea id="tpl-body" ref="bodyInput" v-model="draft.body" class="textarea mono" rows="3" @focus="target = 'body'" />
+        </div>
+        <div v-else-if="current.body !== null" class="field" @focusin="target = 'body'">
+          <span class="label">Text</span>
+          <!-- Pro Vorlage ein eigener Editor, damit «Rückgängig» nicht in die vorherige Vorlage zurückführt -->
+          <MarkdownEditor
+            :key="current.key"
+            ref="bodyEditor"
+            v-model="bodyText"
+            :images="false"
+            template
+            :min-height="200"
+            @submit="dirty && !saving && save()"
           />
         </div>
         <p v-else class="hint faint">Den Text schreibt der Bearbeiter in der Timeline. Hier lässt sich nur der Betreff anpassen.</p>

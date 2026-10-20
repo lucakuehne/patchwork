@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { AD_USER_FILTER, escapeFilterValue, loginAttributes, parseLdapUrl, peopleFilter } from './ldap.service';
+import {
+  AD_USER_FILTER,
+  directoryNames,
+  escapeFilterValue,
+  loginAttributes,
+  mailFilter,
+  parseLdapUrl,
+  peopleFilter,
+} from './ldap.service';
 
 describe('parseLdapUrl', () => {
   it('liest Host, Port und TLS', () => {
@@ -47,5 +55,49 @@ describe('Personensuche im Verzeichnis', () => {
     expect(filter).toContain('(!(userAccountControl:1.2.840.113556.1.4.803:=2))');
     expect(filter).toContain('(sAMAccountName=*kühne*)');
     expect(filter).toContain('(sAMAccountName=*)');
+  });
+});
+
+describe('Konto zu einer E-Mail-Adresse', () => {
+  it('sucht die Adresse unter allen Konten des Benutzerfilters, maskiert', () => {
+    const openLdap = { userFilter: '(&(objectClass=inetOrgPerson)(uid={{username}}))', mailAttribute: 'mail' };
+    expect(mailFilter(openLdap, ' lena*@test.local ', false)).toBe(
+      '(&(&(objectClass=inetOrgPerson)(uid=*))(mail=lena\\2a@test.local))',
+    );
+  });
+
+  it('nimmt bei Active Directory nur aktive Konten', () => {
+    expect(mailFilter({ userFilter: AD_USER_FILTER, mailAttribute: 'mail' }, 'lena@test.local', true)).toMatch(
+      /\(mail=lena@test\.local\)\(!\(userAccountControl:1\.2\.840\.113556\.1\.4\.803:=2\)\)\)$/,
+    );
+  });
+});
+
+describe('Vor- und Nachname aus dem Verzeichnis', () => {
+  const email = 'lena.lind@test.local';
+
+  it('nimmt givenName und sn', () => {
+    expect(directoryNames({ givenName: ' Lena ', sn: 'Lind', name: 'Lind, Lena (IT)', email })).toEqual({
+      firstName: 'Lena',
+      lastName: 'Lind',
+    });
+  });
+
+  it('übernimmt auch nur einen der beiden Werte', () => {
+    expect(directoryNames({ givenName: '', sn: 'Helpdesk', name: 'IT Helpdesk', email })).toEqual({
+      firstName: '',
+      lastName: 'Helpdesk',
+    });
+  });
+
+  it('schätzt ohne givenName und sn aus dem Namen', () => {
+    expect(directoryNames({ givenName: '', sn: ' ', name: 'Muster, Anna', email })).toEqual({
+      firstName: 'Anna',
+      lastName: 'Muster',
+    });
+  });
+
+  it('schätzt ohne Namen aus der E-Mail-Adresse', () => {
+    expect(directoryNames({ givenName: '', sn: '', name: ' ', email })).toEqual({ firstName: 'Lena', lastName: 'Lind' });
   });
 });

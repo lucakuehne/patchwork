@@ -603,9 +603,11 @@ export class ItemsService {
   async addParticipant(actor: User, number: number, email: string, name?: string): Promise<void> {
     const own = await this.mailboxes.ownAddresses();
     if (own.has(email.toLowerCase())) throw new BadRequestException('Eigene Postfächer können nicht beteiligt werden');
+    // Vor- und Nachname einer neuen Person aus dem AD, vor der Transaktion (Abfrage übers Netz)
+    const directory = await this.users.directoryNames([email]);
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, number);
-      const user = await this.users.findOrCreateContact(email, name, tx);
+      const user = await this.users.findOrCreateContact(email, name, tx, directory);
       if (user.id === item.reporterId) throw new BadRequestException('Diese Person ist bereits Melder');
       const inserted = await tx
         .insert(participants)
@@ -944,9 +946,11 @@ export class ItemsService {
     updatedAt: Date;
     closedAt: Date | null;
     status: { id: string | null; label: string | null; closed: boolean | null; color: string | null } | null;
-    reporter: { id: string; name: string; email: string; role: User['role'] };
+    reporter: { id: string; name: string; firstName: string; lastName: string; email: string; role: User['role'] };
     assigneeId: string | null;
     assigneeName: string | null;
+    assigneeFirstName: string | null;
+    assigneeLastName: string | null;
     suggestedType: ItemType | null;
     checklistTotal: number;
     checklistDone: number;
@@ -966,7 +970,14 @@ export class ItemsService {
       closedAt: r.closedAt,
       status: r.status?.id ? r.status : null,
       reporter: r.reporter,
-      assignee: r.assigneeId ? { id: r.assigneeId, name: r.assigneeName ?? '' } : null,
+      assignee: r.assigneeId
+        ? {
+            id: r.assigneeId,
+            name: r.assigneeName ?? '',
+            firstName: r.assigneeFirstName ?? '',
+            lastName: r.assigneeLastName ?? '',
+          }
+        : null,
       suggestedType: r.suggestedType,
       // Checklisten gibt es nur bei Aufgaben
       checklist: r.type === 'task' && r.checklistTotal > 0 ? { done: r.checklistDone, total: r.checklistTotal } : null,

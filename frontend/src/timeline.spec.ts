@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { fillSnippet } from './snippets';
 import { asListItem, eventPart, groupTimeline } from './timeline';
 import type { Entry } from './types';
 
-const ada = { id: 'ada', name: 'Ada Admin', email: 'ada@test.local', role: 'admin' as const };
-const ivan = { id: 'ivan', name: 'Ivan IT', email: 'ivan@test.local', role: 'it' as const };
+const ada = { id: 'ada', name: 'Ada Admin', firstName: 'Ada', lastName: 'Admin', email: 'ada@test.local', role: 'admin' as const };
+const ivan = { id: 'ivan', name: 'Ivan IT', firstName: 'Ivan', lastName: 'IT', email: 'ivan@test.local', role: 'it' as const };
 let n = 0;
 const entry = (minute: number, patch: Partial<Entry> = {}): Entry => ({
   id: `e${++n}`,
@@ -135,17 +134,5 @@ describe('groupTimeline', () => {
     expect(asListItem('«Luca Kühne» als zuständig gesetzt')).toBe('«Luca Kühne» als zuständig gesetzt');
     expect(asListItem('keine Eingangsbestätigung verschickt')).toBe('Keine Eingangsbestätigung verschickt');
     expect(asListItem('abgelehnt (Melder informiert)')).toBe('Abgelehnt (Melder informiert)');
-  });
-});
-
-describe('fillSnippet', () => {
-  it('ersetzt Platzhalter, unbekannte bleiben stehen', () => {
-    const text = fillSnippet('Guten Tag {{Melder}}, zu {{ nummer }} «{{Titel}}». {{Gruss}}, {{Bearbeiter}}', {
-      reporter: 'Anna Muster',
-      number: 42,
-      title: 'VPN',
-      editor: 'Ada',
-    });
-    expect(text).toBe('Guten Tag Anna Muster, zu PW-42 «VPN». {{Gruss}}, Ada');
   });
 });

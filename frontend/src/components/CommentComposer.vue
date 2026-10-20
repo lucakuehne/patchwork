@@ -21,14 +21,15 @@ const error = ref('');
 const session = useSession();
 const editor = ref<InstanceType<typeof MarkdownEditor> | null>(null);
 
-/** Textbaustein mit ersetzten Platzhaltern an der Cursorposition einfügen */
+/** Textbaustein mit ersetzten Platzhaltern an der Cursorposition einfügen; Bearbeiter = wer ihn einfügt */
 function insertSnippet(snippet: Snippet) {
   editor.value?.insertMarkdown(
     fillSnippet(snippet.body, {
-      reporter: props.item.reporter.name,
       number: props.item.number,
       title: props.item.title,
-      editor: session.user?.name ?? '',
+      reporter: props.item.reporter,
+      assignee: props.item.assignee,
+      editor: session.user,
     }),
   );
 }

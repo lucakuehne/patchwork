@@ -212,7 +212,9 @@ export class StatusesService {
           if (TARGET_CLOSED[target] !== input.closed) {
             throw new BadRequestException(
               `«${current.label}» ist «${TARGET_LABELS[target]}» und muss ${TARGET_CLOSED[target] ? 'abgeschlossen' : 'offen'} bleiben. ` +
-                'Zuerst unter «Automatische Wechsel» einen anderen Status wählen.',
+                (target === 'start'
+                  ? 'Zuerst im Diagramm den Startpfeil auf einen anderen Status ziehen.'
+                  : 'Zuerst unter «Automatische Wechsel» einen anderen Status wählen.'),
             );
           }
         }

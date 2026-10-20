@@ -19,10 +19,8 @@ const root = ref<HTMLElement | null>(null);
 async function select(person: PersonPick) {
   open.value = false;
   try {
-    const user =
-      person.id && person.role
-        ? { id: person.id, name: person.name, email: person.email, role: person.role }
-        : await api.post<User>('/users/contacts', { email: person.email, ...(person.name ? { name: person.name } : {}) });
+    // Liefert auch bestehende Benutzer vollständig (mit Vor- und Nachname)
+    const user = await api.post<User>('/users/contacts', { email: person.email, ...(person.name ? { name: person.name } : {}) });
     emit('update:modelValue', user);
   } catch (err) {
     toast.error(err);

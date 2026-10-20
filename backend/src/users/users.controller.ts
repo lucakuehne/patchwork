@@ -23,8 +23,14 @@ import { toAdminUser, toPublicUser, UsersService } from './users.service';
 
 const roleSchema = z.enum(['admin', 'it', 'standard']);
 
+/** Vor- bzw. Nachname, darf leer sein (z.B. Konto ohne Nachname) */
+const namePartSchema = z.string().trim().max(100, 'Höchstens 100 Zeichen');
+
 const createSchema = z.object({
   name: z.string().trim().min(1, 'Name fehlt').max(200),
+  /** Ohne Angabe aus dem Namen geschätzt */
+  firstName: namePartSchema.optional(),
+  lastName: namePartSchema.optional(),
   email: emailSchema,
   role: roleSchema,
   password: z.string().max(500).optional(),
@@ -40,6 +46,8 @@ const directorySchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().trim().min(1, 'Name fehlt').max(200).optional(),
+  firstName: namePartSchema.optional(),
+  lastName: namePartSchema.optional(),
   email: emailSchema.optional(),
   role: roleChoiceSchema.optional(),
   active: z.boolean().optional(),
@@ -124,10 +132,14 @@ export class UsersController {
     return { people, directoryError };
   }
 
-  /** Legt einen Kontakt (Rolle Standard, ohne Login) an oder liefert den vorhandenen Benutzer. */
+  /**
+   * Legt einen Kontakt (Rolle Standard, ohne Login) an oder liefert den vorhandenen Benutzer. Vor- und Nachname
+   * neuer Kontakte kommen bei aktiver LDAP-Anmeldung aus dem AD, sonst aus dem Namen.
+   */
   @Post('users/contacts')
   async contact(@Body(new ZodPipe(contactSchema)) body: z.infer<typeof contactSchema>) {
-    return toPublicUser(await this.users.findOrCreateContact(body.email, body.name));
+    const directory = await this.users.directoryNames([body.email]);
+    return toPublicUser(await this.users.findOrCreateContact(body.email, body.name, undefined, directory));
   }
 
   @AdminOnly()

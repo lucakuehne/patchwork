@@ -42,6 +42,9 @@ export const linkKind = pgEnum('link_kind', ['relates', 'fixes', 'duplicate']);
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
+  /** Vor- und Nachname für Platzhalter in Mails und Textbausteinen; AD-Konten aus givenName/sn, sonst aus dem Namen geschätzt */
+  firstName: text('first_name').notNull().default(''),
+  lastName: text('last_name').notNull().default(''),
   /** Immer in Kleinbuchstaben gespeichert. */
   email: text('email').notNull().unique(),
   role: userRole('role').notNull().default('standard'),
@@ -534,7 +537,7 @@ export const ruleRuns = pgTable(
 export const snippets = pgTable('snippets', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  /** Markdown mit Platzhaltern wie {{Melder}} */
+  /** Markdown mit Platzhaltern wie {{Melder Vorname}} */
   body: text('body').notNull(),
   createdAt: createdAt(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

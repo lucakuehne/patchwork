@@ -412,8 +412,10 @@ export class MailFetcherService implements OnModuleInit {
       body: (parsed.text ?? '').trim(),
       mailboxId: mailbox.id,
     });
+    // Vor- und Nachname neuer Kontakte aus dem AD, ebenfalls vor der Transaktion
+    const directory = await this.users.directoryNames([from.address, ...cc.map((p) => p.address)]);
     const item = await this.db.transaction(async (tx) => {
-      const reporter = await this.users.findOrCreateContact(from.address, from.name, tx);
+      const reporter = await this.users.findOrCreateContact(from.address, from.name, tx, directory);
       const [created] = await tx
         .insert(items)
         .values({
@@ -435,7 +437,7 @@ export class MailFetcherService implements OnModuleInit {
           .where(eq(items.id, created!.id));
       }
       for (const person of cc) {
-        const user = await this.users.findOrCreateContact(person.address, person.name, tx);
+        const user = await this.users.findOrCreateContact(person.address, person.name, tx, directory);
         if (user.id !== reporter.id) {
           await tx.insert(participants).values({ itemId: created!.id, userId: user.id }).onConflictDoNothing();
         }
@@ -476,11 +478,13 @@ export class MailFetcherService implements OnModuleInit {
     const rules = automated
       ? null
       : await this.rules.prepare('mail_reply', { sender: from.address, subject: parsed.subject ?? '', body: text, mailboxId: mailbox.id });
+    // Vor- und Nachname neuer Kontakte aus dem AD, nicht innerhalb der Transaktion
+    const directory = await this.users.directoryNames([from.address, ...cc.map((p) => p.address)]);
 
     await this.db.transaction(async (tx) => {
       const [locked] = await tx.select().from(items).where(eq(items.id, item.id)).for('update').limit(1);
       if (!locked) return;
-      const author = await this.users.findOrCreateContact(from.address, from.name, tx);
+      const author = await this.users.findOrCreateContact(from.address, from.name, tx, directory);
       const [participant] = await tx
         .select()
         .from(participants)
@@ -515,7 +519,7 @@ export class MailFetcherService implements OnModuleInit {
 
       if (involved) {
         for (const person of cc) {
-          const user = await this.users.findOrCreateContact(person.address, person.name, tx);
+          const user = await this.users.findOrCreateContact(person.address, person.name, tx, directory);
           if (user.id !== locked.reporterId) {
             await tx.insert(participants).values({ itemId: locked.id, userId: user.id }).onConflictDoNothing();
           }

@@ -3,13 +3,12 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { sign } from '../common/crypto';
 import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
-import { attachments, mailMessages, mutes, participants, statuses, users, type Item, type User } from '../db/schema';
+import { attachments, items, mailMessages, mutes, participants, statuses, users, type Item, type User } from '../db/schema';
 import { embedImageTags, imagesAsText, imageSize, type EmbeddedImage } from '../items/inline-images';
 import { PortalAccessService } from '../portal/portal-access.service';
-import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
 import { itemRef, subjectFor } from './mail-content';
-import { composeMail, fill, type TemplateKey } from './mail-templates';
+import { composeMail, fill, personValues, type TemplateKey } from './mail-templates';
 import { MailTemplatesService } from './mail-templates.service';
 import { MailboxesService } from './mailboxes.service';
 import { MailSenderService, newMessageId } from './mail-sender.service';
@@ -43,14 +42,17 @@ export class NotificationsService {
     @InjectDb() private readonly db: Db,
     private readonly mailboxes: MailboxesService,
     private readonly sender: MailSenderService,
-    private readonly settings: SettingsService,
     private readonly templates: MailTemplatesService,
     private readonly storage: StorageService,
     private readonly portalAccess: PortalAccessService,
   ) {}
 
-  /** Eingangsbestätigung an den Melder. */
-  async confirmation(item: Item): Promise<void> {
+  /**
+   * Eingangsbestätigung an den Melder. Der Vorgang wird neu gelesen: Regeln für neue Vorgänge (Zuständig, Typ) sind dann
+   * schon gespeichert, z.B. für {{Zuständig Vorname}} und {{Status}}.
+   */
+  async confirmation(created: Item): Promise<void> {
+    const [item = created] = await this.db.select().from(items).where(eq(items.id, created.id)).limit(1);
     const reporter = await this.eligible(item, item.reporterId, null);
     if (!reporter) return;
     await this.sendToReporter(item, [reporter.email], [], { template: 'confirmation', automated: true });
@@ -126,6 +128,8 @@ export class NotificationsService {
       values: {
         Duplikat: `${itemRef(duplicate.number)} «${duplicate.title}»`,
         Original: `${itemRef(original.number)} «${original.title}»`,
+        // Die Mail geht an den Melder des Duplikats; bei einem anderen Melder als beim Original nennt sie ihn
+        ...personValues('Melder', reporter ?? (await this.user(duplicate.reporterId))),
       },
       automated: true,
       // Im Portal sieht der Melder sein Duplikat; das Original nur, wenn er auch dort Melder ist
@@ -167,10 +171,14 @@ export class NotificationsService {
     });
   }
 
-  /** Werte der Platzhalter, die jede Mail zu einem Vorgang kennt. */
+  /**
+   * Werte der Platzhalter, die jede Mail zu einem Vorgang kennt. Vor- und Nachname von Melder und Zuständigem aus den
+   * Benutzern des Vorgangs, ohne Zuständigen leer.
+   */
   private async itemValues(item: Item, link: string): Promise<Record<string, string>> {
-    const [reporter, status, { appName }] = await Promise.all([
+    const [reporter, assignee, status] = await Promise.all([
       this.user(item.reporterId),
+      item.assigneeId ? this.user(item.assigneeId) : undefined,
       item.statusId
         ? this.db
             .select({ label: statuses.label })
@@ -178,9 +186,15 @@ export class NotificationsService {
             .where(eq(statuses.id, item.statusId))
             .then((r) => r[0]?.label ?? '')
         : '',
-      this.settings.get('general'),
     ]);
-    return { Nummer: itemRef(item.number), Titel: item.title, Status: status, Melder: reporter?.name ?? '', App: appName, Link: link };
+    return {
+      Nummer: itemRef(item.number),
+      Titel: item.title,
+      Status: status,
+      ...personValues('Melder', reporter),
+      ...personValues('Zuständig', assignee),
+      Link: link,
+    };
   }
 
   /** Betreff aus der Vorlage; die Nummer steht immer davor, damit Antworten zugeordnet werden. */
@@ -277,7 +291,7 @@ export class NotificationsService {
       this.logger.warn(`Kein aktives Postfach für Benachrichtigungen zu ${itemRef(item.number)}`);
       return;
     }
-    const values = { ...(await this.itemValues(item, `${appConfig.publicUrl}/v/${item.number}`)), Zuständig: recipient.name, ...extra };
+    const values = { ...(await this.itemValues(item, `${appConfig.publicUrl}/v/${item.number}`)), ...extra };
     const [template, link, footer] = await Promise.all([
       this.templates.get(key),
       this.templates.get('staffLink'),

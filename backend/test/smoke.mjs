@@ -25,6 +25,7 @@ const ANNA = `anna-${RUN}@test.local`;
 const BOB = `bob-${RUN}@test.local`;
 const IVAN = `ivan-${RUN}@test.local`;
 const CARLA = `carla-${RUN}@test.local`;
+const BERTA = `berta-${RUN}@test.local`;
 const FREMD = `fremd-${RUN}@test.local`;
 const NEWS = `news-${RUN}@shop.test`;
 
@@ -135,6 +136,8 @@ await step('Einrichtungs-Assistent legt Admin an', async () => {
   await api('POST', '/setup', { appName: 'Patchwork Test', name: 'Ada Admin', email: 'ada@test.local', password: 'geheim-geheim' });
   const me = await api('GET', '/auth/me');
   assert.equal(me.user.role, 'admin');
+  // Vor- und Nachname für {{Bearbeiter Vorname}} und {{Bearbeiter Nachname}} der Textbausteine
+  assert.deepEqual([me.user.firstName, me.user.lastName], ['Ada', 'Admin']);
   assert.equal((await api('GET', '/public/info')).setupRequired, false);
   await api('POST', '/setup', { appName: 'x', name: 'x', email: 'x@test.local', password: 'geheim-geheim' }, { expect: [403] });
 });
@@ -170,6 +173,28 @@ await step('IT-Benutzer anlegen', async () => {
       ['Sonstiges', 'other', null],
     ],
   );
+});
+
+await step('Vor- und Nachname: aus dem Namen geschätzt oder angegeben, von Hand änderbar', async () => {
+  // Ohne Angabe aus dem Namen geschätzt: letztes Wort = Nachname
+  assert.deepEqual([ivan.firstName, ivan.lastName], ['Ivan', 'IT']);
+  // Angegeben (geschätzt wäre «Berta von» / «Arx»), getrimmt
+  const berta = await api('POST', '/admin/users', {
+    name: 'Berta von Arx',
+    firstName: ' Berta ',
+    lastName: 'von Arx',
+    email: BERTA,
+    role: 'standard',
+  });
+  assert.deepEqual([berta.name, berta.firstName, berta.lastName], ['Berta von Arx', 'Berta', 'von Arx']);
+  // Von Hand geändert, der Name bleibt. In den Mails unten heisst Ivan deshalb «Ivan Informatik».
+  const changed = await api('PATCH', `/admin/users/${ivan.id}`, { firstName: 'Ivan', lastName: ' Informatik ' });
+  assert.deepEqual([changed.name, changed.firstName, changed.lastName], ['Ivan IT', 'Ivan', 'Informatik']);
+  await api('PATCH', `/admin/users/${ivan.id}`, { firstName: 'Ivan', lastName: 'x'.repeat(101) }, { expect: [400] });
+  const listed = (await api('GET', '/admin/users')).find((u) => u.id === ivan.id);
+  assert.deepEqual([listed.firstName, listed.lastName], ['Ivan', 'Informatik'], 'höchstens 100 Zeichen, unverändert');
+  const staff = (await api('GET', '/users/staff')).find((u) => u.id === ivan.id);
+  assert.deepEqual([staff.firstName, staff.lastName], ['Ivan', 'Informatik']);
 });
 
 await step('Postfach anlegen und testen', async () => {
@@ -223,6 +248,7 @@ await step('Mail mit CC landet im Eingang, Bestätigung an Melder', async () => 
   assert.equal(item.status, null);
   assert.equal(item.reporter.email, ANNA);
   assert.equal(item.reporter.name, 'Anna Muster');
+  assert.deepEqual([item.reporter.firstName, item.reporter.lastName], ['Anna', 'Muster'], 'Kontakt aus Mail: aus dem Namen geschätzt');
   assert.deepEqual(item.participants.map((p) => p.email), [BOB]);
   assert.ok(item.descriptionHtml.includes('<b>VPN</b>'));
   assert.ok(!item.descriptionHtml.includes('script'));
@@ -234,6 +260,9 @@ await step('Mail mit CC landet im Eingang, Bestätigung an Melder', async () => 
   assert.ok(/auto-submitted: auto-generated/i.test(confirmation.headers));
   // Das Portal ist ohne Einstellung aus: kein Link dorthin
   assert.ok(!confirmation.source.includes('/portal/v/'), 'ohne Portal keine Link-Zeile');
+  // Standard-Fusszeile einer neuen Installation: ohne App-Namen
+  assert.ok(confirmation.text.includes(`Bitte lassen Sie bei Antworten die Nummer [PW-${itemNo}] im Betreff stehen.`), confirmation.text);
+  assert.ok(!confirmation.text.includes('Patchwork Test'), 'kein App-Name in der Mail');
 });
 
 await step('Abgeholte Mail bleibt ungelesen im Postfach', async () => {
@@ -266,7 +295,11 @@ await step('Typ zuweisen: Störung mit Status «Neu»', async () => {
 
 await step('Zuweisen: Mail an Zuständigen', async () => {
   await api('PATCH', `/items/${itemNo}`, { assigneeId: ivan.id, priority: 'high' });
-  await waitForMail(IVAN, (m) => m.subject === `[PW-${itemNo}] Zugewiesen: VPN verbindet nicht`, 'Zuweisung');
+  const mail = await waitForMail(IVAN, (m) => m.subject === `[PW-${itemNo}] Zugewiesen: VPN verbindet nicht`, 'Zuweisung');
+  // Standardtext mit Vor- und Nachname des Melders, Standard-Fusszeile ohne App-Namen
+  assert.ok(mail.text.includes(`Melder: Anna Muster (${ANNA})`), mail.text);
+  assert.ok(mail.text.includes(`Benachrichtigung zu PW-${itemNo}`), mail.text);
+  assert.ok(!mail.text.includes('Patchwork Test'), 'kein App-Name in der Mail');
   const mine = await api('GET', '/items?view=incidents&mine=1');
   assert.equal(mine.items.length, 0, 'Ada ist nicht zuständig');
 });
@@ -1221,7 +1254,8 @@ await step('Personensuche: Name und E-Mail in Patchwork, ohne Verzeichnis', asyn
   );
   assert.ok((await api('GET', `/people/search?q=${encodeURIComponent(BOB)}`)).people.some((p) => p.email === BOB));
   await api('POST', `/items/${itemNo}/participants`, { email: `neu-${RUN}@test.local`, name: 'Nora Neu' });
-  assert.ok((await detail(itemNo)).participants.some((p) => p.name === 'Nora Neu'));
+  const nora = (await detail(itemNo)).participants.find((p) => p.name === 'Nora Neu');
+  assert.deepEqual([nora.firstName, nora.lastName], ['Nora', 'Neu'], 'neuer Kontakt: aus dem Namen geschätzt');
 });
 
 // ---------------------------------------------------------------- Etappe 3
@@ -1527,18 +1561,25 @@ await step('Board: abgeschlossene Spalten zeigen nur die letzten 14 Tage', async
 });
 
 await step('Textbausteine: Admin pflegt, IT liest', async () => {
+  // Platzhalter füllt die Oberfläche beim Einfügen; gespeichert wird der Text unverändert
   const snippet = await api('POST', '/admin/snippets', {
     name: 'Passwort zurückgesetzt',
-    body: 'Guten Tag {{Melder}}\r\n\r\nIhr Passwort wurde zurückgesetzt.',
+    body: 'Guten Tag {{Melder Vorname}} {{Melder Nachname}}\r\n\r\nIhr Passwort wurde zurückgesetzt.\r\n\r\n{{Bearbeiter Vorname}} {{Bearbeiter Nachname}}',
   });
-  assert.equal(snippet.body, 'Guten Tag {{Melder}}\n\nIhr Passwort wurde zurückgesetzt.');
+  assert.equal(
+    snippet.body,
+    'Guten Tag {{Melder Vorname}} {{Melder Nachname}}\n\nIhr Passwort wurde zurückgesetzt.\n\n{{Bearbeiter Vorname}} {{Bearbeiter Nachname}}',
+  );
   await api('POST', '/admin/snippets', { name: 'Leer', body: '  ' }, { expect: [400] });
   await loginAs(IVAN, 'geheim-geheim');
   assert.ok((await api('GET', '/snippets')).some((s) => s.id === snippet.id));
   await api('POST', '/admin/snippets', { name: 'x', body: 'y' }, { expect: [403] });
   await loginAs('ada@test.local', 'geheim-geheim');
-  await api('PUT', `/admin/snippets/${snippet.id}`, { name: 'Passwort neu gesetzt', body: 'Erledigt, {{Melder}}.' });
-  assert.equal((await api('GET', '/snippets')).find((s) => s.id === snippet.id).name, 'Passwort neu gesetzt');
+  // Formatierung aus dem WYSIWYG-Editor als Markdown
+  const body = '**Erledigt**, {{Melder Vorname}}.\n\n- Zuständig: {{Zuständig Vorname}} {{Zuständig Nachname}}\n- Vorgang: {{Nummer}} «{{Titel}}»';
+  await api('PUT', `/admin/snippets/${snippet.id}`, { name: 'Passwort neu gesetzt', body });
+  const updated = (await api('GET', '/snippets')).find((s) => s.id === snippet.id);
+  assert.deepEqual([updated.name, updated.body], ['Passwort neu gesetzt', body]);
 });
 
 await step('Auswertungen: Kennzahlen pro Zeitraum, CSV, nur für Admin', async () => {
@@ -1707,30 +1748,83 @@ await step('Testbetrieb teilweise: nur freigegebene Empfänger erhalten die Mail
   assert.equal((await api('GET', '/public/info')).testMode, false);
 });
 
-await step('E-Mail-Vorlagen: angepasste Eingangsbestätigung, Vorschau und zurück zum Standard', async () => {
+await step('E-Mail-Vorlagen: Platzhalter mit Vor- und Nachname, ohne {{App}}, Vorschau und zurück zum Standard', async () => {
   const templates = await api('GET', '/admin/mail-templates');
-  const standard = templates.find((t) => t.key === 'confirmation');
-  assert.equal(standard.custom, false);
-  assert.ok(standard.placeholders.some((p) => p.name === 'Nummer'));
+  const template = (key) => templates.find((t) => t.key === key);
+  const names = (key) => template(key).placeholders.map((p) => p.name);
+  assert.equal(template('confirmation').custom, false);
+  for (const name of ['Nummer', 'Melder Vorname', 'Melder Nachname', 'Zuständig Vorname', 'Zuständig Nachname']) {
+    assert.ok(names('confirmation').includes(name), `Eingangsbestätigung: {{${name}}}`);
+  }
+  assert.ok(names('assigned').includes('Zuständig Vorname') && names('assigned').includes('Zuständig Nachname'));
+  // {{Melder}} und {{Zuständig}} (ganzer Name) und {{App}} gibt es nicht mehr, in keiner Vorlage
+  for (const t of templates) {
+    assert.deepEqual(t.placeholders.map((p) => p.name).filter((n) => ['Melder', 'Zuständig', 'App'].includes(n)), [], t.key);
+  }
+  // Standard-Fusszeilen einer neuen Installation: ohne App-Namen
+  assert.deepEqual(
+    ['reporterFooter', 'staffFooter'].map((key) => [template(key).body, template(key).custom]),
+    [
+      ['Bitte lassen Sie bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.', false],
+      ['Benachrichtigung zu {{Nummer}}', false],
+    ],
+  );
 
-  await api('PUT', '/admin/mail-templates/confirmation', {
+  // Vorschau mit Beispieldaten (Melder Anna Muster, Zuständig Ivan IT)
+  const preview = await api('POST', '/admin/mail-templates/confirmation/preview', {
     subject: 'Eingang: {{Titel}}',
-    body: 'Hallo {{Melder}}\n\nIhre Nummer: **{{Nummer}}**',
+    body: 'Nr. {{Nummer}} von {{Melder Vorname}} {{Melder Nachname}} für {{Zuständig Vorname}} {{Zuständig Nachname}}',
   });
-  const preview = await api('POST', '/admin/mail-templates/confirmation/preview', { subject: 'Eingang: {{Titel}}', body: 'Nr. {{Nummer}}' });
   assert.equal(preview.subject, '[PW-123] Eingang: Drucker druckt nicht');
   assert.match(preview.html, /Nr\. PW-123/);
+  assert.ok(preview.text.includes('Nr. PW-123 von Anna Muster für Ivan IT'), preview.text);
+  // Die alten Platzhalter bleiben als Text stehen, der App-Name wird nicht mehr eingesetzt
+  const old = await api('POST', '/admin/mail-templates/assigned/preview', { subject: '{{Titel}}', body: 'Alt: {{Melder}} / {{Zuständig}} / {{App}}' });
+  assert.ok(old.text.startsWith('Alt: {{Melder}} / {{Zuständig}} / {{App}}'), old.text);
+  assert.ok(!old.text.includes('Patchwork Test'), old.text);
 
+  // Angepasste Vorlagen: Werte aus Melder und Zuständigem des Vorgangs, ohne Zuweisung leer
+  await api('PUT', '/admin/mail-templates/confirmation', {
+    subject: 'Eingang: {{Titel}}',
+    body: 'Hallo {{Melder Vorname}} {{Melder Nachname}}\n\nIhre Nummer: **{{Nummer}}**, zuständig: «{{Zuständig Vorname}}{{Zuständig Nachname}}» {{App}}',
+  });
+  await api('PUT', '/admin/mail-templates/assigned', {
+    subject: 'Zugewiesen: {{Titel}}',
+    body: 'Für {{Zuständig Vorname}} {{Zuständig Nachname}}: {{Nummer}} von {{Melder Vorname}} {{Melder Nachname}}',
+  });
+  await api('PUT', '/admin/mail-templates/done', {
+    subject: '{{Status}}: {{Titel}}',
+    body: 'Hallo {{Melder Vorname}}, {{Zuständig Vorname}} {{Zuständig Nachname}} hat «{{Titel}}» erledigt.',
+  });
+  assert.deepEqual(
+    (await api('GET', '/admin/mail-templates')).filter((t) => t.custom).map((t) => t.key).sort(),
+    ['assigned', 'confirmation', 'done'],
+  );
+
+  // Kontakt aus einer Mail mit «Nachname, Vorname»
   const sender = `vorlage-${RUN}@test.local`;
-  await sendMail({ from: `Vera Vorlage <${sender}>`, subject: `Vorlage ${RUN}`, text: 'Bitte um Hilfe' });
+  await sendMail({ from: { name: 'Vorlage, Vera', address: sender }, subject: `Vorlage ${RUN}`, text: 'Bitte um Hilfe' });
+  await sleep(500);
   await poll();
   const confirmation = await waitForMail(sender, (m) => m.subject.includes(`Eingang: Vorlage ${RUN}`), 'Bestätigung mit angepasster Vorlage');
   assert.match(confirmation.subject, /^\[PW-\d+\] Eingang: Vorlage /);
-  assert.ok(confirmation.text.includes('Hallo Vera Vorlage'));
-  assert.match(confirmation.text, /Ihre Nummer: \*\*PW-\d+\*\*/);
+  const number = Number(/^\[PW-(\d+)\]/.exec(confirmation.subject)[1]);
+  const { reporter } = await detail(number);
+  assert.deepEqual([reporter.name, reporter.firstName, reporter.lastName], ['Vorlage, Vera', 'Vera', 'Vorlage']);
+  assert.ok(confirmation.text.includes('Hallo Vera Vorlage'), confirmation.text);
+  assert.match(confirmation.text, /Ihre Nummer: \*\*PW-\d+\*\*, zuständig: «»/, 'ohne Zuweisung leer');
+  assert.ok(!confirmation.text.includes('Patchwork Test'), '{{App}} ist kein Platzhalter mehr');
 
-  await api('DELETE', '/admin/mail-templates/confirmation');
-  assert.equal((await api('GET', '/admin/mail-templates')).find((t) => t.key === 'confirmation').custom, false);
+  await api('POST', `/items/${number}/type`, { type: 'incident' });
+  await api('PATCH', `/items/${number}`, { assigneeId: ivan.id });
+  const assigned = await waitForMail(IVAN, (m) => m.subject === `[PW-${number}] Zugewiesen: Vorlage ${RUN}`, 'Zuweisung mit angepasster Vorlage');
+  assert.ok(assigned.text.includes(`Für Ivan Informatik: PW-${number} von Vera Vorlage`), assigned.text);
+  await api('POST', `/items/${number}/move`, { statusId: status('incident', 'resolved').id });
+  const done = await waitForMail(sender, (m) => m.subject === `[PW-${number}] Gelöst: Vorlage ${RUN}`, 'Erledigt mit angepasster Vorlage');
+  assert.ok(done.text.includes(`Hallo Vera, Ivan Informatik hat «Vorlage ${RUN}» erledigt.`), done.text);
+
+  for (const key of ['confirmation', 'assigned', 'done']) await api('DELETE', `/admin/mail-templates/${key}`);
+  assert.ok((await api('GET', '/admin/mail-templates')).every((t) => !t.custom), 'zurück zum Standard');
   await api('PUT', '/admin/mail-templates/gibtsnicht', { subject: 'x', body: 'x' }, { expect: [404] });
 });
 

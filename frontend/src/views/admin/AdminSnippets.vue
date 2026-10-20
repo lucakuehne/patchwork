@@ -108,8 +108,9 @@ async function remove(s: Snippet) {
           ref="editor"
           v-model="draft.body"
           :images="false"
+          template
           :min-height="180"
-          placeholder="Guten Tag {{Melder}} …"
+          placeholder="Guten Tag {{Melder Vorname}} {{Melder Nachname}} …"
           @submit="save"
         />
         <div class="placeholders">
@@ -120,6 +121,7 @@ async function remove(s: Snippet) {
             class="btn btn-sm"
             type="button"
             :title="`${p.token}: ${p.label}`"
+            @mousedown.prevent
             @click="editor?.insertText(p.token)"
           >
             {{ p.key }}

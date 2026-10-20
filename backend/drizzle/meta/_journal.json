@@ -169,6 +169,13 @@
       "when": 1792497096333,
       "tag": "0023_status_ohne_kategorie",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792501142565,
+      "tag": "0024_vor_nachname",
+      "breakpoints": true
     }
   ]
 }

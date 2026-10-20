@@ -14,15 +14,16 @@ import {
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { computed, ref, watch } from 'vue';
-import { TARGET_SHORT, TARGET_SYMBOLS, targetsOf } from '../status-admin';
+import { TARGET_SHORT, TARGET_SYMBOLS, targetOptions, targetsOf } from '../status-admin';
 import { diagramPosition, TARGET_LABELS } from '../status-flow';
 import type { Status, StatusColor, StatusTarget, StatusTargets } from '../types';
 import StatusFlowEdge from './StatusFlowEdge.vue';
 
 /**
  * Bearbeitbares Ablaufdiagramm der Status eines Typs: Kästchen verschieben, Pfeil vom Punkt rechts an einem Status auf
- * einen anderen ziehen, Pfeil anklicken und mit Entf löschen (oder doppelklicken). Die Ziel-Status (automatische
- * Wechsel) erscheinen als Marken; ein Klick darauf meldet das Ziel («target»), damit die Seite zum Feld springt.
+ * einen anderen ziehen, Pfeil anklicken und mit Entf löschen (oder doppelklicken). Den Startpfeil auf einen anderen
+ * offenen Status ziehen setzt «Neuer Vorgang erhält» («start»). Die übrigen Ziel-Status erscheinen als Marken; ein Klick
+ * darauf meldet das Ziel («target»), damit die Seite zum Feld springt.
  */
 const props = defineProps<{
   statuses: Status[];
@@ -34,6 +35,7 @@ const emit = defineEmits<{
   transitions: [list: { fromId: string; toId: string }[]];
   move: [id: string, x: number, y: number];
   target: [target: StatusTarget];
+  start: [statusId: string];
 }>();
 
 type Mark = keyof typeof TARGET_SYMBOLS;
@@ -104,15 +106,24 @@ const edges = computed(() =>
 /** Während man einen Pfeil zieht, nimmt jeder ganze Status ihn an, nicht nur ein Anschlusspunkt */
 const connecting = ref(false);
 
+/** Status, die der Startpfeil annimmt: offen und nicht der Wartet-Status */
+const startCandidates = computed(() => new Set(targetOptions(props.statuses, props.targets, 'start').map((s) => s.id)));
+
 /**
  * Pfeile in jeden anderen Status, auch in den Ablehnen-Status (sie bestimmen, woraus «Ablehnen» möglich ist). Gilt auch
- * für die vorhandenen Pfeile (Vue Flow prüft sie beim Zeichnen), deshalb hier keine Prüfung auf Doppelte.
+ * für die vorhandenen Pfeile (Vue Flow prüft sie beim Zeichnen), deshalb hier keine Prüfung auf Doppelte. Der Startpfeil
+ * (Anschluss «start») nur auf einen anderen möglichen Start-Status.
  */
 function isValid(c: Connection): boolean {
+  if (c.sourceHandle === 'start') return c.target !== props.targets.start && startCandidates.value.has(c.target);
   return c.source !== c.target;
 }
 
 function onConnect(c: Connection) {
+  if (c.sourceHandle === 'start') {
+    if (isValid(c)) emit('start', c.target);
+    return;
+  }
   const exists = own.value.some((t) => t.fromId === c.source && t.toId === c.target);
   if (isValid(c) && !exists) emit('transitions', [...own.value, { fromId: c.source, toId: c.target }]);
 }
@@ -145,6 +156,7 @@ const legendMarks = computed(() => MARKS.filter((m) => props.targets[m]));
         :edges="edges"
         :is-valid-connection="isValid"
         :connect-on-click="false"
+        :auto-pan-on-connect="false"
         :connection-line-options="{ type: ConnectionLineType.Straight, markerEnd: arrow }"
         :delete-key-code="['Delete', 'Backspace']"
         :min-zoom="0.4"
@@ -162,20 +174,21 @@ const legendMarks = computed(() => MARKS.filter((m) => props.targets[m]));
         <template #node-status="{ data }">
           <!-- Ablagefläche über dem ganzen Status, nur beim Ziehen eines Pfeils aktiv -->
           <Handle class="drop" type="target" :position="Position.Left" :connectable-start="false" />
-          <button
+          <!-- Startpfeil: ziehen, um den Status für neue Vorgänge zu wählen -->
+          <Handle
             v-if="data.start"
-            class="start-mark nodrag"
-            type="button"
-            :title="TARGET_LABELS.start"
-            :aria-label="TARGET_LABELS.start"
-            @click.stop="emit('target', 'start')"
+            id="start"
+            class="start-handle"
+            type="source"
+            :position="Position.Left"
+            :title="`${TARGET_LABELS.start} «${data.label}». Auf einen anderen offenen Status ziehen, um ihn zu ändern.`"
           >
             <svg width="26" height="10" viewBox="0 0 26 10" aria-hidden="true">
               <circle cx="4" cy="5" r="4" />
               <path d="M8 5 H20" />
               <path d="M19 1.5 L25 5 L19 8.5 Z" />
             </svg>
-          </button>
+          </Handle>
           <div
             class="node"
             :class="{ unreachable: data.unreachable, closed: data.closed }"
@@ -197,7 +210,8 @@ const legendMarks = computed(() => MARKS.filter((m) => props.targets[m]));
               {{ TARGET_SYMBOLS[m] }}
             </button>
           </span>
-          <Handle type="source" :position="Position.Right" title="Ziehen, um einen Pfeil zu zeichnen" />
+          <!-- Eigene id, sonst nimmt Vue Flow beim Ziehen den ersten Anschluss (den Startpfeil) als Anfang der Linie -->
+          <Handle id="out" type="source" :position="Position.Right" title="Ziehen, um einen Pfeil zu zeichnen" />
         </template>
         <template #edge-status="edgeProps">
           <StatusFlowEdge v-bind="edgeProps" />
@@ -205,7 +219,7 @@ const legendMarks = computed(() => MARKS.filter((m) => props.targets[m]));
       </VueFlow>
     </div>
     <div class="legend faint">
-      <span class="legend-item">
+      <span class="legend-item" :title="`${TARGET_LABELS.start}: Startpfeil auf einen anderen offenen Status ziehen`">
         <svg width="26" height="10" viewBox="0 0 26 10" class="legend-start" aria-hidden="true">
           <circle cx="4" cy="5" r="4" />
           <path d="M8 5 H20" />
@@ -254,20 +268,6 @@ const legendMarks = computed(() => MARKS.filter((m) => props.targets[m]));
 .node.unreachable {
   border-style: dashed;
 }
-/* Startpunkt links am Start-Status */
-.start-mark {
-  position: absolute;
-  top: 50%;
-  right: calc(100% + 4px);
-  transform: translateY(-50%);
-  display: flex;
-  padding: 2px;
-  border: 0;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.start-mark svg,
 .legend-start {
   fill: currentColor;
   stroke: currentColor;
@@ -296,17 +296,14 @@ const legendMarks = computed(() => MARKS.filter((m) => props.targets[m]));
   font-size: 11px;
   line-height: 1;
 }
-button.mark,
-.start-mark {
+button.mark {
   cursor: pointer;
 }
-button.mark:hover,
-.start-mark:hover {
+button.mark:hover {
   color: var(--accent);
   border-color: var(--accent);
 }
-.flow.connecting .marks,
-.flow.connecting .start-mark {
+.flow.connecting .marks {
   pointer-events: none;
 }
 .flow :deep(.vue-flow__handle) {
@@ -314,6 +311,33 @@ button.mark:hover,
   height: 10px;
   background: var(--surface);
   border: 2px solid var(--text-faint);
+}
+/* Startpfeil links am Start-Status, ziehbar */
+.flow :deep(.vue-flow__handle.start-handle) {
+  left: auto;
+  right: calc(100% + 2px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+}
+.flow :deep(.vue-flow__handle.start-handle:hover),
+.flow :deep(.vue-flow__handle.start-handle.connecting) {
+  color: var(--accent);
+}
+.flow :deep(.vue-flow__handle.start-handle svg) {
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  pointer-events: none;
 }
 .flow :deep(.vue-flow__handle.drop) {
   left: 0;
