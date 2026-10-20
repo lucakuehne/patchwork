@@ -22,8 +22,9 @@ const editor = useEditor({
   autofocus: props.autofocus ? 'end' : false,
   extensions: [
     StarterKit.configure({
-      // Unterstreichen gibt es in Markdown nicht
+      // Unterstreichen gibt es in Markdown nicht; Trennlinien braucht es nicht
       underline: false,
+      horizontalRule: false,
       heading: { levels: [2, 3] },
       link: { openOnClick: false, autolink: true, defaultProtocol: 'https' },
     }),
@@ -93,6 +94,8 @@ interface Tool {
   action: () => void;
   active?: () => boolean;
   class?: string;
+  /** Symbol statt Beschriftung: drei Punkte bzw. drei Nummern untereinander */
+  icon?: 'bulletList' | 'orderedList';
 }
 
 const tools = (): (Tool | 'sep')[] => {
@@ -105,14 +108,13 @@ const tools = (): (Tool | 'sep')[] => {
     { label: 'H2', title: 'Überschrift', action: () => e.chain().focus().toggleHeading({ level: 2 }).run(), active: () => e.isActive('heading', { level: 2 }) },
     { label: 'H3', title: 'Unterüberschrift', action: () => e.chain().focus().toggleHeading({ level: 3 }).run(), active: () => e.isActive('heading', { level: 3 }) },
     'sep',
-    { label: '•', title: 'Aufzählung', action: () => e.chain().focus().toggleBulletList().run(), active: () => e.isActive('bulletList') },
-    { label: '1.', title: 'Nummerierte Liste', action: () => e.chain().focus().toggleOrderedList().run(), active: () => e.isActive('orderedList') },
+    { label: '', icon: 'bulletList', title: 'Aufzählung', action: () => e.chain().focus().toggleBulletList().run(), active: () => e.isActive('bulletList') },
+    { label: '', icon: 'orderedList', title: 'Nummerierte Liste', action: () => e.chain().focus().toggleOrderedList().run(), active: () => e.isActive('orderedList') },
     { label: '❝', title: 'Zitat', action: () => e.chain().focus().toggleBlockquote().run(), active: () => e.isActive('blockquote') },
     'sep',
     { label: '</>', title: 'Code', class: 'mono', action: () => e.chain().focus().toggleCode().run(), active: () => e.isActive('code') },
     { label: '{ }', title: 'Codeblock', class: 'mono', action: () => e.chain().focus().toggleCodeBlock().run(), active: () => e.isActive('codeBlock') },
     { label: 'Link', title: 'Link', action: setLink, active: () => e.isActive('link') },
-    { label: '—', title: 'Trennlinie', action: () => e.chain().focus().setHorizontalRule().run() },
     'sep',
     { label: '↶', title: 'Rückgängig (Ctrl+Z)', action: () => e.chain().focus().undo().run() },
     { label: '↷', title: 'Wiederholen (Ctrl+Y)', action: () => e.chain().focus().redo().run() },
@@ -142,7 +144,19 @@ defineExpose({ focus, insertMarkdown, insertText });
           @mousedown.prevent
           @click="tool.action"
         >
-          {{ tool.label }}
+          <svg v-if="tool.icon === 'bulletList'" class="icon" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="2.5" cy="3.5" r="1.4" />
+            <circle cx="2.5" cy="8" r="1.4" />
+            <circle cx="2.5" cy="12.5" r="1.4" />
+            <path d="M6 3.5h8.5M6 8h8.5M6 12.5h8.5" />
+          </svg>
+          <svg v-else-if="tool.icon === 'orderedList'" class="icon" viewBox="0 0 16 16" aria-hidden="true">
+            <text x="0.6" y="5.2">1</text>
+            <text x="0.6" y="9.7">2</text>
+            <text x="0.6" y="14.2">3</text>
+            <path d="M6 3.5h8.5M6 8h8.5M6 12.5h8.5" />
+          </svg>
+          <template v-else>{{ tool.label }}</template>
         </button>
       </template>
     </div>
@@ -206,6 +220,23 @@ defineExpose({ focus, insertMarkdown, insertText });
   font-family: var(--mono);
   font-size: 12px;
 }
+.icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+  fill: currentColor;
+}
+.icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.icon text {
+  font-family: var(--font);
+  font-size: 5px;
+  font-weight: 700;
+}
 .sep {
   width: 1px;
   height: 18px;
@@ -236,11 +267,6 @@ defineExpose({ focus, insertMarkdown, insertText });
 .content :deep(.md-content h3) {
   font-size: 15px;
   margin: 8px 0 4px;
-}
-.content :deep(.md-content hr) {
-  border: none;
-  border-top: 1px solid var(--border-strong);
-  margin: 12px 0;
 }
 .content :deep(.md-content a) {
   color: var(--accent);

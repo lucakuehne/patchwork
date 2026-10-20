@@ -6,6 +6,7 @@
       <RouterLink to="/admin/benutzer">Benutzer</RouterLink>
       <RouterLink to="/admin/postfaecher">Postfächer</RouterLink>
       <RouterLink to="/admin/ausgehende-mails">Ausgehende Mails</RouterLink>
+      <RouterLink to="/admin/e-mail-vorlagen">E-Mail-Vorlagen</RouterLink>
       <RouterLink to="/admin/status">Status</RouterLink>
       <RouterLink to="/admin/regeln">Regeln</RouterLink>
       <RouterLink to="/admin/checklisten">Checklisten-Vorlagen</RouterLink>

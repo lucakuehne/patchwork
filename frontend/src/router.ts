@@ -54,6 +54,11 @@ export const router = createRouter({
           name: 'admin-outgoing-mails',
           component: () => import('./views/admin/AdminOutgoingMails.vue'),
         },
+        {
+          path: 'e-mail-vorlagen',
+          name: 'admin-mail-templates',
+          component: () => import('./views/admin/AdminMailTemplates.vue'),
+        },
         // Frühere Seite: nur die nicht versendeten Mails
         { path: 'nicht-versendet', redirect: { path: '/admin/ausgehende-mails', query: { status: 'nicht-versendet' } } },
         { path: 'status', name: 'admin-statuses', component: () => import('./views/admin/AdminStatuses.vue') },

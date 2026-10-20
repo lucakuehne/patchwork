@@ -2,24 +2,23 @@ import { Injectable, Logger } from '@nestjs/common';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
-import { mailMessages, mutes, participants, users, type Item, type User } from '../db/schema';
+import { mailMessages, mutes, participants, statuses, users, type Item, type User } from '../db/schema';
 import { SettingsService } from '../settings/settings.service';
-import { htmlMail, itemRef, renderMarkdown, subjectFor } from './mail-content';
+import { itemRef, subjectFor } from './mail-content';
+import { composeMail, fill, type TemplateKey } from './mail-templates';
+import { MailTemplatesService } from './mail-templates.service';
 import { MailboxesService } from './mailboxes.service';
 import { MailSenderService, newMessageId } from './mail-sender.service';
-
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-
-const textToHtml = (s: string) => `<p>${escapeHtml(s).replace(/\n/g, '<br>')}</p>`;
 
 const formatDate = (d: Date) =>
   new Intl.DateTimeFormat('de-CH', { timeZone: appConfig.timeZone, day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
 
 interface ReporterMail {
-  subject: string;
-  /** Markdown */
-  body: string;
+  template: TemplateKey;
+  /** Weitere Platzhalter der Vorlage, z.B. «Begründung» */
+  values?: Record<string, string>;
+  /** Öffentliche Antwort: Text des Bearbeiters (Markdown) statt des Texts der Vorlage */
+  written?: string;
   entryId?: string;
   attachmentIds?: string[];
   automated: boolean;
@@ -41,19 +40,14 @@ export class NotificationsService {
     private readonly mailboxes: MailboxesService,
     private readonly sender: MailSenderService,
     private readonly settings: SettingsService,
+    private readonly templates: MailTemplatesService,
   ) {}
 
   /** Eingangsbestätigung an den Melder. */
   async confirmation(item: Item): Promise<void> {
     const reporter = await this.eligible(item, item.reporterId, null);
     if (!reporter) return;
-    await this.sendToReporter(item, [reporter.email], [], {
-      subject: subjectFor(item.number, item.title),
-      body:
-        `Guten Tag\n\nIhre Nachricht ist bei uns eingegangen und wurde unter der Nummer **${itemRef(item.number)}** erfasst. ` +
-        `Wir melden uns so bald wie möglich.\n\nFür Ergänzungen antworten Sie bitte direkt auf diese Mail.`,
-      automated: true,
-    });
+    await this.sendToReporter(item, [reporter.email], [], { template: 'confirmation', automated: true });
   }
 
   /** Öffentliche Antwort an Melder (An) und Beteiligte (CC). */
@@ -62,8 +56,8 @@ export class NotificationsService {
     const cc = await this.participantEmails(item, actorId);
     const to = reporter ? [reporter.email] : cc.splice(0, cc.length);
     await this.sendToReporter(item, to, cc, {
-      subject: subjectFor(item.number, item.title),
-      body,
+      template: 'reply',
+      written: body,
       entryId,
       attachmentIds,
       automated: false,
@@ -74,13 +68,7 @@ export class NotificationsService {
   async done(item: Item, actorId: string, statusLabel: string): Promise<void> {
     const reporter = await this.eligible(item, item.reporterId, actorId);
     if (!reporter) return;
-    await this.sendToReporter(item, [reporter.email], [], {
-      subject: subjectFor(item.number, item.title, statusLabel),
-      body:
-        `Guten Tag\n\nIhr Anliegen «${item.title}» (${itemRef(item.number)}) wurde auf «${statusLabel}» gesetzt.\n\n` +
-        `Falls noch etwas offen ist, antworten Sie einfach auf diese Mail.`,
-      automated: true,
-    });
+    await this.sendToReporter(item, [reporter.email], [], { template: 'done', values: { Status: statusLabel }, automated: true });
   }
 
   /** Aufgabe wurde abgelehnt und «Melder informieren» war gewählt. */
@@ -88,8 +76,8 @@ export class NotificationsService {
     const reporter = await this.eligible(item, item.reporterId, actorId);
     if (!reporter) return;
     await this.sendToReporter(item, [reporter.email], [], {
-      subject: subjectFor(item.number, item.title, 'Abgelehnt'),
-      body: `Guten Tag\n\nIhr Anliegen «${item.title}» (${itemRef(item.number)}) wurde abgelehnt.\n\n**Begründung:**\n\n${reason}`,
+      template: 'rejected',
+      values: { Begründung: reason },
       automated: true,
     });
   }
@@ -100,11 +88,10 @@ export class NotificationsService {
     const assignee = await this.eligible(item, item.assigneeId, actorId);
     if (!assignee) return;
     const [actor, reporter] = await Promise.all([actorId ? this.user(actorId) : undefined, this.user(item.reporterId)]);
-    await this.sendToStaff(item, assignee, subjectFor(item.number, item.title, 'Zugewiesen'), [
-      `Zugewiesen: ${itemRef(item.number)} «${item.title}»`,
-      `Zugewiesen durch: ${by ?? actor?.name ?? '–'}`,
-      `Melder: ${reporter ? `${reporter.name} <${reporter.email}>` : '–'}`,
-    ]);
+    await this.sendToStaff(item, assignee, 'assigned', {
+      'Zugewiesen durch': by ?? actor?.name ?? '–',
+      'Melder E-Mail': reporter?.email ?? '–',
+    });
   }
 
   /** Mail an den Zuständigen, wenn Melder oder Beteiligte geantwortet haben. */
@@ -112,11 +99,11 @@ export class NotificationsService {
     if (!item.assigneeId) return;
     const assignee = await this.eligible(item, item.assigneeId, author.id);
     if (!assignee) return;
-    await this.sendToStaff(item, assignee, subjectFor(item.number, item.title, 'Neue Antwort'), [
-      `Neue Antwort von ${author.name} <${author.email}> auf ${itemRef(item.number)} «${item.title}»:`,
-      '',
-      text,
-    ]);
+    await this.sendToStaff(item, assignee, 'inboundReply', {
+      Absender: author.name,
+      'Absender E-Mail': author.email,
+      Text: text,
+    });
   }
 
   /**
@@ -127,19 +114,12 @@ export class NotificationsService {
     const reporter = await this.eligible(duplicate, duplicate.reporterId, actorId);
     const cc = await this.participantEmails(duplicate, actorId);
     const to = reporter ? [reporter.email] : cc.splice(0, cc.length);
-    const dup = `${itemRef(duplicate.number)} «${duplicate.title}»`;
-    const orig = `${itemRef(original.number)} «${original.title}»`;
     await this.sendToReporter(original, to, cc, {
-      subject: subjectFor(original.number, original.title),
-      body: merged
-        ? `Guten Tag
-
-Ihre Nachricht ${dup} betrifft denselben Vorgang wie ${orig} und wurde dort hinzugefügt. ` +
-          `Für Ergänzungen antworten Sie bitte auf diese Mail.`
-        : `Guten Tag
-
-Ihre Meldung ${dup} betrifft dasselbe wie ${orig} und wird dort weiterbearbeitet. ` +
-          `Sie erhalten die Updates per Mail.`,
+      template: merged ? 'duplicateMerged' : 'duplicateRedirected',
+      values: {
+        Duplikat: `${itemRef(duplicate.number)} «${duplicate.title}»`,
+        Original: `${itemRef(original.number)} «${original.title}»`,
+      },
       automated: true,
       // Im Portal sieht der Melder sein Duplikat; das Original nur, wenn er auch dort Melder ist
       portalNumber: merged ? original.number : duplicate.number,
@@ -151,11 +131,8 @@ Ihre Meldung ${dup} betrifft dasselbe wie ${orig} und wird dort weiterbearbeitet
     const reporter = await this.eligible(item, item.reporterId, null);
     if (!reporter) return;
     await this.sendToReporter(item, [reporter.email], [], {
-      subject: subjectFor(item.number, item.title, 'Erinnerung'),
-      body:
-        `Guten Tag\n\nWir warten noch auf Ihre Rückmeldung zu «${item.title}» (${itemRef(item.number)}). ` +
-        `Bitte antworten Sie direkt auf diese Mail.` +
-        (closeOn ? `\n\nOhne Rückmeldung schliessen wir den Vorgang am ${formatDate(closeOn)}.` : ''),
+      template: 'waitingReminder',
+      values: { Schliessung: closeOn ? `Ohne Rückmeldung schliessen wir den Vorgang am ${formatDate(closeOn)}.` : '' },
       automated: true,
     });
   }
@@ -165,10 +142,8 @@ Ihre Meldung ${dup} betrifft dasselbe wie ${orig} und wird dort weiterbearbeitet
     const reporter = await this.eligible(item, item.reporterId, null);
     if (!reporter) return;
     await this.sendToReporter(item, [reporter.email], [], {
-      subject: subjectFor(item.number, item.title, statusLabel),
-      body:
-        `Guten Tag\n\nZu «${item.title}» (${itemRef(item.number)}) haben wir seit ${days} Tagen keine Rückmeldung erhalten ` +
-        `und den Vorgang deshalb geschlossen.\n\nFalls noch etwas offen ist, antworten Sie einfach auf diese Mail.`,
+      template: 'waitingClosed',
+      values: { Status: statusLabel, Tage: String(days) },
       automated: true,
     });
   }
@@ -179,10 +154,32 @@ Ihre Meldung ${dup} betrifft dasselbe wie ${orig} und wird dort weiterbearbeitet
     const assignee = await this.eligible(item, item.assigneeId, actorId);
     if (!assignee) return;
     const actor = await this.user(actorId);
-    await this.sendToStaff(item, assignee, subjectFor(item.number, item.title, 'Behebender Vorgang erledigt'), [
-      `${itemRef(fixing.number)} «${fixing.title}» wurde erledigt${actor ? ` (durch ${actor.name})` : ''}.`,
-      `Dieser Vorgang behebt ${itemRef(item.number)} «${item.title}». Bitte prüfen, ob ${itemRef(item.number)} abgeschlossen werden kann.`,
+    await this.sendToStaff(item, assignee, 'fixCompleted', {
+      'Behebender Vorgang': `${itemRef(fixing.number)} «${fixing.title}»`,
+      Bearbeiter: actor?.name ?? '–',
+    });
+  }
+
+  /** Werte der Platzhalter, die jede Mail zu einem Vorgang kennt. */
+  private async itemValues(item: Item, link: string): Promise<Record<string, string>> {
+    const [reporter, status, { appName }] = await Promise.all([
+      this.user(item.reporterId),
+      item.statusId
+        ? this.db
+            .select({ label: statuses.label })
+            .from(statuses)
+            .where(eq(statuses.id, item.statusId))
+            .then((r) => r[0]?.label ?? '')
+        : '',
+      this.settings.get('general'),
     ]);
+    return { Nummer: itemRef(item.number), Titel: item.title, Status: status, Melder: reporter?.name ?? '', App: appName, Link: link };
+  }
+
+  /** Betreff aus der Vorlage; die Nummer steht immer davor, damit Antworten zugeordnet werden. */
+  private subject(item: Item, template: string | null, values: Record<string, string>): string {
+    const text = fill(template ?? '{{Titel}}', values).replace(/\s+/g, ' ').trim();
+    return subjectFor(item.number, text || item.title);
   }
 
   private async sendToReporter(item: Item, to: string[], cc: string[], mail: ReporterMail) {
@@ -192,7 +189,6 @@ Ihre Meldung ${dup} betrifft dasselbe wie ${orig} und wird dort weiterbearbeitet
       this.logger.warn(`Kein aktives Postfach für den Versand zu ${itemRef(item.number)}`);
       return;
     }
-    const { appName } = await this.settings.get('general');
     const previous = await this.db
       .select({ messageId: mailMessages.messageId, direction: mailMessages.direction })
       .from(mailMessages)
@@ -200,20 +196,26 @@ Ihre Meldung ${dup} betrifft dasselbe wie ${orig} und wird dort weiterbearbeitet
       .orderBy(asc(mailMessages.createdAt));
     const lastInbound = previous.filter((m) => m.direction === 'in').at(-1)?.messageId ?? null;
 
-    const footer = `${appName} · ${itemRef(item.number)}\nBitte lassen Sie bei Antworten die Nummer [${itemRef(item.number)}] im Betreff stehen.`;
     const portalUrl = `${appConfig.publicUrl}/portal/v/${mail.portalNumber ?? item.number}`;
+    const values = { ...(await this.itemValues(item, portalUrl)), ...mail.values };
+    const [template, link, footer] = await Promise.all([
+      this.templates.get(mail.template),
+      this.templates.get('reporterLink'),
+      this.templates.get('reporterFooter'),
+    ]);
+    const { text, html } = composeMail(
+      { body: mail.written ?? template.body ?? '', link: link.body ?? '', footer: footer.body ?? '', written: mail.written !== undefined },
+      values,
+    );
     await this.sender.enqueue({
       mailboxId: mailbox.id,
       itemId: item.id,
       entryId: mail.entryId ?? null,
       to,
       cc,
-      subject: mail.subject,
-      text: `${mail.body}\n\nIhre Meldung online ansehen: ${portalUrl}\n\n-- \n${footer}`,
-      html: htmlMail(
-        `${renderMarkdown(mail.body)}<p><a href="${escapeHtml(portalUrl)}">Ihre Meldung online ansehen</a></p>`,
-        footer,
-      ),
+      subject: this.subject(item, template.subject, values),
+      text,
+      html,
       messageId: newMessageId(mailbox),
       inReplyTo: lastInbound,
       references: previous.slice(-20).map((m) => m.messageId),
@@ -222,24 +224,27 @@ Ihre Meldung ${dup} betrifft dasselbe wie ${orig} und wird dort weiterbearbeitet
     });
   }
 
-  private async sendToStaff(item: Item, recipient: User, subject: string, lines: string[]) {
+  private async sendToStaff(item: Item, recipient: User, key: TemplateKey, extra: Record<string, string>) {
     const mailbox = await this.mailboxes.forSending(item.mailboxId);
     if (!mailbox) {
       this.logger.warn(`Kein aktives Postfach für Benachrichtigungen zu ${itemRef(item.number)}`);
       return;
     }
-    const { appName } = await this.settings.get('general');
-    const url = `${appConfig.publicUrl}/v/${item.number}`;
-    const text = [...lines, '', `Öffnen: ${url}`].join('\n');
-    const footer = `${appName} · Benachrichtigung zu ${itemRef(item.number)}`;
+    const values = { ...(await this.itemValues(item, `${appConfig.publicUrl}/v/${item.number}`)), Zuständig: recipient.name, ...extra };
+    const [template, link, footer] = await Promise.all([
+      this.templates.get(key),
+      this.templates.get('staffLink'),
+      this.templates.get('staffFooter'),
+    ]);
+    const { text, html } = composeMail({ body: template.body ?? '', link: link.body ?? '', footer: footer.body ?? '' }, values);
     await this.sender.enqueue({
       mailboxId: mailbox.id,
       itemId: item.id,
       to: [recipient.email],
       cc: [],
-      subject,
-      text: `${text}\n\n-- \n${footer}`,
-      html: htmlMail(`${textToHtml(lines.join('\n'))}<p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>`, footer),
+      subject: this.subject(item, template.subject, values),
+      text,
+      html,
       messageId: newMessageId(mailbox),
       automated: true,
     });

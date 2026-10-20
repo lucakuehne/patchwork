@@ -269,6 +269,26 @@ export interface Mailbox {
   lastError: string | null;
 }
 
+/** E-Mail-Vorlage (Verwaltung → E-Mail-Vorlagen) */
+export interface MailTemplate {
+  key: string;
+  /** An Melder und Beteiligte oder an IT-Mitarbeitende */
+  group: 'reporter' | 'staff';
+  label: string;
+  description: string;
+  /** Fusszeile: einfacher Text ohne Formatierung */
+  plain: boolean;
+  placeholders: { name: string; description: string; example: string }[];
+  defaultSubject: string | null;
+  defaultBody: string | null;
+  /** null = ohne Betreff (Link-Zeile, Fusszeile) */
+  subject: string | null;
+  /** null = den Text schreibt der Bearbeiter (öffentliche Antwort) */
+  body: string | null;
+  /** Vom Standard abweichend gespeichert */
+  custom: boolean;
+}
+
 /** Angaben zu einem Zertifikat */
 export interface CertificateInfo {
   names: string[];

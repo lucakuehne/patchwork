@@ -75,12 +75,16 @@ export interface MicrosoftSettings {
   clientId: string;
 }
 
+/** E-Mail-Vorlagen: angepasste Betreffs und Texte pro Vorlage; fehlt ein Eintrag, gilt der Standard. */
+export type MailTemplateOverrides = Record<string, { subject?: string; body?: string }>;
+
 interface SettingsMap {
   general: GeneralSettings;
   logo: LogoSettings | null;
   ldap: LdapSettings;
   mail: MailSettings;
   microsoft: MicrosoftSettings;
+  mailTemplates: MailTemplateOverrides;
 }
 
 const DEFAULTS: SettingsMap = {
@@ -89,6 +93,7 @@ const DEFAULTS: SettingsMap = {
   ldap: DEFAULT_LDAP,
   mail: { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] },
   microsoft: { clientId: '' },
+  mailTemplates: {},
 };
 
 @Injectable()

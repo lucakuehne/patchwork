@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../api';
 import ModalDialog from '../../components/ModalDialog.vue';
+import TestModeSettings from '../../components/TestModeSettings.vue';
 import { formatDateTime, formatSize, itemRef } from '../../format';
 import { renderMailHtml } from '../../markdown';
-import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
-import { testModeText } from '../../test-mode';
 import type { OutgoingMail, OutgoingMailDetail, OutgoingStatus } from '../../types';
 
-/** Protokoll aller ausgehenden Mails, mit Filter nach Status. */
-const session = useSession();
+/** Protokoll aller ausgehenden Mails, mit Filter nach Status, und darüber der Testbetrieb. */
 const toast = useToast();
 const route = useRoute();
 const router = useRouter();
@@ -79,20 +77,16 @@ async function resend() {
 
 const kind = (m: OutgoingMail) => (m.reply ? 'Antwort' : 'Automatisch');
 const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)].join(', ');
-const testMode = computed(() => testModeText(session.info?.delivery));
 </script>
 
 <template>
   <div class="stack">
     <h1>Ausgehende Mails</h1>
     <p class="muted" style="margin: 0">
-      Jede Mail, die Patchwork verschickt oder im Testbetrieb zurückhält, steht hier vollständig, so wie sie ohne Testbetrieb
+      Jede Mail, die Patchwork verschickt oder im Testbetrieb zurückhält, steht unten vollständig, so wie sie ohne Testbetrieb
       versendet wird.
-      <template v-if="testMode">
-        Testbetrieb: <strong>{{ testMode }}</strong> (einstellen unter <RouterLink to="/admin/allgemein">Allgemein</RouterLink>).
-        Nicht versendete Mails werden später nicht nachträglich versendet.
-      </template>
     </p>
+    <TestModeSettings @saved="load" />
     <div class="segmented filters">
       <button v-for="f in FILTERS" :key="f.key" type="button" :class="{ active: filter === f.key }" @click="filter = f.key">
         {{ f.label }}

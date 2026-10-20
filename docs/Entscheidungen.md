@@ -168,6 +168,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Bei **Aufgaben** steht die Beschreibung zuoberst über den Checklisten (Bezeichnung «Beschreibung»). Bei Störungen und im Eingang bleibt sie als «Ursprüngliche Meldung» zuunterst.
 - Farben in der Timeline: interne Notizen orange, öffentliche Nachrichten blau, ursprüngliche Meldung weiss. Gilt auch im Portal.
 - Antwortfeld: Feld, Umschalter und Senden-Knopf sind im Modus «Öffentliche Antwort» blau, im Modus «Interne Notiz» orange.
+- Editor (gewünscht am 20.10.2026): Die Knöpfe für Listen zeigen drei Punkte bzw. drei Nummern untereinander. Eine Trennlinie gibt es im Editor nicht.
 
 ## Rückmeldungen vom 15.10.2026
 
@@ -249,6 +250,7 @@ Bestätigt am 19.10.2026:
     - Geht eine Mail an mehrere Empfänger, von denen nur ein Teil freigegeben ist, erhalten nur diese sie, und im Kopf stehen nur diese (über Microsoft Graph geht es nicht anders). Die vollständige Mail steht im Protokoll mit dem Vermerk, wer sie nicht bekommen hat.
     - Solange nicht beide Kreise «an alle» sind, sehen alle Benutzer oben einen Hinweis, der sagt, wer Mails bekommt. In der Timeline steht bei öffentlichen Antworten «nicht versendet» bzw. «teilweise versendet».
     - Bestehende Einstellung: eingeschaltet wird «an niemanden / an niemanden», ausgeschaltet «an alle / an alle».
+    - Gewünscht am 20.10.2026: Die Einstellung steht auf der Seite «Ausgehende Mails» über der Liste, nicht mehr unter «Allgemein».
 15. Bestätigt am 20.10.2026: **Alle ausgehenden Mails werden protokolliert**, nicht nur die im Testbetrieb zurückgehaltenen:
     - Seite Verwaltung → «Ausgehende Mails» (ersetzt «Nicht versendete Mails», nur Admin) mit Status «versendet», «teilweise versendet», «nicht versendet», «Fehler» oder «wird versendet», Filter nach Status und vollständiger Ansicht (Text, Anhänge, .eml).
     - Jede Mail wird vollständig gespeichert, ohne automatische Löschung.

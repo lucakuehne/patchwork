@@ -1257,6 +1257,33 @@ await step('Testbetrieb teilweise: nur freigegebene Empfänger erhalten die Mail
   assert.equal((await api('GET', '/public/info')).testMode, false);
 });
 
+await step('E-Mail-Vorlagen: angepasste Eingangsbestätigung, Vorschau und zurück zum Standard', async () => {
+  const templates = await api('GET', '/admin/mail-templates');
+  const standard = templates.find((t) => t.key === 'confirmation');
+  assert.equal(standard.custom, false);
+  assert.ok(standard.placeholders.some((p) => p.name === 'Nummer'));
+
+  await api('PUT', '/admin/mail-templates/confirmation', {
+    subject: 'Eingang: {{Titel}}',
+    body: 'Hallo {{Melder}}\n\nIhre Nummer: **{{Nummer}}**',
+  });
+  const preview = await api('POST', '/admin/mail-templates/confirmation/preview', { subject: 'Eingang: {{Titel}}', body: 'Nr. {{Nummer}}' });
+  assert.equal(preview.subject, '[PW-123] Eingang: Drucker druckt nicht');
+  assert.match(preview.html, /Nr\. PW-123/);
+
+  const sender = `vorlage-${RUN}@test.local`;
+  await sendMail({ from: `Vera Vorlage <${sender}>`, subject: `Vorlage ${RUN}`, text: 'Bitte um Hilfe' });
+  await poll();
+  const confirmation = await waitForMail(sender, (m) => m.subject.includes(`Eingang: Vorlage ${RUN}`), 'Bestätigung mit angepasster Vorlage');
+  assert.match(confirmation.subject, /^\[PW-\d+\] Eingang: Vorlage /);
+  assert.ok(confirmation.text.includes('Hallo Vera Vorlage'));
+  assert.match(confirmation.text, /Ihre Nummer: \*\*PW-\d+\*\*/);
+
+  await api('DELETE', '/admin/mail-templates/confirmation');
+  assert.equal((await api('GET', '/admin/mail-templates')).find((t) => t.key === 'confirmation').custom, false);
+  await api('PUT', '/admin/mail-templates/gibtsnicht', { subject: 'x', body: 'x' }, { expect: [404] });
+});
+
 await step('HTTPS: Anforderung, signiertes Zertifikat hochladen, Abruf über HTTPS', async () => {
   const host = new URL(BASE).hostname;
   let tls = await api('GET', '/admin/tls');
