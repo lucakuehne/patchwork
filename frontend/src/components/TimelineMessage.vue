@@ -3,12 +3,14 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { formatDateTime, itemRef } from '../format';
 import { renderMailHtml, renderMarkdown } from '../markdown';
+import { deliveryMark } from '../outgoing';
 import { useSession } from '../stores/session';
 import { NOTE_EDIT_MINUTES } from '../timeline';
 import type { Entry } from '../types';
 import AttachmentList from './AttachmentList.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
 import OriginalMailDialog from './OriginalMailDialog.vue';
+import SentMailDialog from './SentMailDialog.vue';
 import TimelineHead from './TimelineHead.vue';
 
 /** Öffentliche Antwort oder interne Notiz in der Timeline. Eigene Notizen lassen sich kurz nach dem Erfassen bearbeiten. */
@@ -20,24 +22,7 @@ const meta = computed(() => (props.entry.meta ?? {}) as Record<string, unknown>)
 const author = computed(() => props.entry.author?.name ?? 'System');
 const fromMail = computed(() => meta.value.source === 'mail');
 // Versand der Antwort, nur bei Abweichungen: Testbetrieb, Fehler, noch unterwegs
-const deliveryBadge = computed(() => {
-  const d = props.entry.delivery;
-  if (!d) return null;
-  switch (d.status) {
-    case 'partial':
-      return {
-        text: 'teilweise versendet',
-        title: `Im Testbetrieb nur an ${d.deliveredTo.join(', ')} versendet, nicht an ${d.withheld.join(', ')}`,
-        kind: 'held',
-      };
-    case 'held':
-      return { text: 'nicht versendet', title: `Im Testbetrieb zusammengestellt, aber nicht versendet (an ${d.withheld.join(', ')})`, kind: 'held' };
-    case 'failed':
-      return { text: 'Versand fehlgeschlagen', title: d.error ?? '', kind: 'failed' };
-    default:
-      return { text: 'wird versendet', title: 'Die Mail ist in der Versand-Queue', kind: 'queued' };
-  }
-});
+const deliveryBadge = computed(() => (props.entry.delivery ? deliveryMark(props.entry.delivery) : null));
 
 const html = computed(() => {
   if (props.entry.bodyHtml) return renderMailHtml(props.entry.bodyHtml);
@@ -83,6 +68,7 @@ const saving = ref(false);
 const uploading = ref(false);
 const error = ref('');
 const showOriginal = ref(false);
+const showSent = ref(false);
 
 function startEdit() {
   draft.value = props.entry.body;
@@ -137,6 +123,7 @@ async function save() {
         <button v-if="entry.originalMessageId" class="link-btn small" type="button" @click="showOriginal = true">
           Originalmail
         </button>
+        <button v-if="entry.mailId" class="link-btn small" type="button" @click="showSent = true">Mail ansehen</button>
       </template>
       <template #after-time>
         <span v-if="entry.editedAt" class="faint small" :title="`Bearbeitet am ${formatDateTime(entry.editedAt)}`">· bearbeitet</span>
@@ -159,6 +146,13 @@ async function save() {
       :number="itemNumber"
       :message-id="entry.originalMessageId"
       @close="showOriginal = false"
+    />
+    <SentMailDialog
+      v-if="showSent && entry.mailId"
+      :number="itemNumber"
+      :mail-id="entry.mailId"
+      :status="entry.delivery?.status ?? 'sent'"
+      @close="showSent = false"
     />
   </div>
 </template>

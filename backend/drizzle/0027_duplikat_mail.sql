@@ -1,0 +1,3 @@
+ALTER TABLE "outgoing_mails" ADD COLUMN "related_item_id" uuid;--> statement-breakpoint
+ALTER TABLE "outgoing_mails" ADD CONSTRAINT "outgoing_mails_related_item_id_items_id_fk" FOREIGN KEY ("related_item_id") REFERENCES "public"."items"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "outgoing_mails_related_item_idx" ON "outgoing_mails" USING btree ("related_item_id");

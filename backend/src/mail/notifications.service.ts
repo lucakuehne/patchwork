@@ -27,6 +27,8 @@ interface ReporterMail {
   automated: boolean;
   /** Vorgang für den Link ins Portal, falls abweichend */
   portalNumber?: number;
+  /** Weiterer Vorgang, in dessen Verlauf die Mail erscheint */
+  relatedItemId?: string;
 }
 
 /**
@@ -134,6 +136,8 @@ export class NotificationsService {
       automated: true,
       // Im Portal sieht der Melder sein Duplikat; das Original nur, wenn er auch dort Melder ist
       portalNumber: merged ? original.number : duplicate.number,
+      // Im Verlauf beim Original und beim Duplikat
+      relatedItemId: duplicate.id,
     });
   }
 
@@ -253,6 +257,8 @@ export class NotificationsService {
       references: previous.slice(-20).map((m) => m.messageId),
       attachmentIds: [...(mail.attachmentIds ?? []), ...inline],
       automated: mail.automated,
+      template: mail.template,
+      relatedItemId: mail.relatedItemId ?? null,
     });
   }
 
@@ -309,6 +315,7 @@ export class NotificationsService {
       html: embedImageTags(html, new Map()),
       messageId: newMessageId(mailbox),
       automated: true,
+      template: key,
     });
   }
 

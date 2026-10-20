@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { asListItem, eventPart, groupTimeline } from './timeline';
-import type { Entry } from './types';
+import { asListItem, eventPart, groupTimeline, mailRecipientsText } from './timeline';
+import type { Entry, ItemMail } from './types';
 
 const ada = { id: 'ada', name: 'Ada Admin', firstName: 'Ada', lastName: 'Admin', email: 'ada@test.local', role: 'admin' as const };
 const ivan = { id: 'ivan', name: 'Ivan IT', firstName: 'Ivan', lastName: 'IT', email: 'ivan@test.local', role: 'it' as const };
@@ -16,11 +16,24 @@ const entry = (minute: number, patch: Partial<Entry> = {}): Entry => ({
   author: ada,
   originalMessageId: null,
   delivery: null,
+  mailId: null,
   attachments: [],
   ...patch,
 });
-const shape = (newestFirst: Entry[]) =>
-  groupTimeline(newestFirst).map((b) => (b.kind === 'message' ? 'M' : b.entries.length));
+const mail = (minute: number, patch: Partial<ItemMail> = {}): ItemMail => ({
+  id: `m${++n}`,
+  template: 'done',
+  label: 'Erledigt',
+  createdAt: new Date(Date.UTC(2026, 9, 15, 10, minute)).toISOString(),
+  status: 'sent',
+  to: [{ email: 'anna@test.local', name: 'Anna Muster' }],
+  cc: [],
+  deliveredTo: ['anna@test.local'],
+  error: null,
+  ...patch,
+});
+const shape = (newestFirst: Entry[], mails: ItemMail[] = []) =>
+  groupTimeline(newestFirst, mails).map((b) => (b.kind === 'message' ? 'M' : b.kind === 'mail' ? 'Mail' : b.entries.length));
 
 describe('groupTimeline', () => {
   it('fasst Änderungen derselben Person innert 2 Minuten zusammen', () => {
@@ -113,6 +126,25 @@ describe('groupTimeline', () => {
     const removed = entry(3, { meta: { field: 'participantRemoved', from: 'Bea' } });
     expect(shape([removed, added(2), added(1)])).toEqual([3]);
     expect(shape([entry(10, { meta: { field: 'priority', from: 'Hoch', to: 'Normal' } }), entry(1)])).toEqual([1, 1]);
+  });
+
+  it('reiht automatische Mails nach ihrer Zeit ein, ohne zusammengefasste Änderungen zu trennen', () => {
+    // Änderungen um 10:01 und 10:03 bilden eine Karte (10:03); die Mail um 10:02 steht darunter
+    const status = entry(3, { kind: 'status', meta: { from: 'In Arbeit', to: 'Erledigt' } });
+    expect(shape([status, entry(1)], [mail(2)])).toEqual([2, 'Mail']);
+    // Neuere Mail zuoberst, ältere zuunterst (z.B. Eingangsbestätigung), Reihenfolge der Mails unabhängig von der Eingabe
+    const blocks = groupTimeline([entry(5), entry(2, { kind: 'note', meta: null, body: 'x' })], [mail(0, { label: 'Eingangsbestätigung' }), mail(9)]);
+    expect(blocks.map((b) => (b.kind === 'mail' ? b.mail.label : b.kind))).toEqual(['Erledigt', 'events', 'message', 'Eingangsbestätigung']);
+    // Gleiche Zeit: die Mail zuerst; ohne Einträge nur die Mails
+    expect(shape([entry(4)], [mail(4)])).toEqual(['Mail', 1]);
+    expect(shape([], [mail(1), mail(2)])).toEqual(['Mail', 'Mail']);
+  });
+
+  it('Empfänger einer Mail mit Namen, sonst mit Adresse', () => {
+    expect(mailRecipientsText(mail(1))).toBe('an Anna Muster');
+    expect(
+      mailRecipientsText(mail(1, { cc: [{ email: 'carla@test.local', name: 'Carla Rossi' }, { email: 'extern@firma.ch', name: null }] })),
+    ).toBe('an Anna Muster, CC Carla Rossi, CC extern@firma.ch');
   });
 
   it('Satzteile ohne «hat»', () => {

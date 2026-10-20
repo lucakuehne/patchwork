@@ -265,6 +265,17 @@ export const TEMPLATES: TemplateDefinition[] = [
 
 export const templateByKey = (key: string) => TEMPLATES.find((t) => t.key === key);
 
+/** Automatische Mails an Melder und Beteiligte, die im Verlauf des Vorgangs erscheinen; Mails an die IT nicht. */
+export const TIMELINE_TEMPLATES: TemplateKey[] = [
+  'confirmation',
+  'done',
+  'rejected',
+  'duplicateMerged',
+  'duplicateRedirected',
+  'waitingReminder',
+  'waitingClosed',
+];
+
 /** Diese Werte sind schon Markdown oder Adressen und werden für die HTML-Fassung nicht maskiert. */
 const MARKDOWN_VALUES = new Set(['link', 'nummer', 'begründung']);
 

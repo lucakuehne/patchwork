@@ -7,10 +7,11 @@ import SimulateMailDialog from '../../components/SimulateMailDialog.vue';
 import TestModeSettings from '../../components/TestModeSettings.vue';
 import { formatDateTime, formatSize, itemRef } from '../../format';
 import { incomingResultText } from '../../incoming';
-import { renderMailHtml } from '../../markdown';
+import { renderOwnMailHtml } from '../../markdown';
+import { OUTGOING_STATUS } from '../../outgoing';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
-import type { IncomingMail, OutgoingMail, OutgoingMailDetail, OutgoingStatus } from '../../types';
+import type { IncomingMail, OutgoingMail, OutgoingMailDetail } from '../../types';
 
 /** Protokoll aller ausgehenden Mails, mit Filter nach Status, und darüber der Testbetrieb. */
 const session = useSession();
@@ -44,13 +45,7 @@ const FILTERS = [
 
 const filter = ref<string>(FILTERS.some((f) => f.key === route.query.status) ? String(route.query.status) : 'alle');
 
-const STATUS: Record<OutgoingStatus, { label: string; kind: string }> = {
-  queued: { label: 'wird versendet', kind: 'queued' },
-  sent: { label: 'versendet', kind: 'sent' },
-  partial: { label: 'teilweise versendet', kind: 'held' },
-  held: { label: 'nicht versendet', kind: 'held' },
-  failed: { label: 'Fehler', kind: 'failed' },
-};
+const STATUS = OUTGOING_STATUS;
 
 async function load() {
   loading.value = true;
@@ -170,8 +165,8 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
           <RouterLink :to="`/v/${open.item.number}`">{{ itemRef(open.item.number) }} {{ open.item.title }}</RouterLink>
         </dd>
       </dl>
-      <div v-if="open.html" class="prose mail-html mail-body" v-html="renderMailHtml(open.html)" />
-      <pre v-else class="mail-body mail-text">{{ open.text }}</pre>
+      <div v-if="open.html" class="prose mail-html mail-body own-mail" v-html="renderOwnMailHtml(open.html)" />
+      <pre v-else class="mail-body mail-text own-mail">{{ open.text }}</pre>
       <div v-if="open.attachments.length" class="stack attachments">
         <h3>Anhänge</h3>
         <a v-for="a in open.attachments" :key="a.index" :href="`/api/admin/outgoing-mails/${open.id}/attachments/${a.index}`">
@@ -218,6 +213,8 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
   padding: 12px;
   max-height: 50vh;
   overflow: auto;
+  /* Formatierungen der Mail (Inline-Styles) bleiben in diesem Rahmen, auch z.B. position: fixed */
+  contain: paint;
 }
 .mail-text {
   margin: 0;

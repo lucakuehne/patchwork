@@ -260,7 +260,49 @@ export interface Entry {
     withheld: string[];
     error: string | null;
   } | null;
+  /** Die versendete Mail einer öffentlichen Antwort (null = keine Mail, z.B. ohne Empfänger) */
+  mailId: string | null;
   attachments: Attachment[];
+}
+
+export interface MailRecipient {
+  email: string;
+  /** Name des Benutzers, null = Adresse ohne Benutzer */
+  name: string | null;
+}
+
+/** Automatische Mail an Melder und Beteiligte im Verlauf eines Vorgangs */
+export interface ItemMail {
+  id: string;
+  template: string;
+  /** Art der Mail, z.B. «Erledigt» */
+  label: string;
+  createdAt: string;
+  status: OutgoingStatus;
+  to: MailRecipient[];
+  cc: MailRecipient[];
+  /** An diese Adressen ging die Mail tatsächlich (Testbetrieb) */
+  deliveredTo: string[];
+  error: string | null;
+}
+
+/** Von Patchwork zu einem Vorgang versendete Mail zum Anschauen */
+export interface SentMail {
+  id: string;
+  /** Art der Mail, z.B. «Erledigt» oder «Öffentliche Antwort» */
+  label: string;
+  createdAt: string;
+  sentAt: string | null;
+  status: OutgoingStatus;
+  fromAddress: string;
+  to: string[];
+  cc: string[];
+  deliveredTo: string[];
+  subject: string;
+  error: string | null;
+  text: string;
+  html: string | null;
+  attachments: { index: number; filename: string; contentType: string; size: number }[];
 }
 
 export interface ItemDetail {
@@ -293,6 +335,8 @@ export interface ItemDetail {
   participants: User[];
   attachments: Attachment[];
   entries: Entry[];
+  /** Automatische Mails an Melder und Beteiligte, älteste zuerst */
+  mails: ItemMail[];
 }
 
 export interface Counts {

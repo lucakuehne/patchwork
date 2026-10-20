@@ -20,3 +20,12 @@ export function renderMarkdown(source: string, context: ImageContext = 'staff'):
 export function renderMailHtml(html: string): string {
   return DOMPurify.sanitize(html, { FORBID_TAGS: ['style', 'form', 'input', 'button'], FORBID_ATTR: ['style'] });
 }
+
+/**
+ * HTML der Mails, die Patchwork selbst verschickt (Protokoll der ausgehenden Mails): mit den Formatierungen der Vorlage
+ * (z.B. kleine graue Fusszeile mit Trennlinie), damit die Ansicht der versendeten Mail entspricht. Das HTML stammt
+ * vollständig von Patchwork; den Rahmen (contain) begrenzt die Ansicht selbst.
+ */
+export function renderOwnMailHtml(html: string): string {
+  return DOMPurify.sanitize(html, { FORBID_TAGS: ['style', 'form', 'input', 'button'] });
+}

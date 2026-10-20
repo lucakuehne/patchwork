@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, isNotNull, max, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, max, ne, or, sql } from 'drizzle-orm';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import {
   attachments,
@@ -26,6 +26,7 @@ import {
   type User,
 } from '../db/schema';
 import { ChannelsService } from '../channels/channels.service';
+import { templateByKey, TIMELINE_TEMPLATES } from '../mail/mail-templates';
 import { MailboxesService } from '../mail/mailboxes.service';
 import { NotificationsService } from '../mail/notifications.service';
 import { visibleInPortal } from '../portal/portal-visibility';
@@ -131,7 +132,7 @@ export class ItemsService {
       item.channelId ? this.channels.get(item.channelId) : null,
     ]);
 
-    const [participantRows, entryRows, attachmentRows, muteRows, mailRows, deliveryRows] = await Promise.all([
+    const [participantRows, entryRows, attachmentRows, muteRows, mailRows, outgoingRows] = await Promise.all([
       this.db
         .select({ user: users })
         .from(participants)
@@ -154,32 +155,52 @@ export class ItemsService {
         .from(mailMessages)
         .where(and(eq(mailMessages.itemId, item.id), eq(mailMessages.direction, 'in'), isNotNull(mailMessages.storageKey)))
         .orderBy(asc(mailMessages.createdAt)),
-      // Versand der öffentlichen Antworten, nur Abweichungen: nicht oder teilweise versendet, Fehler, noch unterwegs
+      // Versendete Mails: öffentliche Antworten und die automatischen Mails an Melder und Beteiligte, auch solche unter
+      // einem anderen Vorgang, die diesen betreffen (Duplikat-Hinweis läuft unter dem Original)
       this.db
         .select({
+          id: outgoingMails.id,
+          itemId: outgoingMails.itemId,
           entryId: outgoingMails.entryId,
+          template: outgoingMails.template,
           status: outgoingMails.status,
           to: outgoingMails.to,
           cc: outgoingMails.cc,
           deliveredTo: outgoingMails.deliveredTo,
           error: outgoingMails.error,
+          createdAt: outgoingMails.createdAt,
         })
         .from(outgoingMails)
         .where(
-          and(eq(outgoingMails.itemId, item.id), isNotNull(outgoingMails.entryId), ne(outgoingMails.status, 'sent')),
-        ),
+          or(
+            and(
+              eq(outgoingMails.itemId, item.id),
+              or(isNotNull(outgoingMails.entryId), inArray(outgoingMails.template, TIMELINE_TEMPLATES)),
+            ),
+            and(eq(outgoingMails.relatedItemId, item.id), inArray(outgoingMails.template, TIMELINE_TEMPLATES)),
+          ),
+        )
+        .orderBy(asc(outgoingMails.createdAt)),
     ]);
+    const replyMails = outgoingRows.filter((r) => r.entryId && r.itemId === item.id);
+    const mailByEntry = new Map(replyMails.map((r) => [r.entryId!, r.id]));
+    // Versand der öffentlichen Antworten, nur Abweichungen: nicht oder teilweise versendet, Fehler, noch unterwegs
     const deliveryByEntry = new Map(
-      deliveryRows.map((r) => [
-        r.entryId!,
-        {
-          status: r.status,
-          deliveredTo: r.deliveredTo,
-          withheld: [...r.to, ...r.cc].filter((a) => !r.deliveredTo.includes(a)),
-          error: r.error,
-        },
-      ]),
+      replyMails
+        .filter((r) => r.status !== 'sent')
+        .map((r) => [
+          r.entryId!,
+          {
+            status: r.status,
+            deliveredTo: r.deliveredTo,
+            withheld: [...r.to, ...r.cc].filter((a) => !r.deliveredTo.includes(a)),
+            error: r.error,
+          },
+        ]),
     );
+    const timelineMails = outgoingRows.filter((r) => !r.entryId && r.template);
+    const recipientNames = await this.namesByEmail(timelineMails.flatMap((r) => [...r.to, ...r.cc]));
+    const recipient = (email: string) => ({ email, name: recipientNames.get(email) ?? null });
 
     const toAttachment = (a: (typeof attachmentRows)[number]) => ({
       id: a.id,
@@ -227,9 +248,30 @@ export class ItemsService {
         author: author && toPublicUser(author),
         originalMessageId: originalByEntry.get(entry.id) ?? null,
         delivery: deliveryByEntry.get(entry.id) ?? null,
+        /** Die versendete Mail einer öffentlichen Antwort */
+        mailId: mailByEntry.get(entry.id) ?? null,
         attachments: attachmentRows.filter((a) => a.entryId === entry.id).map(toAttachment),
       })),
+      mails: timelineMails.map((r) => ({
+        id: r.id,
+        template: r.template!,
+        label: templateByKey(r.template!)?.label ?? r.template!,
+        createdAt: r.createdAt,
+        status: r.status,
+        to: r.to.map(recipient),
+        cc: r.cc.map(recipient),
+        deliveredTo: r.deliveredTo,
+        error: r.error,
+      })),
     };
+  }
+
+  /** Namen der Benutzer zu Mail-Adressen (für die Empfänger im Verlauf). */
+  private async namesByEmail(emails: string[]): Promise<Map<string, string>> {
+    const unique = [...new Set(emails)];
+    if (unique.length === 0) return new Map();
+    const rows = await this.db.select({ email: users.email, name: users.name }).from(users).where(inArray(users.email, unique));
+    return new Map(rows.map((r) => [r.email, r.name]));
   }
 
   async byNumber(number: number, tx: Tx = this.db): Promise<Item> {

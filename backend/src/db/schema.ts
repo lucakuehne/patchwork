@@ -376,6 +376,10 @@ export const outgoingMails = pgTable(
     cc: jsonb('cc').$type<string[]>().notNull(),
     subject: text('subject').notNull(),
     automated: boolean('automated').notNull(),
+    /** Vorlage der Mail (z.B. «done», «reply»); null bei älteren automatischen Mails, die sie noch nicht festhielten */
+    template: text('template'),
+    /** Weiterer Vorgang, in dessen Verlauf die Mail erscheint: beim Duplikat-Hinweis das Duplikat */
+    relatedItemId: uuid('related_item_id').references(() => items.id, { onDelete: 'set null' }),
     status: outgoingStatus('status').notNull(),
     /** Empfänger, an die die Mail tatsächlich ging */
     deliveredTo: jsonb('delivered_to').$type<string[]>().notNull().default([]),
@@ -391,6 +395,7 @@ export const outgoingMails = pgTable(
   (t) => [
     index('outgoing_mails_created_idx').on(t.createdAt),
     index('outgoing_mails_item_idx').on(t.itemId),
+    index('outgoing_mails_related_item_idx').on(t.relatedItemId),
     index('outgoing_mails_status_idx').on(t.status),
   ],
 );

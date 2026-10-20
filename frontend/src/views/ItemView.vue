@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { api } from '../api';
 import ChecklistsPanel from '../components/ChecklistsPanel.vue';
 import CommentComposer from '../components/CommentComposer.vue';
@@ -11,13 +11,14 @@ import { manualStatusChoices, moveItem } from '../status-move';
 import RejectDialog from '../components/RejectDialog.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import TimelineEvents from '../components/TimelineEvents.vue';
+import TimelineMail from '../components/TimelineMail.vue';
 import TimelineMessage from '../components/TimelineMessage.vue';
 import TypeChangeDialog from '../components/TypeChangeDialog.vue';
 import UserPicker from '../components/UserPicker.vue';
 import { formatDateTime, itemRef, PRIORITY_LABELS, TYPE_LABELS } from '../format';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
-import { groupTimeline } from '../timeline';
+import { groupTimeline, type TimelineBlock } from '../timeline';
 import type { ItemDetail, ItemType, PersonPick, Priority, User } from '../types';
 
 const props = defineProps<{ number: number }>();
@@ -31,17 +32,52 @@ const rejectOpen = ref(false);
 const editingTitle = ref(false);
 const titleDraft = ref('');
 
-async function load() {
-  try {
-    item.value = await api.get<ItemDetail>(`/items/${props.number}`);
-    notFound.value = false;
-    document.title = `${itemRef(props.number)} ${item.value.title} – ${session.appName}`;
-  } catch (err) {
-    if ((err as { status?: number }).status === 404) notFound.value = true;
-    else toast.error(err);
-  }
+// Solange eine Mail «wird versendet», den Vorgang alle 3 Sekunden nachladen, höchstens eine Minute lang
+const FOLLOW_MS = 3000;
+const FOLLOW_MAX = 20;
+let followTimer: number | undefined;
+let followUps = 0;
+let unmounted = false;
+function followSending() {
+  window.clearTimeout(followTimer);
+  const current = item.value;
+  const sending =
+    !!current && (current.mails.some((m) => m.status === 'queued') || current.entries.some((e) => e.delivery?.status === 'queued'));
+  if (unmounted || !sending || followUps >= FOLLOW_MAX) return;
+  followUps++;
+  followTimer = window.setTimeout(() => void load(true), FOLLOW_MS);
 }
-watch(() => props.number, load, { immediate: true });
+onBeforeUnmount(() => {
+  unmounted = true;
+  window.clearTimeout(followTimer);
+});
+
+/** Laufnummer der Anfragen: Nur die Antwort der neuesten zählt (auch nach dem Wechsel zu einem anderen Vorgang). */
+let loadSeq = 0;
+
+/** «background»: Nachladen, solange eine Mail unterwegs ist; Fehler dabei ohne Meldung */
+async function load(background = false) {
+  const number = props.number;
+  const seq = ++loadSeq;
+  window.clearTimeout(followTimer);
+  if (!background) followUps = 0;
+  try {
+    const loaded = await api.get<ItemDetail>(`/items/${number}`);
+    if (unmounted || seq !== loadSeq) return;
+    item.value = loaded;
+    notFound.value = false;
+    document.title = `${itemRef(number)} ${loaded.title} – ${session.appName}`;
+  } catch (err) {
+    if (unmounted || seq !== loadSeq) return;
+    // Im Hintergrund ohne Meldung; das Nachladen versucht es weiter (begrenzt)
+    if (!background) {
+      if ((err as { status?: number }).status === 404) notFound.value = true;
+      else toast.error(err);
+    }
+  }
+  followSending();
+}
+watch(() => props.number, () => load(), { immediate: true });
 
 /** Führt eine Änderung aus und lädt danach den Vorgang neu. */
 async function run(action: () => Promise<unknown>, success?: string) {
@@ -71,8 +107,10 @@ const statusOptions = computed(() => {
 // Steht der Vorgang im Ablehnen-Status, erscheint dieser im Status-Feld als deaktivierte Option
 const inRejectStatus = computed(() => !!item.value?.type && session.isRejectStatus(item.value.status, item.value.type));
 const canReject = computed(() => !!item.value?.type && session.canReject(item.value.type, item.value.status?.id ?? null));
-// Neueste zuerst; Änderungen kurz hintereinander von derselben Person als eine Zeile
-const timeline = computed(() => (item.value ? groupTimeline([...item.value.entries].reverse()) : []));
+// Neueste zuerst; Änderungen kurz hintereinander von derselben Person als eine Zeile, automatische Mails dazwischen
+const timeline = computed(() => (item.value ? groupTimeline([...item.value.entries].reverse(), item.value.mails) : []));
+const blockKey = (block: TimelineBlock) =>
+  block.kind === 'message' ? block.entry.id : block.kind === 'mail' ? block.mail.id : block.entries[0]!.id;
 // Ein Eintrag pro Postfach; ohne eigenes Antwort-Postfach ist das Standard-Postfach gewählt
 const mailboxOptions = computed(() => {
   const list = session.mailboxes.map((m) => ({ ...m, inactive: false }));
@@ -162,8 +200,9 @@ function onRejected() {
 
         <!-- Neuestes zuoberst; sonst die ursprüngliche Meldung als ältester Eintrag zuunterst -->
         <div class="timeline">
-          <template v-for="block in timeline" :key="block.kind === 'message' ? block.entry.id : block.entries[0]!.id">
+          <template v-for="block in timeline" :key="blockKey(block)">
             <TimelineMessage v-if="block.kind === 'message'" :entry="block.entry" :item-number="item.number" @changed="load" />
+            <TimelineMail v-else-if="block.kind === 'mail'" :mail="block.mail" :item-number="item.number" />
             <TimelineEvents v-else :entries="block.entries" />
           </template>
         </div>

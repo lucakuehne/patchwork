@@ -1,5 +1,5 @@
 import { itemRef } from './format';
-import type { Entry } from './types';
+import type { Entry, ItemMail } from './types';
 
 /** Änderungen derselben Person, die höchstens so weit auseinanderliegen, erscheinen als eine Zeile. */
 export const GROUP_GAP_MS = 2 * 60_000;
@@ -7,7 +7,10 @@ export const GROUP_GAP_MS = 2 * 60_000;
 /** So lange nach dem Erfassen lässt sich eine eigene interne Notiz bearbeiten (wie im Backend). */
 export const NOTE_EDIT_MINUTES = 5;
 
-export type TimelineBlock = { kind: 'message'; entry: Entry } | { kind: 'events'; entries: Entry[] };
+export type TimelineBlock =
+  | { kind: 'message'; entry: Entry }
+  | { kind: 'events'; entries: Entry[] }
+  | { kind: 'mail'; mail: ItemMail };
 
 export interface EventPart {
   /** Satzteil ohne «hat», z.B. «den Status von «Neu» auf «In Arbeit» geändert» */
@@ -97,9 +100,40 @@ export function mergeRepeats(newestFirst: Entry[]): Entry[] {
 /**
  * Teilt die Einträge (neueste zuerst) in Nachrichten und Ereigniszeilen. Aufeinanderfolgende
  * Änderungen derselben Person kurz hintereinander (z.B. Status und Priorität) werden zusammengefasst,
- * mehrfache Änderungen desselben Feldes darin zu einer (siehe mergeRepeats).
+ * mehrfache Änderungen desselben Feldes darin zu einer (siehe mergeRepeats). Automatische Mails stehen als eigene
+ * Zeilen nach ihrer Zeit dazwischen, ohne zusammengefasste Änderungen zu trennen.
  */
-export function groupTimeline(newestFirst: Entry[]): TimelineBlock[] {
+export function groupTimeline(newestFirst: Entry[], mails: ItemMail[] = []): TimelineBlock[] {
+  return withMails(groupEntries(newestFirst), mails);
+}
+
+/** Zeitpunkt eines Blocks: der neueste Eintrag */
+function blockTime(block: TimelineBlock): number {
+  if (block.kind === 'mail') return new Date(block.mail.createdAt).getTime();
+  return new Date(block.kind === 'message' ? block.entry.createdAt : block.entries[0]!.createdAt).getTime();
+}
+
+/** Mails nach ihrer Zeit zwischen die Blöcke (neueste zuerst) einreihen; bei gleicher Zeit die Mail zuerst. */
+function withMails(blocks: TimelineBlock[], mails: ItemMail[]): TimelineBlock[] {
+  const pending: TimelineBlock[] = [...mails]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map((mail) => ({ kind: 'mail', mail }));
+  const result: TimelineBlock[] = [];
+  for (const block of blocks) {
+    while (pending.length && blockTime(pending[0]!) >= blockTime(block)) result.push(pending.shift()!);
+    result.push(block);
+  }
+  return [...result, ...pending];
+}
+
+/** Empfänger einer Mail im Verlauf, z.B. «an Anna Muster, CC Carla Rossi»; ohne Benutzer die Adresse. */
+export function mailRecipientsText(mail: Pick<ItemMail, 'to' | 'cc'>): string {
+  const name = (r: ItemMail['to'][number]) => r.name || r.email;
+  const parts = [...mail.to.map(name), ...mail.cc.map((r) => `CC ${name(r)}`)];
+  return parts.length ? `an ${parts.join(', ')}` : '';
+}
+
+function groupEntries(newestFirst: Entry[]): TimelineBlock[] {
   const blocks: TimelineBlock[] = [];
   for (const entry of newestFirst) {
     if (isMessage(entry)) {
@@ -121,7 +155,7 @@ export function groupTimeline(newestFirst: Entry[]): TimelineBlock[] {
     }
   }
   return blocks.flatMap((block) => {
-    if (block.kind === 'message' || block.entries.length < 2) return [block];
+    if (block.kind !== 'events' || block.entries.length < 2) return [block];
     const entries = mergeRepeats(block.entries);
     return entries.length ? [{ kind: 'events' as const, entries }] : [];
   });

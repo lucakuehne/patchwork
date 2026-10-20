@@ -17,7 +17,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import type { Response } from 'express';
 import { simpleParser } from 'mailparser';
 import { z } from 'zod';
@@ -25,9 +25,10 @@ import { CurrentUser } from '../auth/auth.decorators';
 import { appConfig } from '../config';
 import { emailSchema, nullableUuid, ZodPipe } from '../common/zod.pipe';
 import { InjectDb, type Db } from '../db/db.module';
-import { attachments, mailMessages, type User } from '../db/schema';
+import { attachments, mailMessages, outgoingMails, type User } from '../db/schema';
 import { itemRef } from '../mail/mail-content';
-import { mailView, sendMailAttachment } from '../mail/mail-view';
+import { templateByKey } from '../mail/mail-templates';
+import { disposition, mailView, sendMailAttachment } from '../mail/mail-view';
 import { sendAttachment } from '../storage/attachment-response';
 import { StorageService } from '../storage/storage.service';
 import { ChecklistsService } from './checklists.service';
@@ -288,6 +289,66 @@ export class ItemsController {
     }
   }
 
+  /** Eine von Patchwork zu diesem Vorgang versendete Mail, so wie sie (ohne Testbetrieb) versendet wird. */
+  @Get('items/:number/mails/:id')
+  async sentMail(@Param('number', ParseIntPipe) number: number, @Param('id', ParseUUIDPipe) id: string) {
+    const { item, mail } = await this.sentMailRow(number, id);
+    // Eigenes HTML; eingebettete Bilder («cid:») zeigen auf die Anhänge der gespeicherten Mail
+    const view = await mailView(await this.readStored(mail.storageKey), (index) => `/api/items/${item.number}/mails/${mail.id}/attachments/${index}`, false);
+    return {
+      id: mail.id,
+      label: mail.entryId ? 'Öffentliche Antwort' : (templateByKey(mail.template ?? '')?.label ?? 'Automatische Mail'),
+      createdAt: mail.createdAt,
+      sentAt: mail.sentAt,
+      status: mail.status,
+      fromAddress: mail.fromAddress,
+      to: mail.to,
+      cc: mail.cc,
+      deliveredTo: mail.deliveredTo,
+      subject: mail.subject,
+      error: mail.error,
+      text: view.text,
+      html: view.html,
+      attachments: view.attachments,
+    };
+  }
+
+  @Get('items/:number/mails/:id/eml')
+  async sentMailEml(@Param('number', ParseIntPipe) number: number, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const { mail } = await this.sentMailRow(number, id);
+    res.setHeader('Content-Type', 'message/rfc822');
+    res.setHeader('Content-Disposition', disposition(`${mail.subject || 'Mail'}.eml`));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    this.storage
+      .stream(mail.storageKey)
+      .on('error', () => res.status(404).end())
+      .pipe(res);
+  }
+
+  @Get('items/:number/mails/:id/attachments/:index')
+  async sentMailAttachment(
+    @Param('number', ParseIntPipe) number: number,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('index', ParseIntPipe) index: number,
+    @Res() res: Response,
+  ) {
+    const { mail } = await this.sentMailRow(number, id);
+    if (!sendMailAttachment(await simpleParser(await this.readStored(mail.storageKey)), index, res)) {
+      throw new NotFoundException('Anhang nicht gefunden');
+    }
+  }
+
+  private async sentMailRow(number: number, id: string) {
+    const item = await this.items.byNumber(number);
+    const [mail] = await this.db
+      .select()
+      .from(outgoingMails)
+      .where(and(eq(outgoingMails.id, id), or(eq(outgoingMails.itemId, item.id), eq(outgoingMails.relatedItemId, item.id))))
+      .limit(1);
+    if (!mail) throw new NotFoundException('Mail nicht gefunden');
+    return { item, mail };
+  }
+
   private async originalMail(number: number, messageId: string | undefined) {
     const item = await this.items.byNumber(number);
     const [row] = await this.db
@@ -304,7 +365,7 @@ export class ItemsController {
       return await this.storage.read(storageKey);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new NotFoundException('Die Originalmail ist nicht mehr vorhanden (Datei fehlt in der Ablage)');
+        throw new NotFoundException('Die gespeicherte Mail ist nicht mehr vorhanden (Datei fehlt in der Ablage)');
       }
       throw err;
     }

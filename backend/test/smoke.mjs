@@ -988,6 +988,17 @@ await step('Duplikat von anderem Melder: umgeleitet, Melder und CC werden Beteil
   assert.deepEqual(redirect.to, [BOB]);
   assert.deepEqual(redirect.cc, [CARLA]);
   assert.match(redirect.text, new RegExp(`/portal/v/${dupOther}\\b`));
+  // Im Verlauf beim Original und beim Duplikat; ansehen geht unter beiden Nummern, unter anderen nicht
+  const inOriginal = (await detail(dupOriginal)).mails.find((m) => m.template === 'duplicateRedirected');
+  const inDuplicate = (await detail(dupOther)).mails.find((m) => m.template === 'duplicateRedirected');
+  assert.ok(inOriginal && inDuplicate && inOriginal.id === inDuplicate.id, 'Hinweis in beiden Verläufen');
+  assert.deepEqual(inDuplicate.to.map((r) => r.email), [BOB]);
+  assert.deepEqual(inDuplicate.cc.map((r) => r.email), [CARLA]);
+  assert.equal((await api('GET', `/items/${dupOther}/mails/${inDuplicate.id}`)).label, 'Duplikat: im Original weiterbearbeitet');
+  await api('GET', `/items/${dupOriginal}/mails/${inDuplicate.id}`);
+  await api('GET', `/items/${dupSame}/mails/${inDuplicate.id}`, undefined, { expect: [404] });
+  // Der zusammengeführte Hinweis steht ebenso beim ersten Duplikat
+  assert.ok((await detail(dupSame)).mails.some((m) => m.template === 'duplicateMerged'), 'Hinweis beim zusammengeführten Duplikat');
 
   const f = new FormData();
   f.append('kind', 'reply');
@@ -1673,6 +1684,93 @@ await step('Protokoll: versendete Mails stehen vollständig unter «Ausgehende M
   const eml = await fetch(`${BASE}/admin/outgoing-mails/${confirmation.id}/eml`, { headers: { cookie } });
   assert.match(await eml.text(), /^Message-ID: <pw\./im);
   assert.ok((await api('GET', '/admin/outgoing-mails')).length >= sent.length, 'ohne Filter alle Mails');
+
+  // Im Verlauf: automatische Mails an Melder und Beteiligte, nicht die Benachrichtigungen an die IT
+  const { mails } = await detail(itemNo);
+  const inTimeline = mails.find((m) => m.template === 'confirmation');
+  assert.ok(inTimeline, 'Eingangsbestätigung im Verlauf');
+  assert.equal(inTimeline.label, 'Eingangsbestätigung');
+  const logged = sent.find((m) => m.id === inTimeline.id);
+  assert.ok(logged && !logged.reply, 'dieselbe Mail im Protokoll');
+  assert.equal(inTimeline.status, 'sent');
+  assert.deepEqual(inTimeline.to.map((r) => r.email), [ANNA]);
+  assert.ok(inTimeline.to[0].name, 'Empfänger mit Namen');
+  assert.ok(mails.some((m) => m.template === 'done' && m.label === 'Erledigt'), 'Erledigt-Mail im Verlauf');
+  const staffMails = (await api('GET', '/admin/outgoing-mails')).filter((m) => m.item.number === itemNo && m.to.includes(IVAN));
+  assert.ok(staffMails.length > 0, 'Benachrichtigung an die IT im Protokoll');
+  assert.ok(staffMails.every((s) => !mails.some((m) => m.id === s.id)), 'Benachrichtigungen an die IT nicht im Verlauf');
+  assert.ok(mails.every((m) => ['confirmation', 'done', 'rejected', 'duplicateMerged', 'duplicateRedirected', 'waitingReminder', 'waitingClosed'].includes(m.template)));
+
+  // Ansehen: auch für IT-Mitarbeitende, nur unter dem eigenen Vorgang
+  await loginAs(IVAN, 'geheim-geheim');
+  const view = await api('GET', `/items/${itemNo}/mails/${inTimeline.id}`);
+  assert.equal(view.label, 'Eingangsbestätigung');
+  assert.deepEqual(view.to, [ANNA]);
+  assert.equal(view.subject, logged.subject);
+  assert.match(view.html, /border-top/, 'HTML mit den Formatierungen der Vorlage (Fusszeile)');
+  const viewEml = await fetch(`${BASE}/items/${itemNo}/mails/${inTimeline.id}/eml`, { headers: { cookie } });
+  assert.match(await viewEml.text(), /^Message-ID: <pw\./im);
+  await api('GET', `/items/${itemNo + 1}/mails/${inTimeline.id}`, undefined, { expect: [404] });
+  await loginAs('ada@test.local', 'geheim-geheim');
+});
+
+await step('Versandfehler: Vermerk im Verlauf, «Erneut senden» mit den korrigierten Postfach-Daten', async () => {
+  const BROKEN = `defekt-${RUN}@test.local`;
+  const FIXED = `repariert-${RUN}@test.local`;
+  const box = (address, smtpPort) => ({
+    name: 'Defekt',
+    address,
+    active: true,
+    isDefault: false,
+    imapHost: 'localhost',
+    imapPort: 13143,
+    imapSecure: false,
+    imapFolder: 'INBOX',
+    smtpHost: 'localhost',
+    smtpPort,
+    smtpSecurity: 'none',
+    authType: 'password',
+    username: address,
+    password: 'x',
+  });
+  // Port 1: Verbindung abgelehnt
+  const mb = await api('POST', '/admin/mailboxes', box(BROKEN, 1));
+  await api('PATCH', `/items/${itemNo}`, { mailboxId: mb.id });
+  const text = `Versandfehler ${RUN}`;
+  const form = new FormData();
+  form.append('kind', 'reply');
+  form.append('body', text);
+  await api('POST', `/items/${itemNo}/entries`, form);
+  let failed;
+  for (let i = 0; i < 30 && !failed; i++) {
+    const entry = (await detail(itemNo)).entries.find((e) => e.body === text);
+    if (entry.delivery?.status === 'failed') failed = entry;
+    else await sleep(1000);
+  }
+  assert.ok(failed, 'Vermerk «Versand fehlgeschlagen» bei der Antwort');
+  assert.ok(failed.delivery.error, 'mit Fehlermeldung');
+  const before = await api('GET', `/items/${itemNo}/mails/${failed.mailId}`);
+  assert.deepEqual([before.status, before.fromAddress], ['failed', BROKEN]);
+
+  // Postfach korrigiert (Adresse und SMTP), dann «Erneut senden»: neu zusammengestellt mit der neuen Absenderadresse
+  await api('PUT', `/admin/mailboxes/${mb.id}`, box(FIXED, 13025));
+  await api('POST', `/admin/outgoing-mails/${failed.mailId}/resend`);
+  const received = await waitForMail(ANNA, (m) => m.text.includes(text), 'erneut gesendete Antwort');
+  assert.match(received.source, new RegExp(`^From: .*${FIXED}`, 'im'), 'Absender aus dem korrigierten Postfach');
+  let after;
+  for (let i = 0; i < 10 && after?.status !== 'sent'; i++) {
+    after = await api('GET', `/admin/outgoing-mails/${failed.mailId}`);
+    if (after.status !== 'sent') await sleep(500);
+  }
+  assert.equal(after.status, 'sent');
+  assert.equal(after.fromAddress, FIXED);
+  assert.equal(after.attempts, 2);
+  const eml = await fetch(`${BASE}/items/${itemNo}/mails/${failed.mailId}/eml`, { headers: { cookie } });
+  assert.match(await eml.text(), new RegExp(`^From: .*${FIXED}`, 'im'), 'Protokoll zeigt die versendete Fassung');
+  assert.equal((await detail(itemNo)).entries.find((e) => e.body === text).delivery, null, 'kein Vermerk mehr');
+
+  await api('PATCH', `/items/${itemNo}`, { mailboxId });
+  await api('DELETE', `/admin/mailboxes/${mb.id}`);
 });
 
 await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet worden wäre', async () => {
@@ -1686,6 +1784,10 @@ await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet wo
   form.append('body', text);
   form.append('files', new Blob(['Inhalt']), 'Beilage.txt');
   await api('POST', `/items/${itemNo}/entries`, form);
+  // Gleich nach dem Senden im Protokoll und im Verlauf («Mail ansehen»), noch bevor der Versand sie abholt
+  const justSent = (await detail(itemNo)).entries.find((e) => e.body === text);
+  assert.ok(justSent.mailId, 'Mail sofort mit der Antwort verknüpft');
+  assert.ok(['queued', 'held'].includes(justSent.delivery?.status), `Vermerk sofort: ${justSent.delivery?.status}`);
 
   let held;
   for (let i = 0; i < 30 && !held; i++) {
@@ -1706,9 +1808,21 @@ await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet wo
   assert.equal(eml.status, 200);
   assert.match(await eml.text(), /^Message-ID: <pw\./im);
   assert.deepEqual(held.deliveredTo, []);
-  const vermerk = (await detail(itemNo)).entries.find((e) => e.body === text).delivery;
+  const replyEntry = (await detail(itemNo)).entries.find((e) => e.body === text);
+  const vermerk = replyEntry.delivery;
   assert.equal(vermerk.status, 'held', 'Vermerk in der Timeline');
   assert.ok(vermerk.withheld.includes(ANNA));
+  // «Mail ansehen» bei der Antwort: die Mail, wie sie ohne Testbetrieb versendet würde, mit Anhang
+  assert.equal(replyEntry.mailId, held.id);
+  const sentView = await api('GET', `/items/${itemNo}/mails/${held.id}`);
+  assert.equal(sentView.label, 'Öffentliche Antwort');
+  assert.equal(sentView.status, 'held');
+  assert.ok(sentView.cc.includes(CARLA));
+  assert.ok(sentView.text.includes(text));
+  assert.deepEqual(sentView.attachments.map((a) => a.filename), ['Beilage.txt']);
+  const sentAttachment = await fetch(`${BASE}/items/${itemNo}/mails/${held.id}/attachments/0`, { headers: { cookie } });
+  assert.equal(await sentAttachment.text(), 'Inhalt');
+  assert.ok(!(await detail(itemNo)).mails.some((m) => m.id === held.id), 'Antworten erscheinen nicht als eigene Mail-Zeile');
   await api('POST', `/admin/outgoing-mails/${held.id}/resend`, undefined, { expect: [400] });
   await sleep(1500);
   assert.ok(!(await inbox(ANNA)).some((m) => m.text.includes(text)), 'Mail ist nicht beim Melder angekommen');

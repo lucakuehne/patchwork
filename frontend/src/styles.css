@@ -653,3 +653,18 @@ h3 {
   max-height: 520px;
   overflow: auto;
 }
+/* Von Patchwork versendete Mails: hell wie in der Vorlage (weisser Grund), auch im dunklen Farbschema */
+.own-mail {
+  color-scheme: light;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #dde1e7;
+  --border-strong: #c5ccd6;
+  --text: #1c2330;
+  --text-muted: #5d6879;
+  --text-faint: #8a94a3;
+  --accent: #2f5bea;
+  --accent-hover: #2349c7;
+  background: #ffffff;
+  color: #1f2328;
+}

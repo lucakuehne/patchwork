@@ -8,10 +8,19 @@ import {
   sameText,
   templateByKey,
   TEMPLATES,
+  TIMELINE_TEMPLATES,
 } from './mail-templates';
 import { MailTemplatesService } from './mail-templates.service';
 
 const used = (text: string | null) => [...(text ?? '').matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map((m) => m[1]!);
+
+describe('Mails im Verlauf', () => {
+  it('alle Mails an Melder mit eigenem Text, ohne öffentliche Antwort und ohne Mails an die IT', () => {
+    const expected = TEMPLATES.filter((t) => t.group === 'reporter' && t.subject !== null && t.body !== null).map((t) => t.key);
+    expect([...TIMELINE_TEMPLATES].sort()).toEqual([...expected].sort());
+    expect(TIMELINE_TEMPLATES).not.toContain('reply');
+  });
+});
 
 describe('Platzhalter', () => {
   it('ersetzt {{Name}} ohne Rücksicht auf Gross-/Kleinschreibung und Leerzeichen, unbekannte bleiben stehen', () => {
