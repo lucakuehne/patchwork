@@ -197,6 +197,8 @@ function onRejected() {
         <template v-if="item.type === 'task'">
           <ItemDescription :item="item" label="Beschreibung" :busy="busy" :save="saveDescription" />
           <ChecklistsPanel :number="item.number" :checklists="item.checklists" @changed="load" />
+          <!-- Abgrenzung zwischen Aufgabe (Beschreibung, Checklisten) und Antworten mit Verlauf -->
+          <div class="section-divider" role="separator"><span>Verlauf</span></div>
         </template>
 
         <!-- Beim Abmelden ist der Benutzer schon entfernt, bevor die Ansicht verschwindet -->
@@ -436,6 +438,22 @@ function onRejected() {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-faint);
+}
+.section-divider::before,
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-strong);
 }
 .side {
   position: sticky;

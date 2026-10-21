@@ -193,6 +193,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - Oberfläche nur Deutsch, Schweizer Rechtschreibung (ss statt ß), Datum dd.mm.yyyy.
 - Detailansicht eines Vorgangs: zuoberst das Antwortfeld (öffentlich/intern), darunter die Timeline mit dem Neuesten zuoberst, zuunterst die ursprüngliche Meldung.
   - Bei **Aufgaben** steht die Beschreibung zuoberst über den Checklisten (Bezeichnung «Beschreibung»). Bei Störungen und im Eingang bleibt sie als «Ursprüngliche Meldung» zuunterst.
+  - Bei Aufgaben trennt eine Linie mit der Beschriftung «Verlauf» die Aufgabe (Beschreibung, Checklisten) vom Antwortfeld und der Timeline (gewünscht am 21.10.2026).
 - Farben in der Timeline: interne Notizen orange, öffentliche Nachrichten blau, ursprüngliche Meldung weiss. Gilt auch im Portal.
 - Antwortfeld: Feld, Umschalter und Senden-Knopf sind im Modus «Öffentliche Antwort» blau, im Modus «Interne Notiz» orange.
 - Editor (gewünscht am 20.10.2026): Die Knöpfe für Listen zeigen drei Punkte bzw. drei Nummern untereinander. Eine Trennlinie gibt es im Editor nicht.
