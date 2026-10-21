@@ -9,6 +9,7 @@ import {
   templateByKey,
   TEMPLATES,
   TIMELINE_TEMPLATES,
+  withoutDefaults,
 } from './mail-templates';
 import { MailTemplatesService } from './mail-templates.service';
 
@@ -61,10 +62,37 @@ describe('Platzhalter', () => {
     expect([examples['Zuständig Vorname'], examples['Zuständig Nachname']]).toEqual(['Ivan', 'IT']);
   });
 
-  it('Standardtexte mit Vor- und Nachname, Fusszeilen ohne App-Namen', () => {
+  it('Standardtexte mit Vor- und Nachname, per Du, Fusszeilen mit «Patchwork» (übernommen am 21.10.2026)', () => {
     expect(templateByKey('assigned')!.body).toContain('Melder: {{Melder Vorname}} {{Melder Nachname}} ({{Melder E-Mail}})');
-    expect(templateByKey('reporterFooter')!.body).toBe('Bitte lassen Sie bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.');
-    expect(templateByKey('staffFooter')!.body).toBe('Benachrichtigung zu {{Nummer}}');
+    expect(templateByKey('confirmation')!.body).toMatch(/^Hallo \{\{Melder Vorname\}\}\n\nDeine Nachricht/);
+    expect(templateByKey('reporterFooter')!.body).toBe('Patchwork · {{Nummer}}\nBitte lass bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.');
+    expect(templateByKey('staffFooter')!.body).toBe('Patchwork · Benachrichtigung zu {{Nummer}}');
+  });
+
+  it('mehrzeilige Werte im Zitat bleiben ganz im Zitat', () => {
+    expect(fill('Antwort:\n\n> {{Text}}\n\nEnde', { Text: 'Zeile 1\nZeile 2\n\nAbsatz' })).toBe(
+      'Antwort:\n\n> Zeile 1\n> Zeile 2\n> \n> Absatz\n\nEnde',
+    );
+    expect(fill('> > {{Text}}', { Text: 'a\nb' })).toBe('> > a\n> > b');
+    // Ausserhalb eines Zitats unverändert
+    expect(fill('Text: {{Text}}', { Text: 'a\nb' })).toBe('Text: a\nb');
+    expect(fill('> Von {{Absender}}: {{Text}}', { Absender: 'Anna', Text: 'a\nb' })).toBe('> Von Anna: a\nb');
+  });
+
+  it('angepasste Texte, die dem Standard entsprechen, gelten wieder als Standard', () => {
+    const confirmation = templateByKey('confirmation')!;
+    expect(withoutDefaults({})).toBeNull();
+    expect(withoutDefaults({ done: { subject: 'Fertig: {{Titel}}' } })).toBeNull();
+    expect(
+      withoutDefaults({
+        confirmation: { body: `${confirmation.body}  \n` },
+        done: { subject: 'Fertig: {{Titel}}', body: templateByKey('done')!.body! },
+        alt: { body: 'unbekannte Vorlage' },
+      }),
+    ).toEqual({
+      overrides: { done: { subject: 'Fertig: {{Titel}}' }, alt: { body: 'unbekannte Vorlage' } },
+      removed: ['confirmation'],
+    });
   });
 
   it('Beschreibungen nennen keine Status-Kategorien (gibt es seit 20.10.2026 nicht mehr)', () => {
@@ -231,7 +259,7 @@ describe('Vorlagen verwalten', () => {
     expect((await templates.preview('reply', { subject: '{{Titel}}', body: null })).text).toContain('Der Drucker ist wieder eingerichtet');
   });
 
-  it('Vorschau mit Vor- und Nachname, {{App}} bleibt stehen, Standard-Fusszeile ohne App-Namen', async () => {
+  it('Vorschau mit Vor- und Nachname, {{App}} bleibt stehen, Standard-Fusszeile', async () => {
     const { templates } = service();
     const confirmation = await templates.preview('confirmation', {
       subject: 'Für {{Melder Nachname}}',
@@ -239,11 +267,10 @@ describe('Vorlagen verwalten', () => {
     });
     expect(confirmation.subject).toBe('[PW-123] Für Muster');
     expect(confirmation.text).toContain('Hallo Anna Muster, es meldet sich Ivan IT. {{App}}');
-    expect(confirmation.text).toContain('-- \nBitte lassen Sie bei Antworten die Nummer [PW-123] im Betreff stehen.');
-    expect(confirmation.text).not.toContain('Patchwork');
+    expect(confirmation.text).toContain('-- \nPatchwork · PW-123\nBitte lass bei Antworten die Nummer [PW-123] im Betreff stehen.');
 
     const staff = await templates.preview('staffLink', { subject: null, body: '[Öffnen]({{Link}})' });
-    expect(staff.text).toContain('Öffnen: https://patchwork.firma.local/v/123\n\n-- \nBenachrichtigung zu PW-123');
+    expect(staff.text).toContain('Öffnen: https://patchwork.firma.local/v/123\n\n-- \nPatchwork · Benachrichtigung zu PW-123');
     expect(staff.html).toContain('<a href="https://patchwork.firma.local/v/123">Öffnen</a>');
   });
 });

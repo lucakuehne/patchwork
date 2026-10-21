@@ -72,8 +72,8 @@ export const TEMPLATES: TemplateDefinition[] = [
     description: 'An den Melder, wenn eine neue Meldung per Mail oder im Portal eingeht.',
     subject: '{{Titel}}',
     body:
-      'Guten Tag\n\nIhre Nachricht ist bei uns eingegangen und wurde unter der Nummer **{{Nummer}}** erfasst. ' +
-      'Wir melden uns so bald wie möglich.\n\nFür Ergänzungen antworten Sie bitte direkt auf diese Mail.',
+      'Hallo {{Melder Vorname}}\n\nDeine Nachricht ist bei uns eingegangen und wurde unter der Nummer **{{Nummer}}** erfasst. ' +
+      'Wir melden uns so bald wie möglich.\n\nFür Ergänzungen antworte bitte direkt auf diese E-Mail.',
     placeholders: [...ITEM, PORTAL_LINK],
   },
   {
@@ -94,8 +94,8 @@ export const TEMPLATES: TemplateDefinition[] = [
       'abgeschlossenen Status).',
     subject: '{{Status}}: {{Titel}}',
     body:
-      'Guten Tag\n\nIhr Anliegen «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +
-      'Falls noch etwas offen ist, antworten Sie einfach auf diese Mail.',
+      'Hallo {{Melder Vorname}}\n\nDein Anliegen «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +
+      'Falls noch etwas offen ist, antworte einfach auf diese Mail.',
     placeholders: [...ITEM, PORTAL_LINK],
   },
   {
@@ -104,7 +104,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Abgelehnt',
     description: 'An den Melder, wenn ein Vorgang abgelehnt wird und «Melder informieren» gewählt ist.',
     subject: 'Abgelehnt: {{Titel}}',
-    body: 'Guten Tag\n\nIhr Anliegen «{{Titel}}» ({{Nummer}}) wurde abgelehnt.\n\n**Begründung:**\n\n{{Begründung}}',
+    body: 'Hallo {{Melder Vorname}}\n\nDein Anliegen «{{Titel}}» ({{Nummer}}) wurde abgelehnt.\n\n**Begründung:**\n\n> {{Begründung}}',
     placeholders: [...ITEM, p('Begründung', 'Begründung der Ablehnung', 'Dafür ist die IT nicht zuständig.'), PORTAL_LINK],
   },
   {
@@ -116,8 +116,8 @@ export const TEMPLATES: TemplateDefinition[] = [
       'Nummer, Titel und Link gehören zum Original.',
     subject: '{{Titel}}',
     body:
-      'Guten Tag\n\nIhre Nachricht {{Duplikat}} betrifft denselben Vorgang wie {{Original}} und wurde dort hinzugefügt. ' +
-      'Für Ergänzungen antworten Sie bitte auf diese Mail.',
+      'Hallo {{Melder Vorname}}\n\nDeine Nachricht {{Duplikat}} betrifft denselben Vorgang wie {{Original}} und wurde dort hinzugefügt. ' +
+      'Für Ergänzungen antworte bitte auf diese E-Mail.',
     placeholders: [
       ...ITEM,
       p('Duplikat', 'Duplikat mit Nummer und Titel', 'PW-124 «Drucker im 2. OG»'),
@@ -134,8 +134,8 @@ export const TEMPLATES: TemplateDefinition[] = [
       'Nummer und Titel gehören zum Original, Vor- und Nachname des Melders zum Duplikat.',
     subject: '{{Titel}}',
     body:
-      'Guten Tag\n\nIhre Meldung {{Duplikat}} betrifft dasselbe wie {{Original}} und wird dort weiterbearbeitet. ' +
-      'Sie erhalten die Updates per Mail.',
+      'Hallo {{Melder Vorname}}\n\nDeine Meldung {{Duplikat}} betrifft dasselbe wie {{Original}} und wird dort weiterbearbeitet. ' +
+      'Du erhältst die Updates per E-Mail.',
     placeholders: [
       ...ITEM,
       p('Duplikat', 'Duplikat mit Nummer und Titel', 'PW-124 «Drucker im 2. OG»'),
@@ -151,7 +151,7 @@ export const TEMPLATES: TemplateDefinition[] = [
       'An den Melder, wenn ein Vorgang länger im Status «Wartet auf den Melder» steht (Regel «Melder per Mail erinnern»).',
     subject: 'Erinnerung: {{Titel}}',
     body:
-      'Guten Tag\n\nWir warten noch auf Ihre Rückmeldung zu «{{Titel}}» ({{Nummer}}). Bitte antworten Sie direkt auf diese Mail.' +
+      'Hallo {{Melder Vorname}}\n\nWir warten noch auf deine Rückmeldung zu «{{Titel}}» ({{Nummer}}). Bitte antworte direkt auf diese E-Mail.' +
       '\n\n{{Schliessung}}',
     placeholders: [
       ...ITEM,
@@ -172,8 +172,8 @@ export const TEMPLATES: TemplateDefinition[] = [
       '(statt der Mail «Erledigt»).',
     subject: '{{Status}}: {{Titel}}',
     body:
-      'Guten Tag\n\nZu «{{Titel}}» ({{Nummer}}) haben wir seit {{Tage}} Tagen keine Rückmeldung erhalten ' +
-      'und den Vorgang deshalb geschlossen.\n\nFalls noch etwas offen ist, antworten Sie einfach auf diese Mail.',
+      'Hallo {{Melder Vorname}}\n\nZu «{{Titel}}» ({{Nummer}}) haben wir seit {{Tage}} Tagen keine Rückmeldung erhalten ' +
+      'und den Vorgang deshalb geschlossen.\n\nFalls noch etwas offen ist, antworte einfach auf diese E-Mail.',
     placeholders: [...ITEM, p('Tage', 'Tage ohne Rückmeldung', '7'), PORTAL_LINK],
   },
   {
@@ -182,7 +182,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Link-Zeile (Melder)',
     description: 'Steht in jeder Mail an Melder und Beteiligte unter dem Text.',
     subject: null,
-    body: '[Ihre Meldung online ansehen]({{Link}})',
+    body: '[Meldung online ansehen]({{Link}})',
     placeholders: FRAME(PORTAL_LINK),
   },
   {
@@ -191,7 +191,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Fusszeile (Melder)',
     description: 'Klein gesetzt am Ende jeder Mail an Melder und Beteiligte. Einfacher Text ohne Formatierung.',
     subject: null,
-    body: 'Bitte lassen Sie bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.',
+    body: 'Patchwork · {{Nummer}}\nBitte lass bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.',
     plain: true,
     placeholders: FRAME(PORTAL_LINK),
   },
@@ -217,7 +217,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Neue Antwort',
     description: 'An den Zuständigen, wenn Melder oder Beteiligte per Mail oder im Portal antworten.',
     subject: 'Neue Antwort: {{Titel}}',
-    body: 'Neue Antwort von {{Absender}} ({{Absender E-Mail}}) auf {{Nummer}} «{{Titel}}»:\n\n{{Text}}',
+    body: 'Neue Antwort von {{Absender}} ({{Absender E-Mail}}) auf {{Nummer}} «{{Titel}}»:\n\n> {{Text}}',
     placeholders: [
       ...ITEM,
       p('Absender', 'Name der antwortenden Person', 'Anna Muster'),
@@ -252,7 +252,7 @@ export const TEMPLATES: TemplateDefinition[] = [
       'An IT-Mitarbeitende, die in einer öffentlichen Antwort oder internen Notiz mit «@» erwähnt werden (nicht an sich selbst; ' +
       'beim Bearbeiten einer Notiz nur an neu Erwähnte).',
     subject: 'Erwähnt: {{Titel}}',
-    body: '{{Bearbeiter}} hat Sie in {{Nummer}} «{{Titel}}» erwähnt ({{Art}}):\n\n{{Text}}',
+    body: '{{Bearbeiter}} hat Sie in {{Nummer}} «{{Titel}}» erwähnt ({{Art}}):\n\n> {{Text}}',
     placeholders: [
       ...ITEM,
       p('Bearbeiter', 'Wer erwähnt hat', 'Ada Admin'),
@@ -277,7 +277,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Link-Zeile (IT)',
     description: 'Steht in jeder Mail an IT-Mitarbeitende unter dem Text.',
     subject: null,
-    body: 'Öffnen: {{Link}}',
+    body: '[Vorgang öffnen]({{Link}})',
     placeholders: FRAME(STAFF_LINK),
   },
   {
@@ -286,7 +286,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Fusszeile (IT)',
     description: 'Klein gesetzt am Ende jeder Mail an IT-Mitarbeitende. Einfacher Text ohne Formatierung.',
     subject: null,
-    body: 'Benachrichtigung zu {{Nummer}}',
+    body: 'Patchwork · Benachrichtigung zu {{Nummer}}',
     plain: true,
     placeholders: FRAME(STAFF_LINK),
   },
@@ -316,7 +316,14 @@ const placeholderKey = (name: string) => name.trim().replace(/\s+/g, ' ').toLowe
 /** Ersetzt {{Name}} (Gross-/Kleinschreibung egal); unbekannte Platzhalter bleiben stehen. */
 export function fill(template: string, values: Record<string, string>): string {
   const lookup = new Map(Object.entries(values).map(([name, value]) => [placeholderKey(name), value]));
-  return template.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (all, name: string) => lookup.get(placeholderKey(name)) ?? all);
+  return template.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (all, name: string, offset: number) => {
+    const value = lookup.get(placeholderKey(name));
+    if (value === undefined) return all;
+    // Im Zitat («> {{Text}}») gehören auch die weiteren Zeilen eines mehrzeiligen Werts ins Zitat
+    const line = template.slice(template.lastIndexOf('\n', offset - 1) + 1, offset);
+    const quote = /^[ \t]*(?:>[ \t]?)+$/.exec(line)?.[0];
+    return quote ? value.replace(/\n/g, `\n${quote}`) : value;
+  });
 }
 
 /**
@@ -410,6 +417,32 @@ export function composeMail(
 export function sameText(a: string, b: string): boolean {
   const comparable = (text: string) => text.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').trim();
   return comparable(a) === comparable(b);
+}
+
+/**
+ * Angepasste Fassungen ohne die Teile, die dem Standard entsprechen; null = nichts zu entfernen. «removed»: Vorlagen,
+ * die damit ganz wieder Standard sind. Unbekannte Vorlagen bleiben unverändert.
+ */
+export function withoutDefaults(
+  overrides: Record<string, { subject?: string; body?: string }>,
+): { overrides: Record<string, { subject?: string; body?: string }>; removed: string[] } | null {
+  const result: Record<string, { subject?: string; body?: string }> = {};
+  const removed: string[] = [];
+  let changed = false;
+  for (const [key, entry] of Object.entries(overrides)) {
+    const definition = templateByKey(key);
+    if (!definition) {
+      result[key] = entry;
+      continue;
+    }
+    const kept: { subject?: string; body?: string } = {};
+    if (entry.subject !== undefined && entry.subject !== definition.subject) kept.subject = entry.subject;
+    if (entry.body !== undefined && (definition.body === null || !sameText(entry.body, definition.body))) kept.body = entry.body;
+    if (Object.keys(kept).length !== Object.keys(entry).length) changed = true;
+    if (Object.keys(kept).length > 0) result[key] = kept;
+    else removed.push(key);
+  }
+  return changed ? { overrides: result, removed } : null;
 }
 
 /** Werte der Platzhalter für die Vorschau. */

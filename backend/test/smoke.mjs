@@ -154,7 +154,8 @@ await step('IT-Benutzer anlegen', async () => {
   const staff = await api('GET', '/users/staff');
   assert.deepEqual(staff.map((u) => u.name).sort(), ['Ada Admin', 'Ivan IT']);
   statuses = await api('GET', '/statuses');
-  assert.equal(statuses.length, 9);
+  // Störung 4, Aufgabe 6 (mit «Offen» seit 21.10.2026)
+  assert.equal(statuses.length, 10);
   // Keine Kategorien mehr: Jeder Status ist offen oder abgeschlossen
   assert.deepEqual(
     statuses.filter((s) => s.closed).map((s) => `${s.type}/${s.key}`).sort(),
@@ -263,8 +264,9 @@ await step('Mail mit CC landet im Eingang, Bestätigung an Melder', async () => 
   assert.ok(/auto-submitted: auto-generated/i.test(confirmation.headers));
   // Das Portal ist ohne Einstellung aus: kein Link dorthin
   assert.ok(!confirmation.source.includes('/portal/v/'), 'ohne Portal keine Link-Zeile');
-  // Standard-Fusszeile einer neuen Installation: ohne App-Namen
-  assert.ok(confirmation.text.includes(`Bitte lassen Sie bei Antworten die Nummer [PW-${itemNo}] im Betreff stehen.`), confirmation.text);
+  // Standardtext per Du mit Vorname; Standard-Fusszeile mit «Patchwork», nicht dem App-Namen
+  assert.ok(confirmation.text.startsWith('Hallo Anna\n\nDeine Nachricht ist bei uns eingegangen'), confirmation.text);
+  assert.ok(confirmation.text.includes(`Patchwork · PW-${itemNo}\nBitte lass bei Antworten die Nummer [PW-${itemNo}] im Betreff stehen.`), confirmation.text);
   assert.ok(!confirmation.text.includes('Patchwork Test'), 'kein App-Name in der Mail');
 });
 
@@ -299,9 +301,10 @@ await step('Typ zuweisen: Störung mit Status «Neu»', async () => {
 await step('Zuweisen: Mail an Zuständigen', async () => {
   await api('PATCH', `/items/${itemNo}`, { assigneeId: ivan.id, priority: 'high' });
   const mail = await waitForMail(IVAN, (m) => m.subject === `[PW-${itemNo}] Zugewiesen: VPN verbindet nicht`, 'Zuweisung');
-  // Standardtext mit Vor- und Nachname des Melders, Standard-Fusszeile ohne App-Namen
+  // Standardtext mit Vor- und Nachname des Melders, Link-Zeile «Vorgang öffnen», Fusszeile mit «Patchwork»
   assert.ok(mail.text.includes(`Melder: Anna Muster (${ANNA})`), mail.text);
-  assert.ok(mail.text.includes(`Benachrichtigung zu PW-${itemNo}`), mail.text);
+  assert.match(mail.text, new RegExp(`Vorgang öffnen: \\S+/v/${itemNo}\\b`));
+  assert.ok(mail.text.includes(`Patchwork · Benachrichtigung zu PW-${itemNo}`), mail.text);
   assert.ok(!mail.text.includes('Patchwork Test'), 'kein App-Name in der Mail');
   const mine = await api('GET', '/items?view=incidents&mine=1');
   assert.equal(mine.items.length, 0, 'Ada ist nicht zuständig');
@@ -418,10 +421,11 @@ await step('Intern erfasste Aufgaben und Board-Reihenfolge', async () => {
   assert.deepEqual(board.map((i) => i.number), [t1, t2, t3]);
   const id = (n) => board.find((i) => i.number === n).id;
   // t3 zwischen t1 und t2
-  await api('POST', `/items/${t3}/move`, { statusId: status('task', 'backlog').id, beforeId: id(t1), afterId: id(t2) });
+  await api('POST', `/items/${t3}/move`, { statusId: status('task', 'open').id, beforeId: id(t1), afterId: id(t2) });
   board = (await api('GET', '/items?view=board')).items;
   assert.deepEqual(board.map((i) => i.number), [t1, t3, t2]);
-  assert.equal((await detail(t1)).status.label, 'Backlog');
+  // Neue Aufgaben starten in «Offen» (seit 21.10.2026, vorher «Backlog»)
+  assert.equal((await detail(t1)).status.label, 'Offen');
   assert.equal((await detail(t1)).creator.email, 'ada@test.local');
 });
 
@@ -490,7 +494,7 @@ await step('Status: Ziele für automatische Wechsel lesen, prüfen, setzen und b
   const t = (key) => status('task', key).id;
   const defaults = {
     incident: { start: i('new'), reply: i('in_progress'), close: i('resolved'), waiting: i('waiting') },
-    task: { start: t('backlog'), reply: t('in_progress'), close: t('done'), reject: t('rejected') },
+    task: { start: t('open'), reply: t('in_progress'), close: t('done'), reject: t('rejected') },
   };
   assert.deepEqual(await api('GET', '/statuses/targets'), defaults);
   const put = (type, targets, opts) => api('PUT', '/statuses/targets', { type, targets }, opts);
@@ -504,17 +508,17 @@ await step('Status: Ziele für automatische Wechsel lesen, prüfen, setzen und b
     [{ ...defaults.task, start: i('new') }, /gehört nicht zu diesem Typ/],
     [{ ...defaults.task, reject: t('done') }, /verschiedene Status/],
     [{ ...defaults.task, waiting: t('in_progress') }, /«Wartet auf den Melder»/],
-    [{ ...defaults.task, waiting: t('backlog') }, /neue Vorgänge/],
+    [{ ...defaults.task, waiting: t('open') }, /neue Vorgänge/],
   ]) {
     assert.match((await put('task', targets, { expect: [400] })).message, message);
   }
-  await put('task', { start: t('backlog'), reply: t('in_progress') }, { expect: [400] });
+  await put('task', { start: t('open'), reply: t('in_progress') }, { expect: [400] });
   assert.deepEqual(await api('GET', '/statuses/targets'), defaults, 'unverändert');
 
   // «abgeschlossen» lässt sich nicht umschalten, solange ein Ziel es verbietet
   assert.match((await api('PATCH', `/statuses/${t('done')}`, { closed: false }, { expect: [400] })).message, /Automatisch schliessen in/);
   await api('PATCH', `/statuses/${t('rejected')}`, { closed: false }, { expect: [400] });
-  await api('PATCH', `/statuses/${t('backlog')}`, { closed: true }, { expect: [400] });
+  await api('PATCH', `/statuses/${t('open')}`, { closed: true }, { expect: [400] });
   await api('PATCH', `/statuses/${i('waiting')}`, { closed: true }, { expect: [400] });
 
   // Ziele ändern: anderer Start-Status und ein Wartet-Status für Aufgaben
@@ -582,7 +586,7 @@ await step('Typwechsel: Status nach Rolle vorgeschlagen oder gewählt, Ablehnen-
   // Ohne Wahl: Start → Start, übrige offene → «nach Antwort», abgeschlossene → «Automatisch schliessen in»
   const a = await createItem({ type: 'incident', title: 'Typwechsel A' });
   await setType(a, 'task');
-  assert.equal(await label(a), 'Backlog');
+  assert.equal(await label(a), 'Offen');
   await api('POST', `/items/${a}/move`, { statusId: t('planned') });
   await setType(a, 'incident');
   assert.equal(await label(a), 'In Arbeit');
@@ -643,6 +647,15 @@ await step('Typwechsel: Status nach Rolle vorgeschlagen oder gewählt, Ablehnen-
 await step('Status: Farben und Ablauf, eingeschränkt gilt er für Wechsel von Hand und «Ablehnen»', async () => {
   let list = await api('GET', '/statuses');
   assert.equal(list.find((s) => s.type === 'task' && s.key === 'backlog').color, 'blue', 'Standardfarbe');
+  // «Offen» zuvorderst und grau, Start-Status der Aufgaben
+  assert.deepEqual(
+    list.filter((s) => s.type === 'task').map((s) => [s.key, s.position]).slice(0, 2),
+    [
+      ['open', 0],
+      ['backlog', 1],
+    ],
+  );
+  assert.equal(list.find((s) => s.type === 'task' && s.key === 'open').color, 'gray');
   assert.equal(list.find((s) => s.type === 'task' && s.key === 'done').color, 'green');
   const backlog = status('task', 'backlog');
   await api('PATCH', `/statuses/${backlog.id}`, { color: 'purple', diagramX: 10, diagramY: 20 });
@@ -669,7 +682,7 @@ await step('Status: Farben und Ablauf, eingeschränkt gilt er für Wechsel von H
     type: 'task',
     restrict: true,
     transitions: [
-      { fromId: backlog.id, toId: inProgress.id },
+      { fromId: status('task', 'open').id, toId: inProgress.id },
       { fromId: inProgress.id, toId: done.id },
       { fromId: inProgress.id, toId: rejected.id },
     ],
@@ -682,7 +695,7 @@ await step('Status: Farben und Ablauf, eingeschränkt gilt er für Wechsel von H
   const refused = await api('POST', `/items/${n}/move`, { statusId: done.id }, { expect: [400] });
   assert.match(refused.message, /im Ablauf nicht vorgesehen/);
   const noReject = await api('POST', `/items/${n}/reject`, { reason: 'Test', notify: false }, { expect: [400] });
-  assert.match(noReject.message, /im Ablauf nicht vorgesehen/, 'kein Pfeil aus «Backlog» in den Ablehnen-Status');
+  assert.match(noReject.message, /im Ablauf nicht vorgesehen/, 'kein Pfeil aus «Offen» in den Ablehnen-Status');
   await api('POST', `/items/${n}/move`, { statusId: inProgress.id });
   // Auch mit Pfeil führt nur «Ablehnen» (mit Begründung) in den Ablehnen-Status, nicht das Status-Feld oder das Board
   await api('POST', `/items/${n}/move`, { statusId: rejected.id }, { expect: [400] });
@@ -970,7 +983,7 @@ await step('Abschliessen mit offenen Punkten nur nach Bestätigung, Ablehnen ohn
   const conflict = await api('POST', `/items/${task}/move`, { statusId: status('task', 'done').id }, { expect: [409] });
   assert.equal(conflict.code, 'OPEN_CHECKLIST');
   assert.equal(conflict.open, 1);
-  assert.equal((await detail(task)).status.label, 'Backlog');
+  assert.equal((await detail(task)).status.label, 'Offen');
   await api('POST', `/items/${task}/move`, { statusId: status('task', 'done').id, force: true });
   assert.equal((await detail(task)).status.label, 'Erledigt');
   await api('POST', `/items/${task}/move`, { statusId: status('task', 'in_progress').id });
@@ -1453,7 +1466,7 @@ await step('Regeln: Mail vom Lieferanten wird Aufgabe mit Priorität, Zuständig
   const item = await byTitle('Lieferschein 4711');
   const d = await detail(item.number);
   assert.equal(d.type, 'task');
-  assert.equal(d.status.label, 'Backlog');
+  assert.equal(d.status.label, 'Offen');
   assert.equal(d.priority, 'high');
   assert.equal(d.assignee.email, IVAN);
   assert.equal(d.checklists[0].title, 'Neuer Mitarbeiter');
@@ -1589,7 +1602,7 @@ await step('Zeitgesteuerte Regeln: erinnern, schliessen und eskalieren', async (
     // Status beider Typen
     await rule(
       'Eskalation',
-      { days: 2, statusIds: [neu, status('task', 'backlog').id], waiting: false },
+      { days: 2, statusIds: [neu, status('task', 'open').id], waiting: false },
       group('and', cond('subject', 'contains', 'eskalation')),
       { priority: 'high', assigneeId: ivan.id },
     ),
@@ -2022,12 +2035,12 @@ await step('E-Mail-Vorlagen: Platzhalter mit Vor- und Nachname, ohne {{App}}, Vo
   for (const t of templates) {
     assert.deepEqual(t.placeholders.map((p) => p.name).filter((n) => ['Melder', 'Zuständig', 'App'].includes(n)), [], t.key);
   }
-  // Standard-Fusszeilen einer neuen Installation: ohne App-Namen
+  // Standard-Fusszeilen einer neuen Installation: mit «Patchwork», nicht dem App-Namen
   assert.deepEqual(
     ['reporterFooter', 'staffFooter'].map((key) => [template(key).body, template(key).custom]),
     [
-      ['Bitte lassen Sie bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.', false],
-      ['Benachrichtigung zu {{Nummer}}', false],
+      ['Patchwork · {{Nummer}}\nBitte lass bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.', false],
+      ['Patchwork · Benachrichtigung zu {{Nummer}}', false],
     ],
   );
 

@@ -204,6 +204,13 @@
       "when": 1792562451540,
       "tag": "0028_faelligkeit",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792572975738,
+      "tag": "0029_status_offen",
+      "breakpoints": true
     }
   ]
 }

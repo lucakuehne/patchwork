@@ -34,7 +34,7 @@ describe('closedAtAfter', () => {
 
 describe('newItemStatus', () => {
   it('ohne Wahl: «Neuer Vorgang erhält»', () => {
-    expect(newItemStatus(all, targets.task, 'task').id).toBe('task:backlog');
+    expect(newItemStatus(all, targets.task, 'task').id).toBe('task:open');
     expect(newItemStatus(all, targets.incident, 'incident', null).id).toBe('incident:new');
   });
 
@@ -64,7 +64,7 @@ describe('moveTarget', () => {
 describe('typeChangeStatus', () => {
   it('ohne Wahl: Vorschlag nach der Rolle des bisherigen Status', () => {
     expect(typeChangeStatus(all, targets, byKey('incident', 'waiting'), 'task').id).toBe('task:in_progress');
-    expect(typeChangeStatus(all, targets, byKey('incident', 'new'), 'task').id).toBe('task:backlog');
+    expect(typeChangeStatus(all, targets, byKey('incident', 'new'), 'task').id).toBe('task:open');
     expect(typeChangeStatus(all, targets, byKey('task', 'rejected'), 'incident').id).toBe('incident:resolved');
     expect(typeChangeStatus(all, targets, byKey('task', 'done'), 'incident', null).id).toBe('incident:resolved');
   });

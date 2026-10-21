@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import {
   composeMail,
@@ -7,6 +7,7 @@ import {
   sameText,
   templateByKey,
   TEMPLATES,
+  withoutDefaults,
   type TemplateDefinition,
   type TemplateKey,
   type TemplateText,
@@ -19,8 +20,21 @@ const normalize = (text: string) => text.replace(/\r\n?/g, '\n').trim();
 
 /** E-Mail-Vorlagen: Standard aus dem Code, angepasste Fassungen in den Einstellungen («mailTemplates»). */
 @Injectable()
-export class MailTemplatesService {
+export class MailTemplatesService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(MailTemplatesService.name);
+
   constructor(private readonly settings: SettingsService) {}
+
+  /**
+   * Angepasste Texte, die (inzwischen) dem Standard entsprechen, gelten wieder als Standard, z.B. nachdem angepasste
+   * Vorlagen in den Code übernommen wurden.
+   */
+  async onApplicationBootstrap() {
+    const pruned = withoutDefaults(await this.settings.get('mailTemplates'));
+    if (!pruned) return;
+    await this.settings.set('mailTemplates', pruned.overrides);
+    this.logger.log(`Vorlagen wieder auf Standard (entsprechen ihm): ${pruned.removed.join(', ')}`);
+  }
 
   /** Betreff und Text einer Vorlage, angepasst oder Standard. */
   async get(key: TemplateKey): Promise<TemplateText> {
