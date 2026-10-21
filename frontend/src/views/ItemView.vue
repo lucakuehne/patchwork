@@ -195,7 +195,7 @@ function onRejected() {
 
         <!-- Aufgaben: Beschreibung zuoberst, darunter die Checklisten -->
         <template v-if="item.type === 'task'">
-          <ItemDescription :item="item" label="Beschreibung" :busy="busy" :save="saveDescription" />
+          <ItemDescription :item="item" label="Beschreibung" :busy="busy" :save="saveDescription" @changed="load()" />
           <ChecklistsPanel :number="item.number" :checklists="item.checklists" @changed="load" />
           <!-- Abgrenzung zwischen Aufgabe (Beschreibung, Checklisten) und Antworten mit Verlauf -->
           <div class="section-divider" role="separator"><span>Verlauf</span></div>
@@ -213,7 +213,14 @@ function onRejected() {
           </template>
         </div>
 
-        <ItemDescription v-if="item.type !== 'task'" :item="item" label="Ursprüngliche Meldung" :busy="busy" :save="saveDescription" />
+        <ItemDescription
+          v-if="item.type !== 'task'"
+          :item="item"
+          label="Ursprüngliche Meldung"
+          :busy="busy"
+          :save="saveDescription"
+          @changed="load()"
+        />
       </div>
 
       <aside class="side card card-body">

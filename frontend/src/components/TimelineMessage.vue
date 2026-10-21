@@ -146,6 +146,7 @@ async function save() {
       :number="itemNumber"
       :message-id="entry.originalMessageId"
       @close="showOriginal = false"
+      @simulated="emit('changed')"
     />
     <SentMailDialog
       v-if="showSent && entry.mailId"

@@ -47,6 +47,19 @@ const simulateSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /** Als Antwort auf diesen Vorgang (Nummer) */
+  replyToItem: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().int().positive().optional()),
+  /** Aus dieser echten Mail erzeugt; Anhänge daraus als Liste von Indizes («0,2») */
+  originalId: z.uuid().optional(),
+  originalAttachments: z
+    .string()
+    .regex(/^(\d{1,3}(,\d{1,3})*)?$/, 'Ungültige Anhänge')
+    .default('')
+    .transform((s) => (s ? s.split(',').map(Number) : [])),
+  discardOriginal: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 /** Protokoll der eingehenden Mails: Liste, Ansicht, Originaldatei, Anhänge, erneut verarbeiten und im Testbetrieb simulieren. */
@@ -68,6 +81,16 @@ export class IncomingMailsController {
     if (wanted.length) conditions.push(inArray(incomingMails.result, wanted));
     if (simulated === 'true' || simulated === 'false') conditions.push(eq(incomingMails.simulated, simulated === 'true'));
     return (await this.summaries(conditions.length ? and(...conditions) : undefined, 500)).map(withoutKey);
+  }
+
+  /**
+   * Testbetrieb: Vorbelegung für «Als simulierte Mail …» aus einer echten Mail, über ihre ID («id») oder ihre
+   * Message-ID («messageId», die Originalmail eines Vorgangs).
+   */
+  @Get('draft')
+  draft(@Query('id') id?: string, @Query('messageId') messageId?: string) {
+    if (id !== undefined && !z.uuid().safeParse(id).success) throw new NotFoundException('Mail nicht gefunden');
+    return this.simulation.draft({ id, messageId });
   }
 
   @Get(':id')

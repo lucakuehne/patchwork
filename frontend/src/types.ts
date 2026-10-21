@@ -490,6 +490,19 @@ export interface PortalSettings {
   groupDn: string;
 }
 
+/** Vorbelegung des Dialogs «Als simulierte Mail …» aus einer echten Mail */
+export interface SimulationDraft {
+  incomingMailId: string;
+  mailboxId: string | null;
+  from: string;
+  name: string;
+  subject: string;
+  text: string;
+  attachments: { index: number; filename: string; contentType: string; size: number }[];
+  /** Vorgang im Eingang, den die echte Mail erzeugt hat und der sich verwerfen lässt */
+  discardable: { number: number; title: string } | null;
+}
+
 /** Gespeicherte Mail zum Anschauen (z.B. Originalmail einer Nachricht) */
 export interface MailView {
   headers: { from: string; to: string[]; cc: string[]; subject: string; date: string | null };

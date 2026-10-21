@@ -1,18 +1,29 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { api, errorMessage } from '../api';
 import { formatDateTime, formatSize } from '../format';
+import { incomingResultText } from '../incoming';
 import { renderMailHtml } from '../markdown';
-import type { MailView } from '../types';
+import { useSession } from '../stores/session';
+import { useToast } from '../stores/toast';
+import type { IncomingMail, MailView, SimulationDraft } from '../types';
 import ModalDialog from './ModalDialog.vue';
+import SimulateMailDialog from './SimulateMailDialog.vue';
 
-/** Originalmail einer eingehenden Nachricht ansehen; die .eml-Datei lässt sich von hier herunterladen. */
+/**
+ * Originalmail einer eingehenden Nachricht ansehen; die .eml-Datei lässt sich von hier herunterladen. Im Testbetrieb
+ * erzeugen Admins daraus eine simulierte Mail («simulated» nach dem Simulieren, z.B. um den Vorgang neu zu laden).
+ */
 const props = defineProps<{ number: number; messageId: string }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; simulated: [] }>();
+const session = useSession();
+const toast = useToast();
 
 const mail = ref<MailView | null>(null);
 const error = ref('');
 const query = `?messageId=${encodeURIComponent(props.messageId)}`;
+const canSimulate = computed(() => session.isAdmin && !!session.info?.testMode);
+const draft = ref<SimulationDraft | null>(null);
 
 onMounted(async () => {
   try {
@@ -21,10 +32,26 @@ onMounted(async () => {
     error.value = errorMessage(err);
   }
 });
+
+async function simulate() {
+  try {
+    draft.value = await api.get<SimulationDraft>(`/admin/incoming-mails/draft${query}`);
+  } catch (err) {
+    toast.error(err);
+  }
+}
+
+function simulated(result: IncomingMail) {
+  draft.value = null;
+  if (result.result === 'failed') toast.error(`Simulierte Mail: ${incomingResultText(result)}`);
+  else toast.success(`Simulierte Mail: ${incomingResultText(result)}`);
+  emit('simulated');
+  emit('close');
+}
 </script>
 
 <template>
-  <ModalDialog :title="mail?.headers.subject || 'Originalmail'" wide @close="emit('close')">
+  <ModalDialog v-if="!draft" :title="mail?.headers.subject || 'Originalmail'" wide @close="emit('close')">
     <div v-if="error" class="error-box">{{ error }}</div>
     <div v-else-if="!mail" class="faint">Lädt …</div>
     <template v-else>
@@ -53,9 +80,11 @@ onMounted(async () => {
     </template>
     <template #footer>
       <a class="btn" :href="`/api/items/${number}/original${query}`">Als .eml herunterladen</a>
+      <button v-if="canSimulate && mail" class="btn" type="button" @click="simulate">Als simulierte Mail …</button>
       <button class="btn btn-primary" type="button" @click="emit('close')">Schliessen</button>
     </template>
   </ModalDialog>
+  <SimulateMailDialog v-else :original="draft" @close="draft = null" @done="simulated" />
 </template>
 
 <style scoped>

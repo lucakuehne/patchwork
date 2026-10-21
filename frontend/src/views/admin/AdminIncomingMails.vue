@@ -8,7 +8,7 @@ import { formatDateTime, formatSize, itemRef } from '../../format';
 import { renderMailHtml } from '../../markdown';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
-import type { IncomingMail, IncomingMailDetail, IncomingResult, Mailbox } from '../../types';
+import type { IncomingMail, IncomingMailDetail, IncomingResult, Mailbox, SimulationDraft } from '../../types';
 import { incomingResultText, INCOMING_RESULTS } from '../../incoming';
 
 /** Protokoll der eingehenden Mails: abgeholte und im Testbetrieb simulierte, mit dem Ergebnis der Verarbeitung. */
@@ -102,8 +102,31 @@ async function startSimulation() {
 
 async function simulated(mail: IncomingMail) {
   simulating.value = false;
+  draft.value = null;
   toast.success(`Simuliert: ${incomingResultText(mail)}`);
   await load();
+}
+
+/** Echte Mail als Vorlage für eine simulierte (vorbelegt, änderbar) */
+const draft = ref<SimulationDraft | null>(null);
+async function simulateFrom() {
+  if (!open.value) return;
+  try {
+    const [loaded, boxes] = await Promise.all([
+      api.get<SimulationDraft>(`/admin/incoming-mails/draft?id=${open.value.id}`),
+      api.get<Mailbox[]>('/admin/mailboxes'),
+    ]);
+    mailboxes.value = boxes.filter((m) => m.active);
+    if (!mailboxes.value.length) {
+      toast.error('Es ist kein aktives Postfach eingerichtet.');
+      return;
+    }
+    draft.value = loaded;
+    open.value = null;
+    simulating.value = true;
+  } catch (err) {
+    toast.error(err);
+  }
 }
 
 const testMode = computed(() => !!session.info?.testMode);
@@ -215,6 +238,7 @@ const sender = (m: IncomingMail) => (m.fromName ? `${m.fromName} <${m.fromAddres
       </div>
       <template #footer>
         <a class="btn" :href="`/api/admin/incoming-mails/${open.id}/eml`">Als .eml herunterladen</a>
+        <button v-if="testMode" class="btn" type="button" @click="simulateFrom">Als simulierte Mail …</button>
         <button v-if="open.result === 'failed'" class="btn" type="button" :disabled="reprocessing" @click="reprocess">
           Erneut verarbeiten
         </button>
@@ -222,7 +246,16 @@ const sender = (m: IncomingMail) => (m.fromName ? `${m.fromName} <${m.fromAddres
       </template>
     </ModalDialog>
 
-    <SimulateMailDialog v-if="simulating" :mailboxes="mailboxes" @close="simulating = false" @done="simulated" />
+    <SimulateMailDialog
+      v-if="simulating"
+      :mailboxes="mailboxes"
+      :original="draft ?? undefined"
+      @close="
+        simulating = false;
+        draft = null;
+      "
+      @done="simulated"
+    />
   </div>
 </template>
 

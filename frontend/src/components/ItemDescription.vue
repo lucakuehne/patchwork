@@ -18,6 +18,8 @@ const props = defineProps<{
   busy: boolean;
   save: (description: string) => Promise<unknown>;
 }>();
+/** «changed»: z.B. nach einer Simulation aus der Originalmail (der Vorgang kann verworfen sein) */
+const emit = defineEmits<{ changed: [] }>();
 
 const editing = ref(false);
 const draft = ref('');
@@ -82,6 +84,7 @@ async function submit() {
       :number="item.number"
       :message-id="item.originalMessageId"
       @close="showOriginal = false"
+      @simulated="emit('changed')"
     />
   </section>
 </template>

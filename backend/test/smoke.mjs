@@ -2320,6 +2320,60 @@ await step('Testbetrieb: Antworten und neue Mails simulieren, verarbeitet wie ec
   await api('PUT', '/settings/mail', { staff: 'all', others: 'all' });
 });
 
+await step('Aus einer echten Mail simulieren: vorbelegt, als Antwort auf einen Vorgang, Original verwerfen', async () => {
+  await api('PUT', '/settings/mail', { staff: 'none', others: 'none' });
+  // Echte Mail wie eine Antwort auf ein HelpSpot-Ticket: Patchwork kennt die Nummer nicht, sie landet im Eingang
+  const subject = `AW: Installation PdfCraft - Ticket:{18195} ${RUN}`;
+  await sendMail({ from: ANNA, subject, text: 'Danke, PdfCraft läuft jetzt.', attachments: [{ filename: 'log.txt', content: 'Logdatei' }] });
+  await sleep(500);
+  await poll();
+  const logged = (await api('GET', '/admin/incoming-mails')).find((m) => m.subject === subject);
+  assert.equal(logged.result, 'created');
+  const real = logged.item.number;
+  const realItem = await detail(real);
+  assert.equal(realItem.type, null, 'im Eingang');
+
+  // Vorbelegung über die Originalmail des Vorgangs und über das Protokoll
+  const draft = await api('GET', `/admin/incoming-mails/draft?messageId=${encodeURIComponent(realItem.originalMessageId)}`);
+  assert.deepEqual([draft.incomingMailId, draft.from, draft.subject, draft.mailboxId], [logged.id, ANNA, subject, mailboxId]);
+  assert.ok(draft.text.includes('PdfCraft läuft jetzt'), draft.text);
+  assert.deepEqual(draft.attachments.map((a) => a.filename), ['log.txt']);
+  assert.equal(draft.discardable.number, real);
+  assert.equal((await api('GET', `/admin/incoming-mails/draft?id=${logged.id}`)).subject, subject);
+  await api('GET', '/admin/incoming-mails/draft?id=keine-id', undefined, { expect: [404] });
+
+  // Geändert als Antwort auf einen bestehenden Vorgang simulieren, mit dem Anhang der echten Mail, Original verwerfen
+  const result = await api(
+    'POST',
+    '/admin/incoming-mails/simulate',
+    simulation({
+      mailboxId,
+      from: draft.from,
+      name: draft.name,
+      subject: 'AW: Installation PdfCraft',
+      text: draft.text,
+      replyToItem: String(itemNo),
+      originalId: draft.incomingMailId,
+      originalAttachments: '0',
+      discardOriginal: 'true',
+    }),
+  );
+  assert.equal(result.result, 'reply');
+  assert.equal(result.simulated, true);
+  assert.equal(result.item.number, itemNo);
+  assert.equal(result.subject, `[PW-${itemNo}] AW: Installation PdfCraft`);
+  const entry = (await detail(itemNo)).entries.find((e) => e.meta?.simulated && e.body.includes('PdfCraft läuft jetzt'));
+  assert.ok(entry, 'Antwort beim bestehenden Vorgang');
+  assert.deepEqual(entry.attachments.map((a) => a.filename), ['log.txt']);
+  assert.equal((await detail(real)).discarded, true, 'Original verworfen');
+  assert.equal((await api('GET', `/admin/incoming-mails/draft?id=${logged.id}`)).discardable, null, 'nur einmal');
+
+  await loginAs(IVAN, 'geheim-geheim');
+  await api('GET', `/admin/incoming-mails/draft?id=${logged.id}`, undefined, { expect: [403] });
+  await loginAs('ada@test.local', 'geheim-geheim');
+  await api('PUT', '/settings/mail', { staff: 'all', others: 'all' });
+});
+
 await step('Als Benutzer arbeiten: nur Admins, nur IT/Admin, Rechte und Autor wie der Benutzer, zurück zum eigenen Konto', async () => {
   await loginAs('ada@test.local', 'geheim-geheim');
   const users = await api('GET', '/admin/users');
