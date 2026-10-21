@@ -53,6 +53,11 @@ export const summaryColumns = {
   assigneeFirstName: assigneeUser.firstName,
   assigneeLastName: assigneeUser.lastName,
   suggestedType: items.suggestedType,
+  dueDate: items.dueDate,
+  /** Anfang der Beschreibung für die Vorschau auf der Board-Karte */
+  descriptionPreview: sql<string>`left(${items.description}, 400)`,
+  /** Kommentare: öffentliche Antworten und interne Notizen, ohne automatische (z.B. Abwesenheitsnotizen) */
+  commentCount: sql<number>`(select count(*)::int from ${entries} e where e.item_id = ${items.id} and e.kind in ('reply', 'note') and coalesce((e.meta->>'automated')::boolean, false) = false)`,
   checklistTotal: sql<number>`(select count(*)::int from ${checklistItems} ci join ${checklists} c on c.id = ci.checklist_id where c.item_id = ${items.id})`,
   checklistDone: sql<number>`(select count(*)::int from ${checklistItems} ci join ${checklists} c on c.id = ci.checklist_id where c.item_id = ${items.id} and ci.done)`,
 };

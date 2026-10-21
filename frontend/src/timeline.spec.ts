@@ -147,6 +147,35 @@ describe('groupTimeline', () => {
     ).toBe('an Anna Muster, CC Carla Rossi, CC extern@firma.ch');
   });
 
+  it('Checklisten-Punkte: abgehakt, zurückgenommen, hin und zurück fällt weg', () => {
+    const tick = (minute: number, itemId: string, text: string, from: boolean, to: boolean) =>
+      entry(minute, { meta: { field: 'checklistItem', itemId, text, from, to } });
+    const texts = (newestFirst: Entry[]) =>
+      groupTimeline(newestFirst).flatMap((b) => (b.kind === 'events' ? b.entries.map((e) => asListItem(eventPart(e).text)) : []));
+    expect(texts([tick(2, 'b', 'Mailbox einrichten', false, true), tick(1, 'a', 'AD-Konto anlegen', false, true)])).toEqual([
+      'Punkt «Mailbox einrichten» abgehakt',
+      'Punkt «AD-Konto anlegen» abgehakt',
+    ]);
+    expect(texts([tick(3, 'a', 'AD-Konto anlegen', true, false)])).toEqual(['Haken bei «AD-Konto anlegen» entfernt']);
+    // Abgehakt und gleich wieder zurückgenommen: keine Zeile, der andere Punkt bleibt
+    expect(
+      texts([tick(3, 'a', 'AD-Konto anlegen', true, false), tick(2, 'b', 'Mailbox einrichten', false, true), tick(1, 'a', 'AD-Konto anlegen', false, true)]),
+    ).toEqual(['Punkt «Mailbox einrichten» abgehakt']);
+  });
+
+  it('Fälligkeitsdatum gesetzt, geändert, entfernt; beim Typwechsel ausgeblendet', () => {
+    const due = (from: string | null, to: string | null) => asListItem(eventPart(entry(1, { meta: { field: 'dueDate', from, to } })).text);
+    expect(due(null, '24.10.2026')).toBe('Fälligkeitsdatum «24.10.2026» gesetzt');
+    expect(due('24.10.2026', '31.10.2026')).toBe('Fälligkeitsdatum von «24.10.2026» auf «31.10.2026» geändert');
+    expect(due('24.10.2026', null)).toBe('Fälligkeitsdatum «24.10.2026» entfernt');
+    const type = (meta: Record<string, unknown>) =>
+      eventPart(entry(1, { kind: 'type', meta: { from: 'Aufgabe', to: 'Störung', fromStatus: 'Backlog', toStatus: 'Neu', ...meta } })).text;
+    expect(type({ dueDate: 'hidden' })).toMatch(/– Fälligkeitsdatum ausgeblendet, es bleibt gespeichert$/);
+    expect(type({ checklists: 'hidden', dueDate: 'hidden' })).toMatch(/– Checklisten und Fälligkeitsdatum ausgeblendet, sie bleiben gespeichert$/);
+    expect(type({ checklists: 'hidden' })).toMatch(/– Checklisten ausgeblendet, sie bleiben gespeichert$/);
+    expect(type({ dueDate: 'shown' })).toMatch(/– Fälligkeitsdatum wieder eingeblendet$/);
+  });
+
   it('Satzteile ohne «hat»', () => {
     expect(eventPart(entry(1)).text).toBe('die Priorität von «Normal» auf «Hoch» geändert');
   });

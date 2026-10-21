@@ -42,6 +42,11 @@ const titleSchema = z.string().trim().min(1, 'Titel fehlt').max(500);
 /** Formular-Uploads liefern Zeilenumbrüche als CRLF */
 const normalizeNewlines = (s: string) => s.replace(/\r\n?/g, '\n');
 const descriptionSchema = z.string().max(100000).transform(normalizeNewlines);
+/** Datum ohne Uhrzeit (JJJJ-MM-TT); leer = keines */
+const dueDateSchema = z.preprocess(
+  (v) => (v === '' ? null : v),
+  z.iso.date({ error: 'Ungültiges Fälligkeitsdatum' }).nullable(),
+);
 
 const listSchema = z.object({
   view: z.enum(VIEWS),
@@ -64,6 +69,7 @@ const createSchema = z.object({
   statusId: nullableUuid.optional(),
   /** Meldeweg, Pflicht beim internen Erfassen */
   channelId: z.uuid({ error: 'Bitte den Meldeweg wählen.' }),
+  dueDate: dueDateSchema.optional(),
 });
 
 const updateSchema = z.object({
@@ -74,6 +80,7 @@ const updateSchema = z.object({
   reporterId: z.uuid().optional(),
   mailboxId: nullableUuid.optional(),
   channelId: z.uuid().optional(),
+  dueDate: dueDateSchema.optional(),
 });
 
 const typeChangeSchema = z.object({

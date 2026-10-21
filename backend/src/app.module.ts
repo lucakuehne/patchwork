@@ -35,6 +35,7 @@ import { PortalService } from './portal/portal.service';
 import { ReportsController } from './reports/reports.controller';
 import { ReportsService } from './reports/reports.service';
 import { AutomationService } from './rules/automation.service';
+import { DueRemindersService } from './rules/due-reminders.service';
 import { RulesController } from './rules/rules.controller';
 import { RulesService } from './rules/rules.service';
 import { SettingsController } from './settings/settings.controller';
@@ -105,6 +106,7 @@ import { UsersService } from './users/users.service';
     MailSimulationService,
     RulesService,
     AutomationService,
+    DueRemindersService,
     SnippetsService,
     ReportsService,
     TlsService,

@@ -149,8 +149,20 @@ export interface ItemSummary {
   assignee: Pick<User, 'id' | 'name' | 'firstName' | 'lastName'> | null;
   /** Typ-Vorschlag des Melders aus dem Portal */
   suggestedType: ItemType | null;
+  /** Fälligkeitsdatum JJJJ-MM-TT (nur Aufgaben) */
+  dueDate: string | null;
+  /** Anfang der Beschreibung (Markdown), null = keine Beschreibung */
+  descriptionPreview: string | null;
+  /** Öffentliche Antworten und interne Notizen, ohne automatische */
+  commentCount: number;
   /** Fortschritt der Checklisten (nur Aufgaben mit Checklisten) */
   checklist: { done: number; total: number } | null;
+}
+
+/** Meldeweg, der beim internen Erfassen je Typ vorbelegt ist (Id), null = keiner */
+export interface ChannelDefaults {
+  incident: string | null;
+  task: string | null;
 }
 
 export type LinkRole = 'relates' | 'fixes' | 'fixedBy' | 'duplicateOf' | 'hasDuplicate';
@@ -313,6 +325,8 @@ export interface ItemDetail {
   description: string;
   descriptionHtml: string | null;
   priority: Priority;
+  /** Fälligkeitsdatum JJJJ-MM-TT (nur Aufgaben) */
+  dueDate: string | null;
   source: 'mail' | 'portal' | 'internal';
   /** Meldeweg, null = ohne Angabe */
   channel: { id: string; label: string; icon: ChannelIcon } | null;

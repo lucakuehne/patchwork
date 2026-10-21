@@ -26,6 +26,7 @@ import {
   type User,
 } from '../db/schema';
 import { ChannelsService } from '../channels/channels.service';
+import { swissDate } from '../common/swiss-date';
 import { templateByKey, TIMELINE_TEMPLATES } from '../mail/mail-templates';
 import { MailboxesService } from '../mail/mailboxes.service';
 import { NotificationsService } from '../mail/notifications.service';
@@ -36,6 +37,7 @@ import { StorageService } from '../storage/storage.service';
 import { toPublicUser, UsersService } from '../users/users.service';
 import { duplicateRedirect } from './duplicates';
 import { imageRefs, replaceImages, TEXT_IMAGE_TYPES } from './inline-images';
+import { mentionedIds } from './mentions';
 import { noteEditRefusal } from './note-rules';
 import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
 import type { RuleRun } from '../rules/rules.service';
@@ -220,6 +222,8 @@ export class ItemsService {
       description: item.description,
       descriptionHtml: item.descriptionHtml,
       priority: item.priority,
+      // Nur bei Aufgaben; bei Störungen bleibt es gespeichert, aber ausgeblendet
+      dueDate: item.type === 'task' ? item.dueDate : null,
       source: item.source,
       channel: channel && { id: channel.id, label: channel.label, icon: channel.icon },
       suggestedType: item.suggestedType,
@@ -295,6 +299,8 @@ export class ItemsService {
       statusId?: string | null;
       /** Meldeweg, beim internen Erfassen Pflicht */
       channelId: string;
+      /** Fälligkeitsdatum (JJJJ-MM-TT), nur bei Aufgaben */
+      dueDate?: string | null;
     },
     files: UploadedFile[],
   ): Promise<Item> {
@@ -324,6 +330,7 @@ export class ItemsService {
           mailboxId: mailbox?.id ?? null,
           source: 'internal',
           channelId: input.channelId,
+          dueDate: input.type === 'task' ? (input.dueDate ?? null) : null,
           closedAt: status.closed ? new Date() : null,
           boardPosition: await this.endOfColumn(tx, status.id),
         })
@@ -352,6 +359,8 @@ export class ItemsService {
       reporterId?: string;
       mailboxId?: string | null;
       channelId?: string;
+      /** Fälligkeitsdatum (JJJJ-MM-TT), null = keines; nur bei Aufgaben */
+      dueDate?: string | null;
     },
   ): Promise<void> {
     const pending: Pending = [];
@@ -360,6 +369,11 @@ export class ItemsService {
       const changes: Partial<typeof items.$inferInsert> = {};
       const log: Record<string, unknown>[] = [];
 
+      if (patch.dueDate !== undefined && patch.dueDate !== item.dueDate) {
+        if (item.type !== 'task') throw new BadRequestException('Ein Fälligkeitsdatum gibt es nur bei Aufgaben');
+        changes.dueDate = patch.dueDate;
+        log.push({ field: 'dueDate', from: swissDate(item.dueDate), to: swissDate(patch.dueDate) });
+      }
       if (patch.title !== undefined && patch.title.trim() !== item.title) {
         changes.title = patch.title.trim();
         log.push({ field: 'title', from: item.title, to: changes.title });
@@ -451,6 +465,8 @@ export class ItemsService {
         fromStatus: current?.label ?? null,
         toStatus: target.label,
         ...(hasChecklists ? { checklists: type === 'task' ? 'shown' : 'hidden' } : {}),
+        // Ebenso das Fälligkeitsdatum
+        ...(item.dueDate ? { dueDate: type === 'task' ? 'shown' : 'hidden' } : {}),
       });
     });
   }
@@ -622,6 +638,8 @@ export class ItemsService {
           ),
         );
       }
+      const mentioned = mentionedIds(text);
+      if (mentioned.length) pending.push(() => this.notifications.mentioned(updated!, actor, mentioned, kind, text));
     });
     await this.flush(pending);
   }
@@ -629,6 +647,7 @@ export class ItemsService {
   /** Eigene interne Notiz kurz nach dem Erfassen korrigieren (siehe note-rules). */
   async editNote(actor: User, entryId: string, body: string): Promise<void> {
     if (!body.trim()) throw new BadRequestException('Der Text ist leer');
+    const pending: Pending = [];
     await this.db.transaction(async (tx) => {
       const [entry] = await tx.select().from(entries).where(eq(entries.id, entryId)).for('update').limit(1);
       if (!entry) throw new NotFoundException('Eintrag nicht gefunden');
@@ -638,8 +657,13 @@ export class ItemsService {
       if (entry.body === body) return;
       const text = await this.claimImages(tx, actor, entry.itemId, entry.id, body);
       await tx.update(entries).set({ body: text, editedAt: new Date() }).where(eq(entries.id, entry.id));
-      await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, entry.itemId));
+      const [updated] = await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, entry.itemId)).returning();
+      // Mail «Erwähnt» nur an neu hinzugekommene Erwähnte
+      const before = new Set(mentionedIds(entry.body));
+      const added = mentionedIds(text).filter((id) => !before.has(id));
+      if (added.length) pending.push(() => this.notifications.mentioned(updated!, actor, added, 'note', text));
     });
+    await this.flush(pending);
   }
 
   async addParticipant(actor: User, number: number, email: string, name?: string): Promise<void> {
@@ -994,6 +1018,9 @@ export class ItemsService {
     assigneeFirstName: string | null;
     assigneeLastName: string | null;
     suggestedType: ItemType | null;
+    dueDate: string | null;
+    descriptionPreview: string;
+    commentCount: number;
     checklistTotal: number;
     checklistDone: number;
   }) {
@@ -1021,7 +1048,11 @@ export class ItemsService {
           }
         : null,
       suggestedType: r.suggestedType,
-      // Checklisten gibt es nur bei Aufgaben
+      /** Anfang der Beschreibung (Markdown), null = keine Beschreibung */
+      descriptionPreview: r.descriptionPreview.trim() ? r.descriptionPreview : null,
+      commentCount: r.commentCount,
+      // Fälligkeit und Checklisten gibt es nur bei Aufgaben
+      dueDate: r.type === 'task' ? r.dueDate : null,
       checklist: r.type === 'task' && r.checklistTotal > 0 ? { done: r.checklistDone, total: r.checklistTotal } : null,
     };
   }

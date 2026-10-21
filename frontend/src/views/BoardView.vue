@@ -3,12 +3,13 @@ import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { api } from '../api';
+import ChecklistProgress from '../components/ChecklistProgress.vue';
 import MineToggle from '../components/MineToggle.vue';
 import { isCompleting } from '../status-flow';
 import { manualStatusChoices, moveItem } from '../status-move';
 import TasksNav from '../components/TasksNav.vue';
 import { useMineFilter } from '../composables';
-import { formatAge, initials, itemRef } from '../format';
+import { dueState, formatAge, formatDay, initials, itemRef, plainPreview } from '../format';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import type { ItemSummary } from '../types';
@@ -22,6 +23,24 @@ const mine = useMineFilter('tasks');
 const columns = ref<Record<string, ItemSummary[]>>({});
 const loading = ref(true);
 const newOpen = ref(false);
+/** Status aus dem «+» einer Spalte; über «+ Aufgabe» keiner (Start-Status) */
+const newStatusId = ref<string | undefined>();
+
+function createNew() {
+  newStatusId.value = undefined;
+  newOpen.value = true;
+}
+
+function createIn(statusId: string) {
+  newStatusId.value = statusId;
+  newOpen.value = true;
+}
+
+function dueTitle(dueDate: string, closed: boolean) {
+  const state = dueState(dueDate, closed);
+  const suffix = state === 'overdue' ? ' (überfällig)' : state === 'today' ? ' (heute)' : '';
+  return `Fällig am ${formatDay(dueDate)}${suffix}`;
+}
 /** Karte, die gerade gezogen wird: Spalten ausserhalb des Ablaufs sind gesperrt */
 const dragging = ref<ItemSummary | null>(null);
 
@@ -94,9 +113,12 @@ function open(item: ItemSummary) {
   void router.push({ name: 'item', params: { number: item.number } });
 }
 
+// Die neue Aufgabe erscheint in ihrer Spalte; geöffnet wird sie über die Meldung
 function onCreated(number: number) {
   newOpen.value = false;
-  void router.push({ name: 'item', params: { number } });
+  toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/v/${number}` });
+  void load();
+  void session.refreshCounts();
 }
 </script>
 
@@ -107,7 +129,7 @@ function onCreated(number: number) {
       <TasksNav />
       <div class="spacer" />
       <MineToggle v-model="mine" />
-      <button class="btn" type="button" @click="newOpen = true">+ Aufgabe</button>
+      <button class="btn" type="button" @click="createNew">+ Aufgabe</button>
     </div>
 
     <div v-if="!loading" class="board">
@@ -116,12 +138,23 @@ function onCreated(number: number) {
         :key="status.id"
         class="column"
         :class="{ blocked: blocked(status.id) }"
+        :style="{ '--column-tint': `var(--st-${status.color}-bg)` }"
         :title="blocked(status.id) ? 'Dieser Wechsel ist im Ablauf nicht vorgesehen' : undefined"
       >
         <header class="column-head">
           <span class="badge" :class="`st-${status.color}`">{{ status.label }}</span>
           <span class="faint">{{ columns[status.id]?.length ?? 0 }}</span>
           <span v-if="status.closed" class="faint hint">letzte 14 Tage</span>
+          <button
+            v-else
+            class="btn btn-sm btn-ghost add"
+            type="button"
+            :title="`Aufgabe in «${status.label}» erstellen`"
+            :aria-label="`Aufgabe in «${status.label}» erstellen`"
+            @click="createIn(status.id)"
+          >
+            +
+          </button>
         </header>
         <draggable
           v-model="columns[status.id]"
@@ -144,15 +177,40 @@ function onCreated(number: number) {
                 <span v-else-if="element.priority === 'low'" class="prio prio-low">Niedrig</span>
               </div>
               <div class="task-title">{{ element.title }}</div>
-              <div class="task-foot">
+              <div v-if="element.checklist || element.dueDate || element.descriptionPreview || element.commentCount" class="task-meta">
                 <span
-                  v-if="element.checklist"
-                  class="badge progress-badge board-progress"
-                  :class="{ complete: element.checklist.done === element.checklist.total }"
-                  :title="`Checklisten: ${element.checklist.done} von ${element.checklist.total} erledigt`"
+                  v-if="element.descriptionPreview"
+                  class="meta-icon"
+                  :title="plainPreview(element.descriptionPreview)"
+                  aria-label="Hat eine Beschreibung"
                 >
-                  ☑ {{ element.checklist.done }}/{{ element.checklist.total }}
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 7h11M2.5 10h11M2.5 13h7" /></svg>
                 </span>
+                <span
+                  v-if="element.commentCount"
+                  class="meta-icon"
+                  :title="`${element.commentCount} ${element.commentCount === 1 ? 'Kommentar' : 'Kommentare'}`"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M2.5 3.5h11v7.5h-6l-3.2 2.6v-2.6H2.5z" />
+                  </svg>
+                  {{ element.commentCount }}
+                </span>
+                <ChecklistProgress v-if="element.checklist" :done="element.checklist.done" :total="element.checklist.total" />
+                <span
+                  v-if="element.dueDate"
+                  class="badge due"
+                  :class="`due-${dueState(element.dueDate, status.closed)}`"
+                  :title="dueTitle(element.dueDate, status.closed)"
+                >
+                  <svg class="due-icon" viewBox="0 0 16 16" aria-hidden="true">
+                    <rect x="2" y="3" width="12" height="11" rx="1.5" />
+                    <path d="M2 6.5h12M5.5 1.8v2.6M10.5 1.8v2.6" />
+                  </svg>
+                  {{ formatDay(element.dueDate) }}
+                </span>
+              </div>
+              <div class="task-foot">
                 <span class="faint" :title="element.reporter.email">{{ element.reporter.name }}</span>
                 <span class="spacer" />
                 <span class="faint">{{ formatAge(element.createdAt) }}</span>
@@ -167,7 +225,13 @@ function onCreated(number: number) {
     </div>
   </div>
 
-  <NewItemDialog v-if="newOpen" fixed-type="task" @close="newOpen = false" @created="onCreated" />
+  <NewItemDialog
+    v-if="newOpen"
+    fixed-type="task"
+    :initial-status-id="newStatusId"
+    @close="newOpen = false"
+    @created="onCreated"
+  />
 </template>
 
 <style scoped>
@@ -184,7 +248,8 @@ function onCreated(number: number) {
   align-items: start;
 }
 .column {
-  background: var(--surface-2);
+  /* ganz leicht in der Farbe des Status */
+  background: color-mix(in srgb, var(--column-tint, var(--surface-2)) 55%, var(--surface-2));
   border-radius: var(--radius);
   padding: 10px;
   min-height: 200px;
@@ -202,6 +267,61 @@ function onCreated(number: number) {
 .hint {
   font-size: 12px;
   margin-left: auto;
+}
+.add {
+  margin-left: auto;
+  padding: 0 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+.task-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.meta-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.meta-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.due {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.due-icon {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.due-overdue {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.due-today {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.due-later,
+.due-done {
+  background: var(--surface-2);
+  color: var(--text-muted);
 }
 .cards {
   display: flex;
@@ -239,8 +359,5 @@ function onCreated(number: number) {
 }
 .ghost {
   opacity: 0.4;
-}
-.board-progress {
-  margin-left: 0;
 }
 </style>

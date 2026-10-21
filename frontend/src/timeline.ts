@@ -29,13 +29,17 @@ function groupable(e: Entry): boolean {
 }
 
 /** Felder mit Von/Nach, die bei mehrfacher Änderung in einer Karte nur einmal erscheinen */
-const MERGED_FIELDS = ['title', 'description', 'priority', 'channel', 'assignee', 'reporter', 'mailbox'];
+const MERGED_FIELDS = ['title', 'description', 'priority', 'channel', 'assignee', 'reporter', 'mailbox', 'dueDate'];
 
-/** Welches Feld ändert der Eintrag? null = wird nicht zusammengelegt (Beteiligte, Verknüpfungen, Duplikat …) */
+/**
+ * Welches Feld ändert der Eintrag? null = wird nicht zusammengelegt (Beteiligte, Verknüpfungen, Duplikat …).
+ * Checklisten-Punkte je Punkt: abgehakt und wieder zurückgenommen fällt weg.
+ */
 function mergeKey(e: Entry): string | null {
   const m = e.meta ?? {};
   if (e.kind === 'status') return m.duplicateOf ? null : 'status';
   if (e.kind === 'type') return 'type';
+  if (e.kind === 'change' && m.field === 'checklistItem') return `checklistItem:${String(m.itemId)}`;
   if (e.kind === 'change' && typeof m.field === 'string' && MERGED_FIELDS.includes(m.field)) return m.field;
   return null;
 }
@@ -194,6 +198,11 @@ export function asListItem(text: string): string {
   return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 }
 
+/** Was es nur bei Aufgaben gibt und beim Typwechsel aus- bzw. wieder eingeblendet wurde */
+function typeOnlyParts(m: Record<string, unknown>, state: 'hidden' | 'shown'): string[] {
+  return [m.checklists === state && 'Checklisten', m.dueDate === state && 'Fälligkeitsdatum'].filter((p): p is string => !!p);
+}
+
 /** Beschreibung einer Status-, Typ- oder Feldänderung als Satzteil nach «hat». */
 export function eventPart(e: Entry): EventPart {
   const m = e.meta ?? {};
@@ -209,14 +218,15 @@ function eventText(e: Entry, m: Record<string, unknown>): string {
       }
       return `den Status von ${q(m.from)} auf ${q(m.to)} geändert`;
     case 'type': {
-      const checklists =
-        m.checklists === 'hidden'
-          ? ' – Checklisten ausgeblendet, sie bleiben gespeichert'
-          : m.checklists === 'shown'
-            ? ' – Checklisten wieder eingeblendet'
-            : '';
-      if (!m.from) return `den Typ ${q(m.to)} zugewiesen (Status ${q(m.toStatus)})${checklists}`;
-      return `den Typ von ${q(m.from)} auf ${q(m.to)} geändert (Status ${q(m.fromStatus)} → ${q(m.toStatus)})${checklists}`;
+      const hidden = typeOnlyParts(m, 'hidden');
+      const shown = typeOnlyParts(m, 'shown');
+      const note = hidden.length
+        ? ` – ${hidden.join(' und ')} ausgeblendet, ${hidden.length > 1 || hidden[0] === 'Checklisten' ? 'sie bleiben' : 'es bleibt'} gespeichert`
+        : shown.length
+          ? ` – ${shown.join(' und ')} wieder eingeblendet`
+          : '';
+      if (!m.from) return `den Typ ${q(m.to)} zugewiesen (Status ${q(m.toStatus)})${note}`;
+      return `den Typ von ${q(m.from)} auf ${q(m.to)} geändert (Status ${q(m.fromStatus)} → ${q(m.toStatus)})${note}`;
     }
     case 'change':
       switch (m.field) {
@@ -252,6 +262,11 @@ function eventText(e: Entry, m: Record<string, unknown>): string {
           return 'den Vorgang wiederhergestellt';
         case 'waitingReminder':
           return `den Melder erinnert (wartet seit ${String(m.days)} Tagen)`;
+        case 'dueDate':
+          if (!m.to) return `das Fälligkeitsdatum ${q(m.from)} entfernt`;
+          return m.from ? `das Fälligkeitsdatum von ${q(m.from)} auf ${q(m.to)} geändert` : `das Fälligkeitsdatum ${q(m.to)} gesetzt`;
+        case 'checklistItem':
+          return m.to ? `den Punkt ${q(m.text)} abgehakt` : `den Haken bei ${q(m.text)} entfernt`;
       }
       return 'den Vorgang geändert';
   }

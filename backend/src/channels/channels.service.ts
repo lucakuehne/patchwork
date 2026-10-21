@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { asc, eq, sql } from 'drizzle-orm';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import { channels, items, type Channel } from '../db/schema';
+import { SettingsService, type ChannelDefaults } from '../settings/settings.service';
 
 /** Symbole zur Auswahl für die Meldewege (das Frontend zeichnet sie) */
 export const CHANNEL_ICONS = ['mail', 'portal', 'phone', 'mobile', 'person', 'chat', 'video', 'letter', 'alert', 'other'] as const;
@@ -13,7 +14,27 @@ export type ChannelKey = 'mail' | 'portal';
 /** Meldewege eines Vorgangs (E-Mail, Portal, Telefon …), in der Verwaltung pflegbar wie die Status. */
 @Injectable()
 export class ChannelsService {
-  constructor(@InjectDb() private readonly db: Db) {}
+  constructor(
+    @InjectDb() private readonly db: Db,
+    private readonly settings: SettingsService,
+  ) {}
+
+  /** Vorbelegung beim internen Erfassen je Typ; ein inzwischen fehlender Meldeweg gilt als keiner. */
+  async defaults(): Promise<ChannelDefaults> {
+    const [stored, all] = await Promise.all([this.settings.get('channelDefaults'), this.list()]);
+    const usable = (id: string | null) => (id && all.some((c) => c.id === id && c.key !== 'portal') ? id : null);
+    return { incident: usable(stored.incident), task: usable(stored.task) };
+  }
+
+  async setDefaults(input: ChannelDefaults): Promise<ChannelDefaults> {
+    for (const id of [input.incident, input.task]) {
+      if (!id) continue;
+      const channel = await this.get(id);
+      if (channel.key === 'portal') throw new BadRequestException('«Portal» setzt Patchwork selbst und lässt sich nicht vorbelegen');
+    }
+    await this.settings.set('channelDefaults', { incident: input.incident, task: input.task });
+    return this.defaults();
+  }
 
   list(tx: Tx = this.db): Promise<Channel[]> {
     return tx.select().from(channels).orderBy(asc(channels.position));
@@ -98,6 +119,12 @@ export class ChannelsService {
       const remaining = (await this.list(tx)).filter((c) => c.id !== id);
       for (const [position, c] of remaining.entries()) await tx.update(channels).set({ position }).where(eq(channels.id, c.id));
     });
+    // Vorbelegung: Der Ersatz übernimmt sie; ohne Ersatz (Meldeweg unbenutzt) entfällt sie
+    const stored = await this.settings.get('channelDefaults');
+    if (stored.incident === id || stored.task === id) {
+      const replace = (current: string | null) => (current === id ? replacementId : current);
+      await this.settings.set('channelDefaults', { incident: replace(stored.incident), task: replace(stored.task) });
+    }
   }
 
   private assertUniqueLabel(others: Channel[], label: string) {

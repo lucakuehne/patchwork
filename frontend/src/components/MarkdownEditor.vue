@@ -6,6 +6,8 @@ import { EditorContent, useEditor } from '@tiptap/vue-3';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import type { ImageContext } from '../markdown';
+import { mentionExtension, mentionLabel, type MentionCandidate } from '../mentions';
+import { useSession } from '../stores/session';
 import { clipboardHasText, imageAlt, imageBlock, textImage } from '../text-image';
 import { allowPlaceholderLinks, normalizePlaceholderHref, PlaceholderHighlight } from '../text-placeholders';
 
@@ -25,9 +27,14 @@ const props = withDefaults(
     images?: boolean;
     context?: ImageContext;
     template?: boolean;
+    /** Erwähnen mit «@» (Antworten und Notizen der IT) */
+    mentions?: boolean;
   }>(),
-  { placeholder: '', minHeight: 120, autofocus: false, images: true, context: 'staff', template: false },
+  { placeholder: '', minHeight: 120, autofocus: false, images: true, context: 'staff', template: false, mentions: false },
 );
+const session = useSession();
+const mentionCandidates = (): MentionCandidate[] =>
+  session.staff.map((u) => ({ id: u.id, label: mentionLabel(u), email: u.email }));
 const model = defineModel<string>({ required: true });
 /** Solange ein Bild hochgeladen wird, wartet das Senden */
 const uploading = defineModel<boolean>('uploading', { default: false });
@@ -63,6 +70,7 @@ const editor = useEditor({
     Placeholder.configure({ placeholder: () => props.placeholder }),
     ...(props.images ? [textImage({ context: () => props.context, origin: window.location.origin })] : []),
     ...(props.template ? [PlaceholderHighlight] : []),
+    ...(props.mentions ? [mentionExtension(mentionCandidates)] : []),
   ],
   editorProps: {
     attributes: { class: 'prose md-content', spellcheck: 'true' },
@@ -402,6 +410,14 @@ defineExpose({ focus, insertMarkdown, insertText });
 }
 .content :deep(.md-content img.ProseMirror-selectednode) {
   outline: 2px solid var(--accent);
+}
+/* Erwähnung mit «@» */
+.content :deep(.md-content .mention) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 500;
 }
 /* Platzhalter wie {{Titel}} in Vorlagen und Textbausteinen */
 .content :deep(.md-content .placeholder-token) {

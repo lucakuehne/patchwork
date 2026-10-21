@@ -19,6 +19,42 @@ const dateTimeFmt = new Intl.DateTimeFormat('de-CH', {
 export const formatDate = (iso: string | null | undefined) => (iso ? dateFmt.format(new Date(iso)) : '–');
 export const formatDateTime = (iso: string | null | undefined) => (iso ? dateTimeFmt.format(new Date(iso)) : '–');
 
+/** Datum ohne Uhrzeit (JJJJ-MM-TT, z.B. Fälligkeit) als TT.MM.JJJJ, ohne Umweg über Zeitzonen */
+export const formatDay = (value: string) => value.split('-').reverse().join('.');
+
+/** Heutiges Datum (lokal) als JJJJ-MM-TT */
+export function today(now = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/**
+ * Fälligkeit gegenüber heute: überfällig (rot), heute (orange) oder später. Abgeschlossene Aufgaben ohne Farbe
+ * («done»), ohne Datum null.
+ */
+export function dueState(dueDate: string | null, closed: boolean, day = today()): 'overdue' | 'today' | 'later' | 'done' | null {
+  if (!dueDate) return null;
+  if (closed) return 'done';
+  if (dueDate < day) return 'overdue';
+  return dueDate === day ? 'today' : 'later';
+}
+
+/**
+ * Markdown als kurzer Text für Vorschauen (z.B. Beschreibung auf der Board-Karte): ohne Formatierung, Links mit ihrem
+ * Text, Erwähnungen als «@Name», Bilder als «[Bild: Name]», gekürzt mit «…».
+ */
+export function plainPreview(markdown: string, max = 240): string {
+  const text = markdown
+    .replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, (_all, alt: string) => (alt ? `[Bild: ${alt}]` : '[Bild]'))
+    .replace(/\[([^\]\n]*)\]\([^)\n]*\)/g, '$1')
+    .replace(/^[ \t]{0,3}(?:#{1,6}|>|[-*+]|\d+\.)[ \t]+/gm, '')
+    .replace(/(?<!\\)(?:\*\*|__|~~|`|\*)/g, '')
+    .replace(/\\([\\`*_{}[\]()#+\-.!|<>~])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > max ? `${text.slice(0, max).trimEnd()} …` : text;
+}
+
 /** Kurzes Alter, z.B. «5 Min.», «3 Std.», «2 Tage». */
 export function formatAge(iso: string): string {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));

@@ -15,7 +15,7 @@ import TimelineMail from '../components/TimelineMail.vue';
 import TimelineMessage from '../components/TimelineMessage.vue';
 import TypeChangeDialog from '../components/TypeChangeDialog.vue';
 import UserPicker from '../components/UserPicker.vue';
-import { formatDateTime, itemRef, PRIORITY_LABELS, TYPE_LABELS } from '../format';
+import { dueState, formatDateTime, itemRef, PRIORITY_LABELS, TYPE_LABELS } from '../format';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import { groupTimeline, type TimelineBlock } from '../timeline';
@@ -111,6 +111,8 @@ const canReject = computed(() => !!item.value?.type && session.canReject(item.va
 const timeline = computed(() => (item.value ? groupTimeline([...item.value.entries].reverse(), item.value.mails) : []));
 const blockKey = (block: TimelineBlock) =>
   block.kind === 'message' ? block.entry.id : block.kind === 'mail' ? block.mail.id : block.entries[0]!.id;
+// Fälligkeit (nur Aufgaben): überfällig rot, heute orange
+const due = computed(() => (item.value ? dueState(item.value.dueDate, !!item.value.status?.closed) : null));
 // Ein Eintrag pro Postfach; ohne eigenes Antwort-Postfach ist das Standard-Postfach gewählt
 const mailboxOptions = computed(() => {
   const list = session.mailboxes.map((m) => ({ ...m, inactive: false }));
@@ -139,6 +141,8 @@ const patch = (body: Record<string, unknown>) => run(() => api.patch(`/items/${p
 const setDiscarded = (discarded: boolean) =>
   run(() => api.post(`/items/${props.number}/discard`, { discarded }), discarded ? 'Verworfen' : 'Wiederhergestellt');
 const setMuted = (muted: boolean) => run(() => api.put(`/items/${props.number}/mute`, { muted }));
+/** Stummschalten ist vorläufig ausgeblendet und wirkt nicht (Entscheid vom 21.10.2026, Backend: MUTES_ACTIVE) */
+const MUTE_OPTION = false;
 
 function setReporter(user: User) {
   void patch({ reporterId: user.id });
@@ -277,6 +281,23 @@ function onRejected() {
           </select>
         </div>
 
+        <div v-if="item.type === 'task'" class="field">
+          <div class="row">
+            <label for="item-due" class="label">Fällig am</label>
+            <span v-if="due === 'overdue'" class="due-hint overdue">überfällig</span>
+            <span v-else-if="due === 'today'" class="due-hint today">heute</span>
+          </div>
+          <input
+            id="item-due"
+            class="input"
+            :class="due ? `due-${due}` : undefined"
+            type="date"
+            :value="item.dueDate ?? ''"
+            :disabled="busy"
+            @change="patch({ dueDate: ($event.target as HTMLInputElement).value || null })"
+          />
+        </div>
+
         <div class="field">
           <label for="item-channel">Meldeweg</label>
           <div class="channel-select">
@@ -358,7 +379,7 @@ function onRejected() {
           <span v-else class="faint small">Kein Postfach eingerichtet</span>
         </div>
 
-        <label class="checkbox">
+        <label v-if="MUTE_OPTION" class="checkbox">
           <input type="checkbox" :checked="item.muted" :disabled="busy" @change="setMuted(($event.target as HTMLInputElement).checked)" />
           Benachrichtigungen für mich stummschalten
         </label>
@@ -446,6 +467,19 @@ function onRejected() {
 .reject {
   align-self: flex-start;
   margin-top: 4px;
+}
+.due-hint {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+}
+.due-hint.overdue,
+.input.due-overdue {
+  color: var(--danger);
+}
+.due-hint.today,
+.input.due-today {
+  color: var(--warning);
 }
 .participant {
   display: flex;

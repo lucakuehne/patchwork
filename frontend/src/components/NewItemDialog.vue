@@ -11,9 +11,12 @@ import ModalDialog from './ModalDialog.vue';
 import TypeChoice from './TypeChoice.vue';
 import UserPicker from './UserPicker.vue';
 
-/** «fixedType»: aus der Liste der Störungen bzw. vom Board, dann ohne Typ-Auswahl */
-const props = defineProps<{ initialType?: ItemType; fixedType?: ItemType }>();
-const emit = defineEmits<{ close: []; created: [number: number] }>();
+/**
+ * «fixedType»: aus der Liste der Störungen bzw. vom Board, dann ohne Typ-Auswahl.
+ * «initialStatusId»: vorgewählter Status, z.B. aus einer Spalte des Boards.
+ */
+const props = defineProps<{ initialType?: ItemType; fixedType?: ItemType; initialStatusId?: string }>();
+const emit = defineEmits<{ close: []; created: [number: number, type: ItemType] }>();
 const session = useSession();
 
 const type = ref<ItemType>(props.fixedType ?? props.initialType ?? 'incident');
@@ -25,10 +28,20 @@ const description = ref('');
 const priority = ref<Priority>('normal');
 const reporter = ref<User | null>(session.user);
 const assigneeId = ref('');
-const statusId = ref('');
-// Meldeweg: Pflicht, bewusst ohne Vorbelegung; «Portal» setzt Patchwork selbst
-const channelId = ref('');
+const statusId = ref(props.initialStatusId ?? '');
+const dueDate = ref('');
+// Meldeweg: Pflicht; vorbelegt nur, wenn unter Verwaltung → Meldewege für den Typ eingestellt. «Portal» setzt Patchwork selbst
 const channelOptions = computed(() => session.channels.filter((c) => c.key !== 'portal'));
+const defaultChannel = (t: ItemType) => {
+  const id = session.channelDefaults[t];
+  return id && channelOptions.value.some((c) => c.id === id) ? id : '';
+};
+const channelId = ref(defaultChannel(type.value));
+// Beim Wechsel des Typs die Vorbelegung des neuen Typs, solange der Meldeweg nicht von Hand gewählt ist
+let channelChosen = false;
+watch(channelId, (id) => {
+  if (id !== defaultChannel(type.value)) channelChosen = true;
+});
 const files = ref<File[]>([]);
 const saving = ref(false);
 const uploading = ref(false);
@@ -40,7 +53,10 @@ const startLabel = computed(() => {
   const startId = session.statusTargets[type.value].start;
   return session.statuses.find((s) => s.id === startId)?.label;
 });
-watch(type, () => (statusId.value = ''));
+watch(type, (t) => {
+  statusId.value = '';
+  if (!channelChosen) channelId.value = defaultChannel(t);
+});
 
 async function save() {
   error.value = '';
@@ -62,10 +78,11 @@ async function save() {
     if (reporter.value) form.append('reporterId', reporter.value.id);
     if (assigneeId.value) form.append('assigneeId', assigneeId.value);
     if (statusId.value) form.append('statusId', statusId.value);
+    if (type.value === 'task' && dueDate.value) form.append('dueDate', dueDate.value);
     form.append('channelId', channelId.value);
     for (const f of files.value) form.append('files', f, f.name);
     const result = await api.post<{ number: number }>('/items', form);
-    emit('created', result.number);
+    emit('created', result.number, type.value);
   } catch (err) {
     error.value = errorMessage(err);
   } finally {
@@ -125,6 +142,10 @@ async function save() {
           <option value="" disabled>Bitte wählen …</option>
           <option v-for="c in channelOptions" :key="c.id" :value="c.id">{{ c.label }}</option>
         </select>
+      </div>
+      <div v-if="type === 'task'" class="field">
+        <label for="new-due">Fällig am</label>
+        <input id="new-due" v-model="dueDate" class="input" type="date" />
       </div>
     </div>
     <div class="field">

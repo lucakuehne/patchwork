@@ -100,8 +100,15 @@ export interface UserNamesSettings {
   directorySyncedAt: string | null;
 }
 
+/** Meldeweg, der beim internen Erfassen je Typ vorbelegt ist (Id), null = keiner */
+export interface ChannelDefaults {
+  incident: string | null;
+  task: string | null;
+}
+
 interface SettingsMap {
   general: GeneralSettings;
+  channelDefaults: ChannelDefaults;
   logo: LogoSettings | null;
   ldap: LdapSettings;
   mail: MailSettings;
@@ -114,6 +121,8 @@ interface SettingsMap {
 
 const DEFAULTS: SettingsMap = {
   general: { appName: 'Patchwork' },
+  // Nach der Einführung für beide Typen ohne Vorbelegung (Entscheid vom 21.10.2026)
+  channelDefaults: { incident: null, task: null },
   logo: null,
   ldap: DEFAULT_LDAP,
   mail: { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] },

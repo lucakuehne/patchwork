@@ -132,8 +132,8 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 ### Checklisten
 
 - Nur bei Aufgaben, mehrere Checklisten mit Titel pro Aufgabe.
-- Punkte: Text und offen/abgehakt. Gespeichert wird, wer wann abgehakt hat (sichtbar beim Darüberfahren). Kein Timeline-Eintrag pro Haken. Reihenfolge per Ziehen.
-- Fortschritt (z.B. «☑ 3/5») auf den Board-Karten und in den Listen.
+- Punkte: Text und offen/abgehakt. Gespeichert wird, wer wann abgehakt hat (sichtbar beim Darüberfahren). Reihenfolge per Ziehen. Seit 21.10.2026 stehen Abhaken und Zurücknehmen im Verlauf (siehe «Aufgaben und interne Erfassung»).
+- Fortschritt auf den Board-Karten und in den Listen, seit 21.10.2026 als Balken mit «3/5».
 - Wechsel in einen abgeschlossenen Status (ausser dem Ablehnen-Status) mit offenen Punkten nur nach Rückfrage. Beim Ablehnen keine Rückfrage.
 - Typwechsel zur Störung: Checklisten bleiben gespeichert, sind ausgeblendet und erscheinen wieder, wenn der Vorgang erneut eine Aufgabe wird (Hinweis im Timeline-Eintrag).
 - Im Portal nicht sichtbar.
@@ -206,7 +206,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 ## Meldeweg (bestätigt am 20.10.2026)
 
 - Liste in der Verwaltung pflegbar wie die Status, jeder Meldeweg mit Name und Symbol. Vorbelegt: E-Mail, Portal, Telefon, Persönlich (Walk-In), Teams/Chat, Sonstiges. E-Mail und Portal setzt Patchwork automatisch, sie lassen sich nicht löschen.
-- Beim internen Erfassen («+ Neu», «+ Störung», «+ Aufgabe») Pflichtfeld ohne Vorbelegung.
+- Beim internen Erfassen («+ Neu», «+ Störung», «+ Aufgabe») Pflichtfeld ohne Vorbelegung (seit 21.10.2026 je Typ eine Vorbelegung einstellbar).
 - In der Seitenleiste änderbar, mit Eintrag in der Timeline wie bei der Priorität. Angezeigt bei der ursprünglichen Meldung («per Telefon»), in den Listen als eigene Spalte nur mit dem Symbol, in den Auswertungen als Diagramm «Neue Vorgänge nach Meldeweg».
 - Bestehende Vorgänge: aus Mails «E-Mail», aus dem Portal «Portal», intern erfasste ohne Angabe («–»), nachtragbar.
 - Umgesetzt am 20.10.2026, Details:
@@ -214,6 +214,22 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Beim internen Erfassen steht «Portal» nicht zur Auswahl (setzt Patchwork selbst), «E-Mail» schon (z.B. eine Mail an die eigene Adresse).
   - Löschen wie bei den Status: Wird der Meldeweg verwendet, wählt man einen Ersatz. Simulierte Mails erhalten «E-Mail».
   - In den Listen heisst die Spalte «Meldeweg», sie zeigt nur das Symbol, die Bezeichnung beim Darüberfahren. Im CSV-Export eine eigene Spalte.
+
+## Aufgaben und interne Erfassung (bestätigt am 21.10.2026)
+
+- **Meldeweg «Intern»** mit dem Symbol Glocke für Dinge, die die IT selbst bemerkt und erfasst. Er kommt beim Update in die Liste der Meldewege (ans Ende, nicht, wenn es schon einen Meldeweg «Intern» gibt) und ist änderbar und löschbar wie die übrigen.
+- **Vorbelegung je Typ:** Unter Verwaltung → Meldewege wählt man pro Typ (Störung, Aufgabe) einen Meldeweg, der beim internen Erfassen vorbelegt ist, oder keinen. Nach dem Update ist für beide Typen keiner gewählt. Ohne Vorbelegung bleibt der Meldeweg wie bisher ein Pflichtfeld ohne Vorgabe. Wird ein vorbelegter Meldeweg gelöscht, übernimmt der gewählte Ersatz die Vorbelegung.
+- **Board-Spalten** übernehmen ganz leicht die Farbe ihres Status statt einfach grau.
+- **Fälligkeitsdatum** (optional, nur Aufgaben, ohne Uhrzeit): im Dialog «Neue Aufgabe» und in der Seitenleiste, Änderungen im Verlauf, auf der Board-Karte angezeigt; überfällige offene Aufgaben rot, heute fällige orange. Nicht im Portal. Beim Typwechsel zur Störung bleibt es gespeichert und ausgeblendet wie die Checklisten.
+  - **Mail bei Fälligkeit:** am Fälligkeitstag ab 07:00 einmal an den Zuständigen (nicht bei Stummschaltung), nur bei offenen Aufgaben. Wird das Datum später auf heute oder früher gesetzt, kommt die Mail innert 15 Minuten. Ohne Zuständigen keine Mail. Vorlage «Fällig» unter Verwaltung → Mail-Vorlagen (IT).
+- **Checklisten im Verlauf** (ersetzt «Kein Timeline-Eintrag pro Haken»): Abhaken und Zurücknehmen eines Punkts stehen im Verlauf, z.B. «Punkt «AD-Konto anlegen» abgehakt». Mehrere Haken derselben Person innert 2 Minuten erscheinen als eine Karte; abgehakt und gleich wieder zurückgenommen fällt weg. Hinzufügen, Umbenennen und Löschen erscheinen nicht.
+- **Antworten auf Aufgaben** sind im Antwortfeld standardmässig «Intern». Bei Störungen und im Eingang bleibt «Öffentlich» die Vorgabe.
+- **Fortschritt der Checklisten** als schmaler Balken mit kleiner Zahl daneben («3/5»), auf den Board-Karten und in den Listen, statt «☑ 3/5».
+- **Aufgabe in einer Spalte erstellen:** «+» im Kopf jeder offenen Spalte des Boards öffnet «Neue Aufgabe» mit diesem Status vorgewählt. Abgeschlossene Spalten haben kein «+».
+- **Board-Karte** (bestätigt am 21.10.2026): ein kleines Text-Symbol, wenn die Aufgabe eine Beschreibung hat, beim Darüberfahren die ersten Zeilen als Text. Dazu eine Sprechblase mit der Anzahl Kommentare: öffentliche Antworten (auch die des Melders) und interne Notizen, ohne Änderungen, automatische Mails und Abwesenheitsnotizen; bei 0 keine.
+- **Nach dem Erstellen einer Aufgabe** (bestätigt am 21.10.2026) bleibt man, wo man ist (z.B. auf dem Board, die Karte erscheint in ihrer Spalte), mit der Meldung «PW-123 erstellt» und «Öffnen». Gilt für alle neuen Aufgaben, auch über «+ Neu». Neue Störungen öffnen wie bisher.
+- **Erwähnen** (bestätigt am 21.10.2026): Mit «@» im Antwortfeld (öffentliche Antworten und interne Notizen, auch beim Bearbeiten einer Notiz) öffnet sich eine Auswahl der IT-Mitarbeitenden und Admins. Die Erwähnung erscheint in Patchwork hervorgehoben. Beim Melder (Mail und Portal) steht sie als gewöhnlicher Text «@Vorname Nachname». Die Erwähnten erhalten eine Mail «Erwähnt» mit dem Text und dem Link (Vorlage unter Verwaltung → Mail-Vorlagen, IT), nicht an sich selbst; beim Bearbeiten einer Notiz nur neu hinzugekommene Erwähnte.
+- **Stummschalten ausgeblendet** (bestätigt am 21.10.2026): Die Option «Benachrichtigungen für mich stummschalten» ist vorläufig ausgeblendet. Bestehende Stummschaltungen bleiben gespeichert, wirken aber nicht mehr: Alle erhalten wieder ihre Mails. Wird die Option später wieder eingeblendet, gelten sie wieder.
 
 ## Bilder im Text (bestätigt am 20.10.2026)
 

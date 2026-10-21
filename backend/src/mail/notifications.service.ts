@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { sign } from '../common/crypto';
+import { swissDate } from '../common/swiss-date';
 import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
 import { attachments, items, mailMessages, mutes, participants, statuses, users, type Item, type User } from '../db/schema';
@@ -8,10 +9,17 @@ import { embedImageTags, imagesAsText, imageSize, type EmbeddedImage } from '../
 import { PortalAccessService } from '../portal/portal-access.service';
 import { StorageService } from '../storage/storage.service';
 import { itemRef, subjectFor } from './mail-content';
-import { composeMail, fill, personValues, type TemplateKey } from './mail-templates';
+import { mentionsAsText } from '../items/mentions';
+import { composeMail, fill, markdownAsText, personValues, type TemplateKey } from './mail-templates';
 import { MailTemplatesService } from './mail-templates.service';
 import { MailboxesService } from './mailboxes.service';
 import { MailSenderService, newMessageId } from './mail-sender.service';
+
+/**
+ * Stummschaltungen wirken vorläufig nicht (Entscheid vom 21.10.2026): Die Option ist in der Oberfläche ausgeblendet,
+ * bestehende bleiben gespeichert und gelten wieder, sobald dies auf true steht und die Option wieder sichtbar ist.
+ */
+export const MUTES_ACTIVE = false;
 
 const formatDate = (d: Date) =>
   new Intl.DateTimeFormat('de-CH', { timeZone: appConfig.timeZone, day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
@@ -34,7 +42,7 @@ interface ReporterMail {
 /**
  * Entscheidet, wer zu welchem Ereignis eine Mail erhält, und stellt sie in die Versand-Queue.
  * Grundregeln: keine Mail an den Auslöser selbst, keine Mail an Benutzer, die den Vorgang
- * stummgeschaltet haben, keine Mail an deaktivierte Benutzer.
+ * stummgeschaltet haben (vorläufig ausser Kraft, siehe MUTES_ACTIVE), keine Mail an deaktivierte Benutzer.
  */
 @Injectable()
 export class NotificationsService {
@@ -67,7 +75,8 @@ export class NotificationsService {
     const to = reporter ? [reporter.email] : cc.splice(0, cc.length);
     await this.sendToReporter(item, to, cc, {
       template: 'reply',
-      written: body,
+      // Erwähnungen sieht der Melder als gewöhnlichen Text «@Vorname Nachname»
+      written: mentionsAsText(body),
       entryId,
       attachmentIds,
       automated: false,
@@ -173,6 +182,36 @@ export class NotificationsService {
       'Behebender Vorgang': `${itemRef(fixing.number)} «${fixing.title}»`,
       Bearbeiter: actor?.name ?? '–',
     });
+  }
+
+  /**
+   * In einer Antwort oder Notiz mit «@» erwähnt: Mail an die erwähnten IT-Mitarbeitenden (aktiv, Rolle IT oder Admin),
+   * nicht an den Verfasser selbst.
+   */
+  async mentioned(item: Item, author: User, userIds: string[], kind: 'reply' | 'note', body: string): Promise<void> {
+    const ids = userIds.filter((id) => id !== author.id);
+    if (ids.length === 0) return;
+    const staff = await this.db
+      .select()
+      .from(users)
+      .where(and(inArray(users.id, ids), inArray(users.role, ['it', 'admin']), eq(users.active, true)));
+    const text = markdownAsText(imagesAsText(mentionsAsText(body)));
+    for (const recipient of staff) {
+      await this.sendToStaff(item, recipient, 'mentioned', {
+        Bearbeiter: author.name,
+        Art: kind === 'reply' ? 'öffentliche Antwort' : 'interne Notiz',
+        Text: text,
+      });
+    }
+  }
+
+  /** Aufgabe ist fällig: Mail an den Zuständigen, nicht bei Stummschaltung. false = keine Mail. */
+  async dueReminder(item: Item): Promise<boolean> {
+    if (!item.assigneeId || !item.dueDate) return false;
+    const assignee = await this.eligible(item, item.assigneeId, null);
+    if (!assignee) return false;
+    await this.sendToStaff(item, assignee, 'dueReminder', { Fällig: swissDate(item.dueDate) ?? '' });
+    return true;
   }
 
   /**
@@ -324,6 +363,7 @@ export class NotificationsService {
     if (userId === actorId) return null;
     const user = await this.user(userId);
     if (!user?.active) return null;
+    if (!MUTES_ACTIVE) return user;
     const [muted] = await this.db
       .select({ userId: mutes.userId })
       .from(mutes)
@@ -347,6 +387,7 @@ export class NotificationsService {
   }
 
   private async mutedUserIds(itemId: string): Promise<Set<string>> {
+    if (!MUTES_ACTIVE) return new Set();
     const rows = await this.db.select({ userId: mutes.userId }).from(mutes).where(eq(mutes.itemId, itemId));
     return new Set(rows.map((r) => r.userId));
   }

@@ -6,6 +6,7 @@ import { items, ruleRuns, rules, users } from '../db/schema';
 import { BossService, QUEUE_AUTOMATION } from '../jobs/boss.service';
 import { SettingsService } from '../settings/settings.service';
 import { StatusesService } from '../statuses/statuses.service';
+import { DueRemindersService } from './due-reminders.service';
 import { matchesGroup } from './rule-eval';
 import { RulesService, timedEvent } from './rules.service';
 import { dueTimedRules, scheduleCovers, scheduledStatusIds } from './timed';
@@ -26,11 +27,17 @@ export class AutomationService implements OnModuleInit {
     private readonly rules: RulesService,
     private readonly statuses: StatusesService,
     private readonly ldap: LdapService,
+    private readonly dueReminders: DueRemindersService,
   ) {}
 
   async onModuleInit() {
     const boss = await this.boss.boss();
-    await boss.work(QUEUE_AUTOMATION, { batchSize: 1 }, () => this.run());
+    // Zeitgesteuerte Regeln und Mails bei Fälligkeit; ein Fehler im einen hält das andere nicht auf
+    await boss.work(QUEUE_AUTOMATION, { batchSize: 1 }, async () => {
+      const results = await Promise.allSettled([this.run(), this.dueReminders.run()]);
+      const failed = results.find((r) => r.status === 'rejected');
+      if (failed) throw failed.reason;
+    });
     await boss.schedule(QUEUE_AUTOMATION, '*/15 * * * *');
   }
 

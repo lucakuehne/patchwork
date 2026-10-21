@@ -22,8 +22,14 @@ const loading = ref(true);
 const busy = ref<number | null>(null);
 const newOpen = ref(false);
 
-function onCreated(number: number) {
+// Neue Aufgaben öffnen nicht, die Meldung bietet «Öffnen»; Störungen öffnen wie bisher
+function onCreated(number: number, type: ItemType) {
   newOpen.value = false;
+  if (type === 'task') {
+    toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/v/${number}` });
+    void session.refreshCounts();
+    return;
+  }
   toast.success('Vorgang erfasst');
   void router.push({ name: 'item', params: { number } });
 }

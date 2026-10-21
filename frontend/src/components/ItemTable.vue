@@ -4,6 +4,7 @@ import { formatAge, formatDate, itemRef, TYPE_LABELS } from '../format';
 import { useSession } from '../stores/session';
 import type { ItemSummary } from '../types';
 import ChannelIcon from './ChannelIcon.vue';
+import ChecklistProgress from './ChecklistProgress.vue';
 import PriorityLabel from './PriorityLabel.vue';
 import StatusBadge from './StatusBadge.vue';
 
@@ -50,9 +51,7 @@ const channelProps = (item: ItemSummary) => {
           <td class="mono nowrap muted">{{ itemRef(item.number) }}</td>
           <td class="title-cell">
             {{ item.title }}
-            <span v-if="item.checklist" class="badge progress-badge" :class="{ complete: item.checklist.done === item.checklist.total }">
-              ☑ {{ item.checklist.done }}/{{ item.checklist.total }}
-            </span>
+            <ChecklistProgress v-if="item.checklist" class="progress-badge" :done="item.checklist.done" :total="item.checklist.total" />
             <span v-if="!item.type && item.suggestedType" class="badge suggestion-badge">
               Vorschlag: {{ TYPE_LABELS[item.suggestedType] }}
             </span>

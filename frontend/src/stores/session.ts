@@ -4,6 +4,7 @@ import { api } from '../api';
 import { rejectAllowed, transitionAllowed } from '../status-flow';
 import type {
   Channel,
+  ChannelDefaults,
   Counts,
   ItemType,
   MailboxOption,
@@ -26,6 +27,8 @@ export const useSession = defineStore('session', () => {
   /** Ziel-Status je Typ (automatische Wechsel: Start, nach Antwort, Schliessen, Ablehnen, Wartet) */
   const statusTargets = ref<StatusTargetsByType>({ incident: {}, task: {} });
   const channels = ref<Channel[]>([]);
+  /** Vorbelegter Meldeweg beim internen Erfassen je Typ */
+  const channelDefaults = ref<ChannelDefaults>({ incident: null, task: null });
   const staff = ref<User[]>([]);
   const mailboxes = ref<MailboxOption[]>([]);
 
@@ -118,7 +121,10 @@ export const useSession = defineStore('session', () => {
   }
 
   async function loadChannels() {
-    channels.value = await api.get<Channel[]>('/channels');
+    [channels.value, channelDefaults.value] = await Promise.all([
+      api.get<Channel[]>('/channels'),
+      api.get<ChannelDefaults>('/channels/defaults'),
+    ]);
   }
 
   /** Meldeweg nach ID, z.B. für Listen (dort steht nur die ID) */
@@ -182,6 +188,7 @@ export const useSession = defineStore('session', () => {
     isRejectStatus,
     canReject,
     channels,
+    channelDefaults,
     staff,
     mailboxes,
     isAdmin,

@@ -15,6 +15,8 @@ export type TemplateKey =
   | 'assigned'
   | 'inboundReply'
   | 'fixCompleted'
+  | 'mentioned'
+  | 'dueReminder'
   | 'staffLink'
   | 'staffFooter';
 
@@ -241,6 +243,33 @@ export const TEMPLATES: TemplateDefinition[] = [
       p('Bearbeiter', 'Wer ihn erledigt hat', 'Ivan IT'),
       STAFF_LINK,
     ],
+  },
+  {
+    key: 'mentioned',
+    group: 'staff',
+    label: 'Erwähnt',
+    description:
+      'An IT-Mitarbeitende, die in einer öffentlichen Antwort oder internen Notiz mit «@» erwähnt werden (nicht an sich selbst; ' +
+      'beim Bearbeiten einer Notiz nur an neu Erwähnte).',
+    subject: 'Erwähnt: {{Titel}}',
+    body: '{{Bearbeiter}} hat Sie in {{Nummer}} «{{Titel}}» erwähnt ({{Art}}):\n\n{{Text}}',
+    placeholders: [
+      ...ITEM,
+      p('Bearbeiter', 'Wer erwähnt hat', 'Ada Admin'),
+      p('Art', 'Öffentliche Antwort oder interne Notiz', 'interne Notiz'),
+      p('Text', 'Text der Antwort bzw. Notiz', '@Ivan Informatik, kannst du das übernehmen?'),
+      STAFF_LINK,
+    ],
+  },
+  {
+    key: 'dueReminder',
+    group: 'staff',
+    label: 'Fällig',
+    description:
+      'An den Zuständigen am Fälligkeitstag einer offenen Aufgabe (ab 07:00, einmal pro Datum; ohne Zuständigen keine Mail).',
+    subject: 'Fällig: {{Titel}}',
+    body: 'Die Aufgabe {{Nummer}} «{{Titel}}» ist am {{Fällig}} fällig.\nStatus: {{Status}}',
+    placeholders: [...ITEM, p('Fällig', 'Fälligkeitsdatum', '24.10.2026'), STAFF_LINK],
   },
   {
     key: 'staffLink',

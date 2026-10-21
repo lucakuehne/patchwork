@@ -130,7 +130,7 @@ async function save() {
       </template>
     </TimelineHead>
     <div v-if="editing" class="stack">
-      <MarkdownEditor v-model="draft" v-model:uploading="uploading" :min-height="90" autofocus @submit="save" />
+      <MarkdownEditor v-model="draft" v-model:uploading="uploading" :min-height="90" autofocus mentions @submit="save" />
       <div v-if="error" class="error-box">{{ error }}</div>
       <div class="row">
         <button class="btn btn-sm btn-note" type="button" :disabled="saving || uploading" @click="save">Speichern</button>

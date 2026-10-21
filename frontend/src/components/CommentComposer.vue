@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { fillSnippet } from '../snippets';
 import { useSession } from '../stores/session';
@@ -12,8 +12,14 @@ import SnippetPicker from './SnippetPicker.vue';
 const props = defineProps<{ item: ItemDetail; currentUserId: string }>();
 const emit = defineEmits<{ sent: [] }>();
 
-const kind = ref<'reply' | 'note'>('reply');
+// Vorgabe: Aufgaben «Intern», Störungen und Eingang «Öffentlich»
+const defaultKind = (): 'reply' | 'note' => (props.item.type === 'task' ? 'note' : 'reply');
+const kind = ref<'reply' | 'note'>(defaultKind());
 const body = ref('');
+// Anderer Vorgang: wieder die Vorgabe; Typwechsel nur, solange noch nichts geschrieben ist
+watch([() => props.item.id, () => props.item.type], ([id], [oldId]) => {
+  if (id !== oldId || !body.value.trim()) kind.value = defaultKind();
+});
 const files = ref<File[]>([]);
 const sending = ref(false);
 const uploading = ref(false);
@@ -98,6 +104,7 @@ async function send() {
       ref="editor"
       v-model="body"
       v-model:uploading="uploading"
+      mentions
       :min-height="110"
       :placeholder="kind === 'reply' ? 'Antwort an den Melder …' : 'Interne Notiz …'"
       @submit="send"

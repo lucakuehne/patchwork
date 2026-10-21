@@ -10,6 +10,7 @@ const createSchema = z.object({ label: labelSchema, icon: iconSchema });
 const updateSchema = z.object({ label: labelSchema.optional(), icon: iconSchema.optional() });
 const reorderSchema = z.object({ ids: z.array(z.uuid()).min(1) });
 const removeSchema = z.object({ replacementId: nullableUuid.optional() });
+const defaultsSchema = z.object({ incident: nullableUuid, task: nullableUuid });
 
 /** Meldewege: Liste für alle in der IT, Pflege nur für Admins. */
 @Controller('channels')
@@ -25,6 +26,18 @@ export class ChannelsController {
   @Get('usage')
   usage() {
     return this.channels.usage();
+  }
+
+  /** Vorbelegung beim internen Erfassen je Typ */
+  @Get('defaults')
+  defaults() {
+    return this.channels.defaults();
+  }
+
+  @AdminOnly()
+  @Put('defaults')
+  setDefaults(@Body(new ZodPipe(defaultsSchema)) body: z.infer<typeof defaultsSchema>) {
+    return this.channels.setDefaults(body);
   }
 
   @AdminOnly()

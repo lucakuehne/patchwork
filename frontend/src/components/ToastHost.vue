@@ -8,6 +8,7 @@ const toast = useToast();
   <div class="toasts" aria-live="polite">
     <div v-for="t in toast.toasts" :key="t.id" class="toast" :class="t.kind" @click="toast.dismiss(t.id)">
       {{ t.text }}
+      <RouterLink v-if="t.link" class="toast-link" :to="t.link.to" @click="toast.dismiss(t.id)">{{ t.link.text }}</RouterLink>
     </div>
   </div>
 </template>
@@ -34,5 +35,9 @@ const toast = useToast();
 }
 .toast.error {
   border-left-color: var(--danger);
+}
+.toast-link {
+  margin-left: 10px;
+  font-weight: 500;
 }
 </style>

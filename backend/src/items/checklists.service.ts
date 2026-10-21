@@ -6,6 +6,7 @@ import {
   checklists,
   checklistTemplateItems,
   checklistTemplates,
+  entries,
   items,
   users,
   type Item,
@@ -121,7 +122,8 @@ export class ChecklistsService {
       const { entry, list } = await this.checklistItem(tx, entryId);
       const set: Partial<typeof checklistItems.$inferInsert> = {};
       if (changes.text !== undefined) set.text = changes.text.trim();
-      if (changes.done !== undefined && changes.done !== entry.done) {
+      const toggled = changes.done !== undefined && changes.done !== entry.done;
+      if (toggled) {
         set.done = changes.done;
         set.doneAt = changes.done ? new Date() : null;
         set.doneById = changes.done ? actorId : null;
@@ -129,6 +131,16 @@ export class ChecklistsService {
       if (Object.keys(set).length === 0) return;
       await tx.update(checklistItems).set(set).where(eq(checklistItems.id, entry.id));
       await this.touch(tx, list.itemId);
+      // Abhaken und Zurücknehmen im Verlauf (Hinzufügen, Umbenennen und Löschen nicht)
+      if (toggled) {
+        await tx.insert(entries).values({
+          itemId: list.itemId,
+          authorId: actorId,
+          kind: 'change',
+          body: '',
+          meta: { field: 'checklistItem', itemId: entry.id, text: set.text ?? entry.text, from: entry.done, to: changes.done },
+        });
+      }
     });
   }
 

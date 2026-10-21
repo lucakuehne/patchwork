@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import draggable from 'vuedraggable';
 import { api, errorMessage } from '../../api';
 import ChannelIconPicker from '../../components/ChannelIconPicker.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
-import type { Channel, ChannelIcon } from '../../types';
+import type { Channel, ChannelIcon, ItemType } from '../../types';
 
 /** Meldewege pflegen: Bezeichnung, Symbol, Reihenfolge. E-Mail und Portal setzt Patchwork selbst. */
 const session = useSession();
@@ -72,6 +72,26 @@ function askRemove(channel: Channel) {
   removeError.value = '';
 }
 
+// Vorbelegung beim internen Erfassen je Typ («Portal» setzt Patchwork selbst)
+const defaultOptions = computed(() => list.value.filter((c) => c.key !== 'portal'));
+
+async function saveDefault(type: ItemType, e: Event) {
+  const id = (e.target as HTMLSelectElement).value || null;
+  try {
+    await api.put('/channels/defaults', { ...session.channelDefaults, [type]: id });
+    toast.success('Vorbelegung gespeichert');
+  } catch (err) {
+    toast.error(err);
+  }
+  await load();
+}
+
+/** Für welche Typen der Meldeweg vorbelegt ist, z.B. «Aufgaben» */
+function defaultFor(channel: Channel): string {
+  const types = (['incident', 'task'] as const).filter((t) => session.channelDefaults[t] === channel.id);
+  return types.map((t) => (t === 'incident' ? 'Störungen' : 'Aufgaben')).join(' und ');
+}
+
 async function confirmRemove() {
   const channel = removing.value;
   if (!channel) return;
@@ -127,11 +147,39 @@ async function confirmRemove() {
       </form>
     </div>
 
+    <div class="card card-body stack">
+      <h2>Vorbelegung beim Erfassen</h2>
+      <p class="muted" style="margin: 0">
+        Dieser Meldeweg ist bei «+ Neu», «+ Störung» bzw. «+ Aufgabe» vorgewählt und lässt sich dort ändern. Ohne Vorbelegung wählt
+        man ihn jedes Mal selbst.
+      </p>
+      <div class="defaults">
+        <label class="field">
+          <span class="label">Störung</span>
+          <select class="select" :value="session.channelDefaults.incident ?? ''" @change="saveDefault('incident', $event)">
+            <option value="">– keine Vorbelegung –</option>
+            <option v-for="c in defaultOptions" :key="c.id" :value="c.id">{{ c.label }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="label">Aufgabe</span>
+          <select class="select" :value="session.channelDefaults.task ?? ''" @change="saveDefault('task', $event)">
+            <option value="">– keine Vorbelegung –</option>
+            <option v-for="c in defaultOptions" :key="c.id" :value="c.id">{{ c.label }}</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
     <ModalDialog v-if="removing" :title="`Meldeweg «${removing.label}» löschen`" @close="removing = null">
       <p v-if="(usage[removing.id] ?? 0) > 0" style="margin: 0">
         {{ usage[removing.id] }} Vorgänge haben diesen Meldeweg. Welchen sollen sie stattdessen erhalten?
       </p>
       <p v-else style="margin: 0">Der Meldeweg wird von keinem Vorgang verwendet.</p>
+      <p v-if="defaultFor(removing)" class="muted" style="margin: 0">
+        Er ist für {{ defaultFor(removing) }} vorbelegt.
+        {{ (usage[removing.id] ?? 0) > 0 ? 'Der Ersatz übernimmt die Vorbelegung.' : 'Die Vorbelegung entfällt.' }}
+      </p>
       <select v-if="(usage[removing.id] ?? 0) > 0" v-model="replacementId" class="select">
         <option value="" disabled>Ersatz wählen</option>
         <option v-for="c in list.filter((x) => x.id !== removing!.id)" :key="c.id" :value="c.id">{{ c.label }}</option>
@@ -182,5 +230,10 @@ async function confirmRemove() {
   width: 28px;
   text-align: right;
   font-size: 12px;
+}
+.defaults {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 260px));
+  gap: 12px;
 }
 </style>

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AdminOnly } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { AutomationService } from './automation.service';
+import { DueRemindersService } from './due-reminders.service';
 import { previewSchema, ruleSchema } from './rule-types';
 import { RulesService } from './rules.service';
 
@@ -16,6 +17,7 @@ export class RulesController {
   constructor(
     private readonly rules: RulesService,
     private readonly automation: AutomationService,
+    private readonly dueReminders: DueRemindersService,
   ) {}
 
   @Get('rules')
@@ -61,5 +63,11 @@ export class RulesController {
   @Post('rules/run-timed')
   runTimed() {
     return this.automation.run();
+  }
+
+  /** Mails bei Fälligkeit jetzt prüfen (läuft sonst alle 15 Minuten mit den zeitgesteuerten Regeln) */
+  @Post('rules/run-due')
+  runDue() {
+    return this.dueReminders.run();
   }
 }

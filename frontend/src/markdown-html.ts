@@ -58,6 +58,26 @@ md.renderer.rules.image = (tokens, idx, options, env: { context?: ImageContext }
   return insideLink(tokens, idx) ? img : `<a href="${url}" class="text-image-link" title="In voller Grösse öffnen">${img}</a>`;
 };
 
+// Erwähnungen «[@Name](mention:<id>)»: in Patchwork hervorgehoben, im Portal als gewöhnlicher Text «@Name»
+const MENTION_HREF = new RegExp(`^mention:(${UUID})$`);
+const renderToken: NonNullable<typeof md.renderer.rules.link_open> = (tokens, idx, options, _env, self) =>
+  self.renderToken(tokens, idx, options);
+const linkOpen = md.renderer.rules.link_open ?? renderToken;
+const linkClose = md.renderer.rules.link_close ?? renderToken;
+
+md.renderer.rules.link_open = (tokens, idx, options, env: { context?: ImageContext; mention?: boolean }, self) => {
+  const mention = MENTION_HREF.exec(tokens[idx]!.attrGet('href') ?? '');
+  env.mention = !!mention;
+  if (!mention) return linkOpen(tokens, idx, options, env, self);
+  return env.context === 'portal' ? '' : `<span class="mention" data-user-id="${mention[1]}">`;
+};
+
+md.renderer.rules.link_close = (tokens, idx, options, env: { context?: ImageContext; mention?: boolean }, self) => {
+  if (!env.mention) return linkClose(tokens, idx, options, env, self);
+  env.mention = false;
+  return env.context === 'portal' ? '' : '</span>';
+};
+
 /** Markdown als HTML, noch nicht bereinigt. Im Browser immer über renderMarkdown (markdown.ts). */
 export function markdownToHtml(source: string, context: ImageContext): string {
   return md.render(source, { context });

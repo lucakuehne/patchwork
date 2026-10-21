@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   customType,
+  date,
   doublePrecision,
   index,
   integer,
@@ -221,6 +222,10 @@ export const items = pgTable(
     /** Aus einer im Testbetrieb simulierten Mail entstanden */
     simulated: boolean('simulated').notNull().default(false),
     discarded: boolean('discarded').notNull().default(false),
+    /** Fälligkeitsdatum (nur Aufgaben, ohne Uhrzeit); bei Störungen gespeichert, aber ausgeblendet */
+    dueDate: date('due_date', { mode: 'string' }),
+    /** Fälligkeitsdatum, zu dem die Mail an den Zuständigen schon ging (eine Mail pro Datum) */
+    dueNotifiedOn: date('due_notified_on', { mode: 'string' }),
     boardPosition: doublePrecision('board_position').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
