@@ -88,7 +88,7 @@ async function resend() {
   }
 }
 
-const kind = (m: OutgoingMail) => (m.reply ? 'Antwort' : 'Automatisch');
+const kind = (m: OutgoingMail) => (m.template === 'welcome' ? 'Willkommen' : m.reply ? 'Antwort' : 'Automatisch');
 const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)].join(', ');
 </script>
 
@@ -126,7 +126,8 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
             <td>{{ recipients(m) }}</td>
             <td>{{ m.subject }}</td>
             <td class="nowrap">
-              <RouterLink :to="`/v/${m.item.number}`" :title="m.item.title" @click.stop>{{ itemRef(m.item.number) }}</RouterLink>
+              <RouterLink v-if="m.item" :to="`/v/${m.item.number}`" :title="m.item.title" @click.stop>{{ itemRef(m.item.number) }}</RouterLink>
+              <span v-else class="faint">–</span>
             </td>
             <td><span class="badge">{{ kind(m) }}</span></td>
           </tr>
@@ -161,17 +162,20 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
         </template>
         <dt>Zeit</dt>
         <dd>{{ formatDateTime(open.createdAt) }}</dd>
-        <dt>Vorgang</dt>
-        <dd>
-          <RouterLink :to="`/v/${open.item.number}`">{{ itemRef(open.item.number) }} {{ open.item.title }}</RouterLink>
-        </dd>
+        <template v-if="open.item">
+          <dt>Vorgang</dt>
+          <dd>
+            <RouterLink :to="`/v/${open.item.number}`">{{ itemRef(open.item.number) }} {{ open.item.title }}</RouterLink>
+          </dd>
+        </template>
       </dl>
       <div v-if="open.html" class="prose mail-html mail-body own-mail" v-html="renderOwnMailHtml(open.html)" />
       <pre v-else class="mail-body mail-text own-mail">{{ open.text }}</pre>
       <MailAttachmentList :attachments="open.attachments" :path="(index) => `/api/admin/outgoing-mails/${open!.id}/attachments/${index}`" />
       <template #footer>
         <a class="btn" :href="`/api/admin/outgoing-mails/${open.id}/eml`">Als .eml herunterladen</a>
-        <button v-if="session.info?.testMode" class="btn" type="button" @click="startReply">Antwort simulieren</button>
+        <!-- Antworten gibt es nur auf Mails zu einem Vorgang -->
+        <button v-if="session.info?.testMode && open.item" class="btn" type="button" @click="startReply">Antwort simulieren</button>
         <button v-if="open.status === 'failed'" class="btn" type="button" :disabled="resending" @click="resend">
           Erneut senden
         </button>

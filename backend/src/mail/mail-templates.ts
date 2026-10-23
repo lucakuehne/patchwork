@@ -18,7 +18,8 @@ export type TemplateKey =
   | 'mentioned'
   | 'dueReminder'
   | 'staffLink'
-  | 'staffFooter';
+  | 'staffFooter'
+  | 'welcome';
 
 export interface Placeholder {
   name: string;
@@ -39,6 +40,8 @@ export interface TemplateDefinition {
   body: string | null;
   /** Fusszeile: einfacher Text ohne Markdown */
   plain?: boolean;
+  /** Mail ohne Vorgang (Willkommens-Mail): ohne «[PW-123]» im Betreff, ohne Link- und Fusszeile */
+  standalone?: boolean;
   placeholders: Placeholder[];
 }
 
@@ -289,6 +292,31 @@ export const TEMPLATES: TemplateDefinition[] = [
     body: 'Patchwork · Benachrichtigung zu {{Nummer}}',
     plain: true,
     placeholders: FRAME(STAFF_LINK),
+  },
+  {
+    key: 'welcome',
+    group: 'staff',
+    label: 'Willkommen',
+    description:
+      'An neue IT-Mitarbeitende und Admins, nur von Hand unter Verwaltung → Benutzer (beim Anlegen bzw. Rollenwechsel ' +
+      'fragt Patchwork nach). Ohne Vorgang, deshalb ohne Nummer im Betreff und ohne Link- und Fusszeile.',
+    subject: 'Willkommen bei Patchwork',
+    body:
+      'Hallo {{Vorname}}\n\nWillkommen bei Patchwork! Du hast die Rolle **{{Rolle}}** und kannst ab sofort Vorgänge der IT ' +
+      'bearbeiten.\n\nBenutzername: {{Benutzername}}\nAnmeldung: {{Anmeldung}}\n\n[Patchwork öffnen]({{Link}})',
+    standalone: true,
+    placeholders: [
+      p('Vorname', 'Vorname der Person', 'Ivan'),
+      p('Nachname', 'Nachname der Person', 'Informatik'),
+      p('Rolle', 'Rolle in Patchwork (IT oder Admin)', 'IT'),
+      p('Benutzername', 'Benutzername für die Anmeldung (AD-Konto: Anmeldename, sonst die E-Mail-Adresse)', 'iinformatik'),
+      p(
+        'Anmeldung',
+        'Wie man sich anmeldet: mit dem Windows-Konto bzw. mit dem Passwort, das man separat erhält',
+        'mit deinem Windows-Konto (gleiches Passwort wie am Computer)',
+      ),
+      p('Link', 'Link zu Patchwork', 'https://patchwork.firma.local/'),
+    ],
   },
 ];
 

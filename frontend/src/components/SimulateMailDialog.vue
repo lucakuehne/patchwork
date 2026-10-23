@@ -111,7 +111,7 @@ const title = computed(() => (props.reply ? 'Antwort simulieren' : props.origina
       Sie landet nicht im Postfach und erscheint in der Timeline mit «simuliert».
     </p>
     <p v-if="reply" class="muted hint">
-      Antwort auf «{{ reply.subject }}» ({{ itemRef(reply.item.number) }}). Die ursprüngliche Mail wird darunter zitiert wie in
+      Antwort auf «{{ reply.subject }}»<template v-if="reply.item"> ({{ itemRef(reply.item.number) }})</template>. Die ursprüngliche Mail wird darunter zitiert wie in
       Outlook.
     </p>
     <p v-if="original" class="muted hint">Vorbelegt aus der echten Mail «{{ original.subject }}»; alles lässt sich ändern.</p>

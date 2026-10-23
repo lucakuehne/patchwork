@@ -370,9 +370,8 @@ export const outgoingMails = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     messageId: text('message_id').notNull().unique(),
-    itemId: uuid('item_id')
-      .notNull()
-      .references(() => items.id, { onDelete: 'cascade' }),
+    /** null = Mail ohne Vorgang (Willkommens-Mail) */
+    itemId: uuid('item_id').references(() => items.id, { onDelete: 'cascade' }),
     /** Timeline-Eintrag der öffentlichen Antwort, null = Bestätigung oder Benachrichtigung */
     entryId: uuid('entry_id').references(() => entries.id, { onDelete: 'set null' }),
     mailboxId: uuid('mailbox_id').references(() => mailboxes.id, { onDelete: 'set null' }),

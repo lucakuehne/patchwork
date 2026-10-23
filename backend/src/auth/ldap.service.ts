@@ -324,6 +324,26 @@ export class LdapService {
   }
 
   /**
+   * Anmeldename (z.B. sAMAccountName, aus dem Benutzerfilter) zu einer E-Mail-Adresse, z.B. für die Willkommens-Mail.
+   * null = kein eigenes Attribut im Filter oder kein eindeutiges Konto.
+   */
+  async loginName(cfg: LdapSettings, email: string): Promise<string | null> {
+    const attribute = loginAttributes(cfg.userFilter).find((a) => a.toLowerCase() !== cfg.mailAttribute.toLowerCase());
+    if (!attribute) return null;
+    const client = await openClient(cfg);
+    try {
+      await this.bindServiceAccount(client, cfg);
+      const isAd = (await this.readRootDse(client))?.isAd ?? false;
+      const { entries, more } = await this.searchLimited(client, cfg.baseDn, mailFilter(cfg, email, isAd), uniqueAttributes(attribute), 1);
+      const entry = entries[0];
+      if (!entry || more) return null;
+      return firstValue(entry, attribute).trim() || null;
+    } finally {
+      await client.unbind().catch(() => undefined);
+    }
+  }
+
+  /**
    * Vor- und Nachname zu E-Mail-Adressen (neue Kontakte aus Mails), eine Verbindung für alle Adressen. Adressen ohne
    * eindeutiges Konto (bei Active Directory ohne aktives Konto) fehlen im Ergebnis. Schlüssel in Kleinbuchstaben.
    */

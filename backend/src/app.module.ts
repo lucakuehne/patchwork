@@ -29,6 +29,7 @@ import { MailboxesController, MailboxOptionsController, MicrosoftCallbackControl
 import { MailboxesService } from './mail/mailboxes.service';
 import { MicrosoftAuthService } from './mail/microsoft-auth.service';
 import { NotificationsService } from './mail/notifications.service';
+import { WelcomeMailService } from './mail/welcome-mail.service';
 import { PortalAccessService } from './portal/portal-access.service';
 import { PortalController } from './portal/portal.controller';
 import { PortalService } from './portal/portal.service';
@@ -104,6 +105,7 @@ import { UsersService } from './users/users.service';
     MailSenderService,
     MailTemplatesService,
     NotificationsService,
+    WelcomeMailService,
     MailFetcherService,
     MailSimulationService,
     RulesService,

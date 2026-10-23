@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Logger,
   NotFoundException,
   Param,
@@ -21,6 +22,7 @@ import { LdapService, type DirectoryPerson, type LdapIdentity } from '../auth/ld
 import { SessionService } from '../auth/session.service';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import type { UserRole } from '../db/schema';
+import { WelcomeMailService } from '../mail/welcome-mail.service';
 import { SettingsService } from '../settings/settings.service';
 import { toAdminUser, toPublicUser, UsersService } from './users.service';
 
@@ -83,6 +85,7 @@ export class UsersController {
     private readonly sessions: SessionService,
     private readonly settings: SettingsService,
     private readonly ldap: LdapService,
+    private readonly welcomeMail: WelcomeMailService,
   ) {}
 
   /** Admin- und IT-Benutzer, z.B. für «Zuständig». */
@@ -200,6 +203,14 @@ export class UsersController {
     // Kein Admin mehr: «Als Benutzer»-Sitzungen, die er gestartet hat, enden sofort
     else if (user.role === 'admin' && updated.role !== 'admin') await this.sessions.destroyImpersonationsBy(id);
     return toAdminUser(updated);
+  }
+
+  /** Willkommens-Mail von Hand, nur an aktive Benutzer mit Rolle IT oder Admin (auch erneut). */
+  @AdminOnly()
+  @Post('admin/users/:id/welcome')
+  @HttpCode(204)
+  async welcome(@Param('id', ParseUUIDPipe) id: string) {
+    await this.welcomeMail.send(await this.users.getById(id));
   }
 
   /**

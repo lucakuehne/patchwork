@@ -1,0 +1,1 @@
+ALTER TABLE "outgoing_mails" ALTER COLUMN "item_id" DROP NOT NULL;

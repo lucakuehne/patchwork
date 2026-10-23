@@ -222,25 +222,71 @@ async function save() {
   }
   saving.value = true;
   error.value = '';
+  // Rolle vor dem Speichern: Wird jemand neu IT oder Admin, fragt Patchwork nach der Willkommens-Mail
+  const before = d.id ? (users.value.find((u) => u.id === d.id)?.role ?? null) : null;
+  let saved: AdminUser;
   try {
     const names = { firstName: d.firstName, lastName: d.lastName };
     if (d.id) {
       const body: Record<string, unknown> = { name: d.name, ...names, email: d.email, role: d.role, active: d.active };
       if (d.password) body.password = d.password;
-      await api.patch(`/admin/users/${d.id}`, body);
+      saved = await api.patch<AdminUser>(`/admin/users/${d.id}`, body);
     } else if (person.value) {
       // Name, Vor- und Nachname kommen aus dem AD
-      await api.post('/admin/users/directory', { email: person.value.email, role: d.role });
+      saved = await api.post<AdminUser>('/admin/users/directory', { email: person.value.email, role: d.role });
     } else {
-      await api.post('/admin/users', { name: d.name, ...names, email: d.email, role: d.role, password: d.password || undefined });
+      saved = await api.post<AdminUser>('/admin/users', {
+        name: d.name,
+        ...names,
+        email: d.email,
+        role: d.role,
+        password: d.password || undefined,
+      });
     }
     draft.value = null;
     toast.success('Gespeichert');
     await Promise.all([load(), session.loadStaff()]);
   } catch (err) {
     error.value = errorMessage(err);
+    return;
   } finally {
     saving.value = false;
+  }
+  if (saved.active && isStaffRole(saved.role) && saved.role !== before) {
+    const ok = await confirm.ask({
+      title: 'Willkommens-Mail',
+      message:
+        `${saved.name} ${before ? 'hat jetzt' : 'ist angelegt mit'} der Rolle ${ROLE_LABELS[saved.role]}. ` +
+        `Willkommens-Mail mit Link und Anmeldung an ${saved.email} senden?`,
+      confirmLabel: 'Senden',
+      cancelLabel: 'Nicht senden',
+    });
+    if (ok) await sendWelcome(saved);
+  }
+}
+
+const isStaffRole = (role: Role) => role === 'admin' || role === 'it';
+
+/** Willkommens-Mail von Hand: nur an aktive Benutzer mit Rolle IT oder Admin (Vorlage unter E-Mail-Vorlagen) */
+const welcomeTarget = computed(() => {
+  const id = draft.value?.id;
+  const u = id ? users.value.find((x) => x.id === id) : undefined;
+  return u && u.active && isStaffRole(u.role) ? u : null;
+});
+const welcoming = ref(false);
+async function sendWelcome(user: { id: string; name: string; email: string }) {
+  welcoming.value = true;
+  try {
+    await api.post(`/admin/users/${user.id}/welcome`);
+    toast.success(
+      session.info?.testMode
+        ? `Willkommens-Mail an ${user.email} erstellt (Testbetrieb: siehe Ausgehende Mails)`
+        : `Willkommens-Mail an ${user.email} wird versendet`,
+    );
+  } catch (err) {
+    toast.error(err);
+  } finally {
+    welcoming.value = false;
   }
 }
 
@@ -364,7 +410,7 @@ async function removePassword() {
         <select id="u-role" v-model="draft.role" class="select">
           <option v-if="draft.authSource === 'ldap'" value="auto">{{ autoLabel }}</option>
           <option value="admin">Admin – alles inkl. Verwaltung</option>
-          <option value="it">IT – sieht und bearbeitet alle Vorgänge</option>
+          <option value="it">IT – bearbeitet Vorgänge in den «Bereichen der IT»</option>
           <option value="standard">{{ draft.authSource === 'ldap' ? 'Standard – nur Portal' : 'Standard – ohne Anmeldung' }}</option>
         </select>
         <span v-if="draft.authSource === 'ldap'" class="hint">
@@ -393,13 +439,24 @@ async function removePassword() {
       <template #footer>
         <button
           v-if="impersonationTarget"
-          class="btn impersonate"
+          class="btn"
+          :class="{ push: !welcomeTarget }"
           type="button"
           :disabled="impersonating"
           :title="`Patchwork als ${impersonationTarget.name} verwenden, z.B. um Antworten unter diesem Namen zu testen. Oben erscheint der Weg zurück.`"
           @click="impersonate"
         >
           Als dieser Benutzer arbeiten
+        </button>
+        <button
+          v-if="welcomeTarget"
+          class="btn push"
+          type="button"
+          :disabled="welcoming"
+          :title="`Willkommens-Mail mit Link und Anmeldung an ${welcomeTarget.email} senden (Vorlage unter E-Mail-Vorlagen)`"
+          @click="sendWelcome(welcomeTarget)"
+        >
+          Willkommens-Mail senden
         </button>
         <button class="btn" type="button" @click="draft = null">Abbrechen</button>
         <button class="btn btn-primary" type="button" :disabled="saving || (choosingPerson && adLoading)" @click="save">
@@ -411,8 +468,8 @@ async function removePassword() {
 </template>
 
 <style scoped>
-/* Links im Fuss des Dialogs, getrennt von Abbrechen/Speichern */
-.impersonate {
+/* Links im Fuss des Dialogs (Als Benutzer arbeiten, Willkommens-Mail), getrennt von Abbrechen/Speichern */
+.push {
   margin-right: auto;
 }
 tr.inactive td {

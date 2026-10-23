@@ -166,7 +166,8 @@ async function insert(name: string) {
     <p class="muted intro">
       Betreff und Text der Mails, die Patchwork verschickt. Platzhalter wie <code v-text="'{{Titel}}'" /> ersetzt Patchwork beim
       Versand, eingefügt werden sie per Klick an der Cursorposition. Vor jeden Betreff setzt Patchwork die Nummer des Vorgangs,
-      z.B. <code>[PW-123]</code>, damit Antworten richtig zugeordnet werden. Für einen Link auf den Vorgang den Text markieren,
+      z.B. <code>[PW-123]</code>, damit Antworten richtig zugeordnet werden (nicht bei der Willkommens-Mail, sie gehört zu
+      keinem Vorgang). Für einen Link auf den Vorgang den Text markieren,
       «Link» wählen und als Adresse <code v-text="'{{Link}}'" /> eintragen.
     </p>
 
@@ -197,7 +198,7 @@ async function insert(name: string) {
         <div v-if="current.subject !== null" class="field">
           <label for="tpl-subject">Betreff</label>
           <div class="subject">
-            <span class="prefix">[PW-123]</span>
+            <span v-if="!current.standalone" class="prefix">[PW-123]</span>
             <input
               id="tpl-subject"
               ref="subjectInput"

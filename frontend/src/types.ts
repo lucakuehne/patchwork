@@ -412,6 +412,8 @@ export interface MailTemplate {
   description: string;
   /** Fusszeile: einfacher Text ohne Formatierung */
   plain: boolean;
+  /** Mail ohne Vorgang (Willkommen): ohne «[PW-123]» im Betreff, ohne Link- und Fusszeile */
+  standalone: boolean;
   placeholders: { name: string; description: string; example: string }[];
   defaultSubject: string | null;
   defaultBody: string | null;
@@ -478,7 +480,10 @@ export interface OutgoingMail {
   attempts: number;
   /** Öffentliche Antwort aus der Timeline (sonst Bestätigung oder Benachrichtigung) */
   reply: boolean;
-  item: { number: number; title: string };
+  /** Vorlage der Mail, z.B. «welcome»; null bei älteren Mails */
+  template: string | null;
+  /** null = Mail ohne Vorgang (Willkommens-Mail) */
+  item: { number: number; title: string } | null;
 }
 
 export interface OutgoingMailDetail extends OutgoingMail {

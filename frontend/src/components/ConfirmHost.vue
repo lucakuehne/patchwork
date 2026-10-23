@@ -9,7 +9,7 @@ const confirm = useConfirm();
   <ModalDialog v-if="confirm.request" :title="confirm.request.title" @close="confirm.answer(false)">
     <p style="margin: 0">{{ confirm.request.message }}</p>
     <template #footer>
-      <button class="btn" type="button" @click="confirm.answer(false)">Abbrechen</button>
+      <button class="btn" type="button" @click="confirm.answer(false)">{{ confirm.request.cancelLabel ?? 'Abbrechen' }}</button>
       <button
         class="btn"
         :class="confirm.request.danger ? 'btn-danger' : 'btn-primary'"

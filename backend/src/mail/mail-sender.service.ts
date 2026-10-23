@@ -16,7 +16,8 @@ import { deliveryFilter, isLive } from './test-delivery';
 
 export interface OutgoingMail {
   mailboxId: string;
-  itemId: string;
+  /** null = Mail ohne Vorgang (Willkommens-Mail) */
+  itemId: string | null;
   entryId?: string | null;
   to: string[];
   cc: string[];
@@ -71,10 +72,13 @@ export class MailSenderService implements OnModuleInit {
    */
   async enqueue(mail: OutgoingMail, tx: Tx = this.db): Promise<void> {
     if (mail.to.length === 0 && mail.cc.length === 0) return;
-    await tx
-      .insert(mailMessages)
-      .values({ messageId: mail.messageId, itemId: mail.itemId, entryId: mail.entryId ?? null, direction: 'out' })
-      .onConflictDoNothing();
+    // Für die Zuordnung von Antworten; Mails ohne Vorgang haben nichts zuzuordnen
+    if (mail.itemId) {
+      await tx
+        .insert(mailMessages)
+        .values({ messageId: mail.messageId, itemId: mail.itemId, entryId: mail.entryId ?? null, direction: 'out' })
+        .onConflictDoNothing();
+    }
     await this.record(mail, tx);
     await (await this.boss.boss()).send(QUEUE_MAIL_SEND, mail, { retryLimit: 10, retryDelay: 30, retryBackoff: true });
   }

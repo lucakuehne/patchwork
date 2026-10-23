@@ -251,6 +251,13 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Bereiche: Einstellung `areas` (`{ it: [...] }`). Der AuthGuard prüft jede Route mit `:number`; Anhänge, Notizen und Checklisten (über ihre ID), Listen, Zähler, Suche, Verknüpfungen und aus anderen Vorgängen kopierte Bilder prüfen selbst. Mails an die IT laufen über eine Stelle, die ohne Zugriff nichts versendet; Beteiligte ohne Zugriff fallen aus dem CC.
   - Gesperrte Vorgänge antworten mit 403 «Kein Zugriff auf den Bereich …», die Oberfläche zeigt «PW-… ist für Sie gesperrt».
 
+## Willkommens-Mail für IT und Admins (bestätigt am 23.10.2026)
+
+- Versand nur von Hand: Im Dialog eines aktiven Benutzers mit Rolle IT oder Admin (Verwaltung → Benutzer) gibt es den Knopf «Willkommens-Mail senden», auch für einen erneuten Versand. Legt ein Admin ein Konto mit Rolle IT oder Admin an oder ändert er die Rolle eines Benutzers auf IT oder Admin, fragt Patchwork nach dem Speichern, ob die Mail verschickt werden soll. Rollen, die bei der Anmeldung aus den AD-Gruppen kommen, lösen keine Frage und keine Mail aus.
+- Inhalt: Begrüssung, Rolle, Link zu Patchwork, Benutzername und Art der Anmeldung (Windows-Konto bzw. lokales Passwort, das man separat erhält). Nie ein Passwort in der Mail. Eine Vorlage «Willkommen» für beide Rollen unter Verwaltung → E-Mail-Vorlagen (IT), mit Platzhalter {{Rolle}}.
+- Bestehende IT-Mitarbeitende und Admins erhalten nach dem Update nichts; bei Bedarf einzeln über den Knopf.
+- Technisch (entschieden am 23.10.2026): Die Mail gehört zu keinem Vorgang, deshalb ohne `[PW-…]` im Betreff und ohne Link- und Fusszeile der IT; sie geht über das Standard-Postfach, steht unter Verwaltung → Ausgehende Mails (Art «Willkommen», ohne Vorgang) und folgt dem Testbetrieb wie jede Mail an die IT. Benutzername bei AD-Konten aus dem Verzeichnis (Anmeldename, z.B. sAMAccountName), sonst die E-Mail-Adresse. Standardtext per Du wie die Mails an Melder (**noch zu bestätigen**).
+
 ## Eingebettete Bilder und Vorschau von Anhängen (bestätigt am 23.10.2026)
 
 - **Eingebettete Bilder aus Mails** erscheinen im Text, nicht als Anhang:

@@ -49,11 +49,14 @@ describe('Platzhalter', () => {
       expect(names, t.key).not.toContain('Melder');
       expect(names, t.key).not.toContain('Zuständig');
       expect([...used(t.subject), ...used(t.body)], t.key).not.toContain('App');
-      // Link-Zeile und Fusszeile stehen in jeder Mail, dort nur Nummer, Titel und Link
+      // Link-Zeile und Fusszeile stehen in jeder Mail, dort nur Nummer, Titel und Link; Mails ohne Vorgang
+      // (Willkommen) mit Vor- und Nachname der Person
       const expected =
         t.subject === null
           ? ['Nummer', 'Titel', 'Link']
-          : ['Melder Vorname', 'Melder Nachname', 'Zuständig Vorname', 'Zuständig Nachname'];
+          : t.standalone
+            ? ['Vorname', 'Nachname', 'Link']
+            : ['Melder Vorname', 'Melder Nachname', 'Zuständig Vorname', 'Zuständig Nachname'];
       expect(names, t.key).toEqual(expect.arrayContaining(expected));
       if (t.subject === null) expect(names, t.key).toHaveLength(3);
     }

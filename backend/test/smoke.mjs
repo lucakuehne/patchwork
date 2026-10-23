@@ -2139,6 +2139,44 @@ await step('E-Mail-Vorlagen: Platzhalter mit Vor- und Nachname, ohne {{App}}, Vo
   await api('PUT', '/admin/mail-templates/gibtsnicht', { subject: 'x', body: 'x' }, { expect: [404] });
 });
 
+await step('Willkommens-Mail: nur von Hand an IT und Admins, ohne Vorgang und ohne Passwort', async () => {
+  const neu = `willkommen-${RUN}@test.local`;
+  const created = await api('POST', '/admin/users', { name: 'Wilma Willkommen', email: neu, role: 'it', password: 'willkommen-123' });
+  await sleep(1500);
+  assert.equal((await inbox(neu)).length, 0, 'nicht automatisch beim Anlegen');
+  await api('POST', `/admin/users/${created.id}/welcome`);
+  const mail = await waitForMail(neu, (m) => m.subject === 'Willkommen bei Patchwork', 'Willkommens-Mail');
+  assert.ok(mail.text.startsWith('Hallo Wilma\n'), mail.text);
+  assert.match(mail.text, /Rolle \*\*IT\*\*/);
+  assert.ok(mail.text.includes(`Benutzername: ${neu}`), mail.text);
+  assert.ok(mail.text.includes('Anmeldung: mit deiner E-Mail-Adresse und dem Passwort, das du separat erhältst'), mail.text);
+  assert.match(mail.text, /Patchwork öffnen: http\S+\/(\s|$)/);
+  assert.ok(!mail.source.includes('willkommen-123'), 'kein Passwort');
+  assert.ok(!/\[PW-\d+\]/.test(mail.subject), 'ohne Nummer');
+
+  // Im Protokoll ohne Vorgang, Art «Willkommen»
+  const logged = (await api('GET', '/admin/outgoing-mails')).find((m) => m.to.includes(neu));
+  assert.deepEqual([logged.item, logged.template, logged.status], [null, 'welcome', 'sent']);
+  assert.ok((await api('GET', `/admin/outgoing-mails/${logged.id}`)).text.includes('Hallo Wilma'));
+
+  // Erneut senden geht; nur an aktive IT und Admins, nur durch Admins
+  await api('POST', `/admin/users/${created.id}/welcome`);
+  const standard = (await api('GET', '/admin/users')).find((u) => u.email === ANNA);
+  assert.match((await api('POST', `/admin/users/${standard.id}/welcome`, undefined, { expect: [400] })).message, /IT oder Admin/);
+  await api('PATCH', `/admin/users/${created.id}`, { active: false });
+  await api('POST', `/admin/users/${created.id}/welcome`, undefined, { expect: [400] });
+  await loginAs(IVAN, 'geheim-geheim');
+  await api('POST', `/admin/users/${created.id}/welcome`, undefined, { expect: [403] });
+  await loginAs('ada@test.local', 'geheim-geheim');
+
+  // Vorlage unter E-Mail-Vorlagen (IT), Vorschau ohne Nummer im Betreff
+  const template = (await api('GET', '/admin/mail-templates')).find((t) => t.key === 'welcome');
+  assert.deepEqual([template.group, template.standalone, template.custom], ['staff', true, false]);
+  const preview = await api('POST', '/admin/mail-templates/welcome/preview', { subject: template.subject, body: template.body });
+  assert.equal(preview.subject, 'Willkommen bei Patchwork');
+  assert.ok(preview.text.includes('Benutzername: iinformatik'), preview.text);
+});
+
 // PNG mit 1×1 Pixel
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const uploadImage = (name, data = PNG) => {

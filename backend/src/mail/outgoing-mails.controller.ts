@@ -29,7 +29,7 @@ export class OutgoingMailsController {
     const rows = await this.db
       .select({ mail: outgoingMails, number: items.number, title: items.title })
       .from(outgoingMails)
-      .innerJoin(items, eq(items.id, outgoingMails.itemId))
+      .leftJoin(items, eq(items.id, outgoingMails.itemId))
       .where(wanted.length ? inArray(outgoingMails.status, wanted) : undefined)
       .orderBy(desc(outgoingMails.createdAt))
       .limit(500);
@@ -100,14 +100,15 @@ export class OutgoingMailsController {
     const [row] = await this.db
       .select({ mail: outgoingMails, number: items.number, title: items.title })
       .from(outgoingMails)
-      .innerJoin(items, eq(items.id, outgoingMails.itemId))
+      .leftJoin(items, eq(items.id, outgoingMails.itemId))
       .where(eq(outgoingMails.id, id))
       .limit(1);
     if (!row) throw new NotFoundException('Mail nicht gefunden');
     return row;
   }
 
-  private summary(mail: OutgoingMailRow, number: number, title: string) {
+  /** «item» null: Mail ohne Vorgang (Willkommens-Mail) */
+  private summary(mail: OutgoingMailRow, number: number | null, title: string | null) {
     return {
       id: mail.id,
       createdAt: mail.createdAt,
@@ -123,7 +124,8 @@ export class OutgoingMailsController {
       error: mail.error,
       attempts: mail.attempts,
       reply: !!mail.entryId,
-      item: { number, title },
+      template: mail.template,
+      item: number !== null ? { number, title: title ?? '' } : null,
     };
   }
 }

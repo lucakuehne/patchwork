@@ -5,6 +5,8 @@ export interface ConfirmRequest {
   title: string;
   message: string;
   confirmLabel: string;
+  /** Beschriftung des zweiten Knopfs, Standard «Abbrechen» */
+  cancelLabel?: string;
   danger?: boolean;
 }
 

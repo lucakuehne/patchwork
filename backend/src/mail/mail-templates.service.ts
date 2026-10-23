@@ -57,6 +57,7 @@ export class MailTemplatesService implements OnApplicationBootstrap {
         label: definition.label,
         description: definition.description,
         plain: !!definition.plain,
+        standalone: !!definition.standalone,
         placeholders: definition.placeholders,
         defaultSubject: definition.subject,
         defaultBody: definition.body,
@@ -99,6 +100,14 @@ export class MailTemplatesService implements OnApplicationBootstrap {
    */
   async preview(key: TemplateKey, draft: TemplateText): Promise<{ subject: string; html: string; text: string }> {
     const definition = this.definition(key);
+    // Ohne Vorgang (Willkommens-Mail): ohne Nummer, Link- und Fusszeile
+    if (definition.standalone) {
+      const values = exampleValues(definition);
+      return {
+        subject: fill(draft.subject ?? '', values).trim(),
+        ...composeMail({ body: draft.body ?? '', link: '', footer: '' }, values),
+      };
+    }
     const reporter = definition.group === 'reporter';
     const shown: TemplateKey = definition.subject === null ? (reporter ? 'confirmation' : 'assigned') : key;
     const version = async (k: TemplateKey): Promise<TemplateText> => (k === key ? draft : this.get(k));
