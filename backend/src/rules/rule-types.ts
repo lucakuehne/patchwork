@@ -47,6 +47,8 @@ export interface RuleGroup {
 
 export interface RuleActions {
   type?: ItemType;
+  /** Status bei «Typ: Aufgabe» (Pflicht seit 23.10.2026, ohne Ablehnen-Status); Störungen erhalten den Start-Status */
+  statusId?: string;
   priority?: Priority;
   assigneeId?: string;
   checklistTemplateId?: string;
@@ -86,6 +88,7 @@ export const conditionsSchema = z.object({
 export const actionsSchema = z
   .object({
     type: z.enum(['incident', 'task']).optional(),
+    statusId: z.uuid().optional(),
     priority: z.enum(['high', 'normal', 'low']).optional(),
     assigneeId: z.uuid().optional(),
     checklistTemplateId: z.uuid().optional(),
@@ -131,6 +134,12 @@ export const ruleSchema = z
   })
   .superRefine((r, ctx) => {
     checkKind(r, ctx);
+    if (r.actions.type === 'task' && !r.actions.statusId) {
+      ctx.addIssue({ code: 'custom', message: 'Bitte bei «Typ: Aufgabe» den Status wählen' });
+    }
+    if (r.actions.statusId && r.actions.type !== 'task') {
+      ctx.addIssue({ code: 'custom', message: 'Einen Status setzt die Regel nur zusammen mit «Typ: Aufgabe»' });
+    }
     const used = (Object.keys(r.actions) as (keyof RuleActions)[]).filter((k) => r.actions[k]);
     if (r.schedule) {
       if (used.some((k) => !TIMED_ACTIONS.includes(k))) {

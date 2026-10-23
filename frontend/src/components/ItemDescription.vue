@@ -78,7 +78,7 @@ async function submit() {
     </div>
     <div v-else-if="html" class="prose" :class="{ 'mail-html': !!item.descriptionHtml }" v-html="html" />
     <div v-else class="faint">Keine Beschreibung</div>
-    <AttachmentList :attachments="item.attachments" :text="item.descriptionHtml ? '' : item.description" />
+    <AttachmentList :attachments="item.attachments" :text="item.description" :html="item.descriptionHtml" />
     <OriginalMailDialog
       v-if="showOriginal && item.originalMessageId"
       :number="item.number"

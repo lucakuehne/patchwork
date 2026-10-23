@@ -1,22 +1,43 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { previewKind, type PreviewUrls } from '../attachment-preview';
 import { formatSize } from '../format';
 import { imagesInText } from '../markdown';
 import type { Attachment } from '../types';
+import AttachmentPreview from './AttachmentPreview.vue';
 
 /**
  * base: Adresse der Anhänge, im Portal «/api/portal/attachments».
  * text: Markdown des Eintrags; Bilder, die dort im Text stehen, erscheinen nicht noch einmal als Anhang.
+ * html: HTML einer Mail (z.B. ursprüngliche Meldung); darin eingebettete Bilder ebenso nicht.
+ * Bilder, Text, PDF und Mails öffnen sich in einem Vorschaufenster, die übrigen werden heruntergeladen.
  */
-const props = withDefaults(defineProps<{ attachments: Attachment[]; base?: string; text?: string }>(), {
+const props = withDefaults(defineProps<{ attachments: Attachment[]; base?: string; text?: string; html?: string | null }>(), {
   base: '/api/attachments',
   text: '',
+  html: null,
 });
 const listed = computed(() => {
   const inText = imagesInText(props.text);
-  return props.attachments.filter((a) => !inText.has(a.id));
+  const html = props.html ?? '';
+  return props.attachments.filter((a) => !inText.has(a.id) && !html.includes(`/attachments/${a.id}/inline`));
 });
 const isImage = (a: Attachment) => /^image\/(png|jpe?g|gif|webp|bmp)$/i.test(a.contentType);
+
+const previewing = ref<Attachment | null>(null);
+const urls = (a: Attachment): PreviewUrls => ({
+  download: `${props.base}/${a.id}`,
+  inline: `${props.base}/${a.id}/inline`,
+  preview: `${props.base}/${a.id}/preview`,
+  nested: (index) => `${props.base}/${a.id}/mail-attachments/${index}`,
+});
+
+function open(a: Attachment, event: MouseEvent) {
+  // Mit Ctrl/Cmd oder mittlerer Taste wie ein gewöhnlicher Link (herunterladen)
+  if (!previewKind(a) || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+  event.preventDefault();
+  previewing.value = a;
+}
 </script>
 
 <template>
@@ -26,13 +47,15 @@ const isImage = (a: Attachment) => /^image\/(png|jpe?g|gif|webp|bmp)$/i.test(a.c
       :key="a.id"
       class="attachment"
       :href="`${base}/${a.id}`"
-      :title="`${a.filename} (${formatSize(a.size)})`"
+      :title="`${a.filename} (${formatSize(a.size)})${previewKind(a) ? ' – Vorschau' : ''}`"
+      @click="open(a, $event)"
     >
       <img v-if="isImage(a)" :src="`${base}/${a.id}/inline`" alt="" class="thumb" loading="lazy" />
       <span v-else class="file-icon">📄</span>
       <span class="name">{{ a.filename }}</span>
       <span class="faint size">{{ formatSize(a.size) }}</span>
     </a>
+    <AttachmentPreview v-if="previewing" :file="previewing" :urls="urls(previewing)" @close="previewing = null" />
   </div>
 </template>
 

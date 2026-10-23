@@ -92,7 +92,11 @@ async function unlink(l: ItemLink) {
     <div v-for="l in links" :key="l.id" class="link-row">
       <span class="role faint">{{ ROLE_LABELS[l.role] }}</span>
       <div class="other">
-        <RouterLink :to="`/v/${l.other.number}`" class="other-title" :title="l.other.title">
+        <!-- Vorgang ausserhalb der eigenen Bereiche: nur die Nummer, ohne Link -->
+        <span v-if="l.other.hidden" class="other-title faint" title="Kein Zugriff auf diesen Bereich">
+          <span class="mono">{{ itemRef(l.other.number) }}</span>
+        </span>
+        <RouterLink v-else :to="`/v/${l.other.number}`" class="other-title" :title="l.other.title">
           <span class="mono">{{ itemRef(l.other.number) }}</span> {{ l.other.title }}
         </RouterLink>
         <StatusBadge v-if="l.other.status" :status="{ id: '', ...l.other.status }" />

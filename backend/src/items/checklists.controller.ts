@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AdminOnly, CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
+import { AreasService } from '../settings/areas';
 import { ChecklistsService } from './checklists.service';
 
 const titleSchema = z.object({ title: z.string().trim().min(1, 'Titel fehlt').max(200) });
@@ -18,9 +19,16 @@ const templateSchema = z.object({
 });
 const fromTemplateSchema = z.object({ templateId: z.uuid() });
 
+/**
+ * Checklisten gibt es nur bei Aufgaben: Routen über die Nummer prüft der AuthGuard, die über die ID der Checkliste
+ * bzw. des Punkts verlangen den Bereich «Aufgaben» (Bereiche je Rolle).
+ */
 @Controller()
 export class ChecklistsController {
-  constructor(private readonly checklists: ChecklistsService) {}
+  constructor(
+    private readonly checklists: ChecklistsService,
+    private readonly areas: AreasService,
+  ) {}
 
   @Post('items/:number/checklists')
   @HttpCode(204)
@@ -45,25 +53,41 @@ export class ChecklistsController {
 
   @Patch('checklists/:id')
   @HttpCode(204)
-  async rename(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(titleSchema)) body: { title: string }) {
+  async rename(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(titleSchema)) body: { title: string },
+    @CurrentUser() user: User,
+  ) {
+    await this.areas.assertType(user, 'task');
     await this.checklists.rename(id, body.title);
   }
 
   @Delete('checklists/:id')
   @HttpCode(204)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    await this.areas.assertType(user, 'task');
     await this.checklists.remove(id);
   }
 
   @Post('checklists/:id/items')
   @HttpCode(204)
-  async addItem(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(textSchema)) body: { text: string }) {
+  async addItem(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(textSchema)) body: { text: string },
+    @CurrentUser() user: User,
+  ) {
+    await this.areas.assertType(user, 'task');
     await this.checklists.addItem(id, body.text);
   }
 
   @Put('checklists/:id/items/order')
   @HttpCode(204)
-  async reorderItems(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(orderSchema)) body: { ids: string[] }) {
+  async reorderItems(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(orderSchema)) body: { ids: string[] },
+    @CurrentUser() user: User,
+  ) {
+    await this.areas.assertType(user, 'task');
     await this.checklists.reorderItems(id, body.ids);
   }
 
@@ -74,12 +98,14 @@ export class ChecklistsController {
     @Body(new ZodPipe(itemUpdateSchema)) body: z.infer<typeof itemUpdateSchema>,
     @CurrentUser() user: User,
   ) {
+    await this.areas.assertType(user, 'task');
     await this.checklists.updateItem(user.id, id, body);
   }
 
   @Delete('checklist-items/:id')
   @HttpCode(204)
-  async removeItem(@Param('id', ParseUUIDPipe) id: string) {
+  async removeItem(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    await this.areas.assertType(user, 'task');
     await this.checklists.removeItem(id);
   }
 

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { initials } from '../format';
 import { useSession } from '../stores/session';
+import type { Area } from '../types';
 
 const session = useSession();
 const route = useRoute();
@@ -11,11 +12,14 @@ const router = useRouter();
 const search = ref(typeof route.query.q === 'string' ? route.query.q : '');
 const menuOpen = ref(false);
 
-const tabs = computed(() => [
-  { to: '/eingang', label: 'Eingang', count: session.counts.inbox, prefix: '/eingang' },
-  { to: '/stoerungen', label: 'Störungen', count: session.counts.incidents, prefix: '/stoerungen' },
-  { to: '/aufgaben', label: 'Aufgaben', count: session.counts.tasks, prefix: '/aufgaben' },
-]);
+// Nur die Bereiche, die der Benutzer sieht (Bereiche je Rolle)
+const tabs = computed(() =>
+  [
+    { area: 'inbox', to: '/eingang', label: 'Eingang', count: session.counts.inbox, prefix: '/eingang' },
+    { area: 'incident', to: '/stoerungen', label: 'Störungen', count: session.counts.incidents, prefix: '/stoerungen' },
+    { area: 'task', to: '/aufgaben', label: 'Aufgaben', count: session.counts.tasks, prefix: '/aufgaben' },
+  ].filter((tab) => session.areas.includes(tab.area as Area)),
+);
 
 function submitSearch() {
   const q = search.value.trim();
@@ -53,7 +57,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 
 <template>
   <header class="header">
-    <RouterLink to="/eingang" class="brand">
+    <RouterLink :to="{ name: session.homeRoute }" class="brand">
       <img v-if="session.logoUrl" :src="session.logoUrl" alt="" class="logo" />
       <span>{{ session.appName }}</span>
     </RouterLink>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { api } from '../api';
+import { api, errorMessage } from '../api';
 import ChecklistsPanel from '../components/ChecklistsPanel.vue';
 import CommentComposer from '../components/CommentComposer.vue';
 import ChannelIcon from '../components/ChannelIcon.vue';
@@ -27,6 +27,8 @@ const toast = useToast();
 
 const item = ref<ItemDetail | null>(null);
 const notFound = ref(false);
+/** Vorgang in einem Bereich ohne Zugriff (Bereiche je Rolle): Meldung des Servers */
+const forbidden = ref('');
 const busy = ref(false);
 const rejectOpen = ref(false);
 const editingTitle = ref(false);
@@ -66,13 +68,18 @@ async function load(background = false) {
     if (unmounted || seq !== loadSeq) return;
     item.value = loaded;
     notFound.value = false;
+    forbidden.value = '';
     document.title = `${itemRef(number)} ${loaded.title} – ${session.appName}`;
   } catch (err) {
     if (unmounted || seq !== loadSeq) return;
     // Im Hintergrund ohne Meldung; das Nachladen versucht es weiter (begrenzt)
     if (!background) {
-      if ((err as { status?: number }).status === 404) notFound.value = true;
-      else toast.error(err);
+      const status = (err as { status?: number }).status;
+      if (status === 404) notFound.value = true;
+      else if (status === 403) {
+        item.value = null;
+        forbidden.value = errorMessage(err);
+      } else toast.error(err);
     }
   }
   followSending();
@@ -124,10 +131,11 @@ const selectedMailboxId = computed(
   () => item.value?.mailbox?.id ?? session.mailboxes.find((m) => m.isDefault)?.id ?? '',
 );
 
-// Mit Status fragt ein Dialog nach dem Status im neuen Typ; aus dem Eingang gibt es den Start-Status des Typs
+// Ein Dialog fragt nach dem Status im neuen Typ: zur Aufgabe immer (ohne Vorauswahl), zur Störung bei einem Vorgang mit
+// Status; aus dem Eingang erhält eine Störung den Start-Status
 const typeChangeTo = ref<ItemType | null>(null);
 function setType(type: ItemType) {
-  if (item.value?.type && item.value.status) typeChangeTo.value = type;
+  if (type === 'task' || (item.value?.type && item.value.status)) typeChangeTo.value = type;
   else void run(() => api.post(`/items/${props.number}/type`, { type }), `Typ ist jetzt «${TYPE_LABELS[type]}»`);
 }
 function onTypeChanged() {
@@ -177,6 +185,7 @@ function onRejected() {
 <template>
   <div class="page">
     <div v-if="notFound" class="empty">Vorgang {{ itemRef(number) }} wurde nicht gefunden.</div>
+    <div v-else-if="forbidden" class="empty">{{ itemRef(number) }} ist für Sie gesperrt: {{ forbidden }}.</div>
 
     <div v-else-if="item" class="layout">
       <div class="main stack">
@@ -227,10 +236,12 @@ function onRejected() {
         <div class="field">
           <span class="label">Typ</span>
           <div class="segmented type-switch">
+            <!-- Nur in Bereiche, die man selbst sieht (Bereiche je Rolle) -->
             <button
               type="button"
               :class="{ active: item.type === 'incident', suggested: !item.type && item.suggestedType === 'incident' }"
-              :disabled="busy || item.type === 'incident'"
+              :disabled="busy || item.type === 'incident' || !session.canSee('incident')"
+              :title="session.canSee('incident') ? undefined : 'Kein Zugriff auf den Bereich «Störungen»'"
               @click="setType('incident')"
             >
               Störung
@@ -238,7 +249,8 @@ function onRejected() {
             <button
               type="button"
               :class="{ active: item.type === 'task', suggested: !item.type && item.suggestedType === 'task' }"
-              :disabled="busy || item.type === 'task'"
+              :disabled="busy || item.type === 'task' || !session.canSee('task')"
+              :title="session.canSee('task') ? undefined : 'Kein Zugriff auf den Bereich «Aufgaben»'"
               @click="setType('task')"
             >
               Aufgabe
@@ -403,7 +415,7 @@ function onRejected() {
 
     <RejectDialog v-if="rejectOpen && item" :number="item.number" :title="item.title" @close="rejectOpen = false" @done="onRejected" />
     <TypeChangeDialog
-      v-if="typeChangeTo && item?.type && item.status"
+      v-if="typeChangeTo && item"
       :number="item.number"
       :type="item.type"
       :status="item.status"

@@ -9,19 +9,22 @@ import type { ItemType, StatusRef } from '../types';
 import ModalDialog from './ModalDialog.vue';
 
 /**
- * Typwechsel von Hand bei einem Vorgang mit Status: fragt nach dem Status im neuen Typ, vorbelegt nach der Rolle des
- * bisherigen Status (Start → Start, Wartet → Wartet, Ablehnen → Ablehnen, sonst «nach Antwort» bzw. Schliessen).
+ * Typwechsel von Hand: fragt nach dem Status im neuen Typ. Zur Aufgabe (auch aus dem Eingang) ohne Vorauswahl und ohne
+ * Ablehnen-Status (seit 23.10.2026). Zur Störung vorbelegt nach der Rolle des bisherigen Status (Start → Start,
+ * Wartet → Wartet, Ablehnen → Ablehnen, sonst «nach Antwort» bzw. Schliessen).
  */
-const props = defineProps<{ number: number; type: ItemType; status: StatusRef; targetType: ItemType }>();
+const props = defineProps<{ number: number; type: ItemType | null; status: StatusRef | null; targetType: ItemType }>();
 const emit = defineEmits<{ close: []; done: [] }>();
 const session = useSession();
 
-const current = computed(() => ({ id: props.status.id, type: props.type, closed: props.status.closed }));
+const current = computed(() =>
+  props.type && props.status ? { id: props.status.id, type: props.type, closed: props.status.closed } : null,
+);
 const options = computed(() =>
   typeChangeChoices(session.statusesOf(props.targetType), session.statusTargets, current.value, props.targetType),
 );
-const suggested = suggestTypeChangeStatus(session.statusTargets, current.value, props.targetType);
-const statusId = ref(options.value.find((s) => s.id === suggested)?.id ?? options.value[0]?.id ?? '');
+const suggested = props.targetType === 'task' ? '' : suggestTypeChangeStatus(session.statusTargets, current.value, props.targetType);
+const statusId = ref(options.value.find((s) => s.id === suggested)?.id ?? '');
 const saving = ref(false);
 const error = ref('');
 
@@ -43,18 +46,22 @@ async function submit() {
 <template>
   <ModalDialog :title="`${itemRef(number)} wird ${targetType === 'task' ? 'zur Aufgabe' : 'zur Störung'}`" @close="emit('close')">
     <p class="muted intro">
-      Bisher {{ TYPE_LABELS[type] }} im Status «{{ status.label }}». Welchen Status erhält der Vorgang als {{ TYPE_LABELS[targetType] }}?
+      <template v-if="type && status">Bisher {{ TYPE_LABELS[type] }} im Status «{{ status.label }}». </template>
+      Welchen Status erhält der Vorgang als {{ TYPE_LABELS[targetType] }}?
     </p>
     <div class="field">
       <label for="type-change-status">Status</label>
       <select id="type-change-status" v-model="statusId" class="select" autofocus>
+        <option value="" disabled>– Status wählen –</option>
         <option v-for="s in options" :key="s.id" :value="s.id">{{ s.label }}{{ s.closed ? ' (abgeschlossen)' : '' }}</option>
       </select>
     </div>
     <div v-if="error" class="error-box">{{ error }}</div>
     <template #footer>
       <button class="btn" type="button" @click="emit('close')">Abbrechen</button>
-      <button class="btn btn-primary" type="button" :disabled="saving || !statusId" @click="submit">Typ ändern</button>
+      <button class="btn btn-primary" type="button" :disabled="saving || !statusId" @click="submit">
+        {{ type ? 'Typ ändern' : 'Typ zuweisen' }}
+      </button>
     </template>
   </ModalDialog>
 </template>

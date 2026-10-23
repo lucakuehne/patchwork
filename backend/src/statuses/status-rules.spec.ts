@@ -23,7 +23,7 @@ describe('suggestTypeChangeStatus', () => {
   const suggest = (type: ItemType, key: string, to: ItemType) => suggestTypeChangeStatus(targets, byKey(type, key), to);
 
   it.each([
-    ['new', 'task:open'],
+    ['new', 'task:backlog'],
     ['in_progress', 'task:in_progress'],
     ['waiting', 'task:in_progress'],
     ['resolved', 'task:done'],
@@ -32,9 +32,7 @@ describe('suggestTypeChangeStatus', () => {
   });
 
   it.each([
-    ['open', 'incident:new'],
-    // Ohne Ziel-Rolle (Backlog ist seit 21.10.2026 nicht mehr Start): wie «nach Antwort»
-    ['backlog', 'incident:in_progress'],
+    ['backlog', 'incident:new'],
     ['planned', 'incident:in_progress'],
     ['in_progress', 'incident:in_progress'],
     ['done', 'incident:resolved'],

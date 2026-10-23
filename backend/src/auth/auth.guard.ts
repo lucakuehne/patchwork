@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Unauthor
 import { Reflector } from '@nestjs/core';
 import type { Response } from 'express';
 import { PORTAL_REFUSED, PortalAccessService } from '../portal/portal-access.service';
+import { AreasService } from '../settings/areas';
 import { ADMIN_ONLY, AuthedRequest, IS_PUBLIC, PORTAL } from './auth.decorators';
 import { SESSION_COOKIE, SessionService } from './session.service';
 
@@ -18,6 +19,7 @@ export class AuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly sessions: SessionService,
     private readonly portalAccess: PortalAccessService,
+    private readonly areas: AreasService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -51,6 +53,9 @@ export class AuthGuard implements CanActivate {
     if (this.reflector.getAllAndOverride<boolean>(ADMIN_ONLY, targets) && req.user.role !== 'admin') {
       throw new ForbiddenException('Nur für Administratoren');
     }
+    // Routen eines Vorgangs (…/items/:number/…): nur in den Bereichen des Benutzers (Bereiche je Rolle)
+    const number = req.params?.number;
+    if (typeof number === 'string' && /^\d+$/.test(number)) await this.areas.assertNumber(req.user, Number(number));
     return true;
   }
 }

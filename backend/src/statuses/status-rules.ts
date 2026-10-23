@@ -65,19 +65,17 @@ export const DEFAULT_STATUSES: {
   { type: 'incident', key: 'in_progress', label: 'In Arbeit', closed: false, position: 1, color: 'orange', diagramX: 220, diagramY: 0 },
   { type: 'incident', key: 'waiting', label: 'Wartet auf Melder', closed: false, position: 2, color: 'gray', diagramX: 220, diagramY: 135 },
   { type: 'incident', key: 'resolved', label: 'Gelöst', closed: true, position: 3, color: 'green', diagramX: 440, diagramY: 0 },
-  // «Offen» (seit 21.10.2026): angefragte Aufgaben, vor dem Backlog
-  { type: 'task', key: 'open', label: 'Offen', closed: false, position: 0, color: 'gray', diagramX: 0, diagramY: 0 },
-  { type: 'task', key: 'backlog', label: 'Backlog', closed: false, position: 1, color: 'blue', diagramX: 220, diagramY: 0 },
-  { type: 'task', key: 'planned', label: 'Geplant', closed: false, position: 2, color: 'blue', diagramX: 220, diagramY: 90 },
-  { type: 'task', key: 'in_progress', label: 'In Arbeit', closed: false, position: 3, color: 'orange', diagramX: 440, diagramY: 0 },
-  { type: 'task', key: 'done', label: 'Erledigt', closed: true, position: 4, color: 'green', diagramX: 660, diagramY: 0 },
-  { type: 'task', key: 'rejected', label: 'Abgelehnt', closed: true, position: 5, color: 'red', diagramX: 660, diagramY: 135 },
+  { type: 'task', key: 'backlog', label: 'Backlog', closed: false, position: 0, color: 'blue', diagramX: 0, diagramY: 0 },
+  { type: 'task', key: 'planned', label: 'Geplant', closed: false, position: 1, color: 'blue', diagramX: 0, diagramY: 90 },
+  { type: 'task', key: 'in_progress', label: 'In Arbeit', closed: false, position: 2, color: 'orange', diagramX: 220, diagramY: 0 },
+  { type: 'task', key: 'done', label: 'Erledigt', closed: true, position: 3, color: 'green', diagramX: 440, diagramY: 0 },
+  { type: 'task', key: 'rejected', label: 'Abgelehnt', closed: true, position: 4, color: 'red', diagramX: 440, diagramY: 135 },
 ];
 
-/** Ziel-Status der Standardstatus (über den Schlüssel) */
+/** Ziel-Status der Standardstatus (über den Schlüssel); «Offen» der Aufgaben gab es vom 21. bis 23.10.2026 */
 export const DEFAULT_TARGETS: Record<ItemType, Partial<Record<StatusTarget, string>>> = {
   incident: { start: 'new', reply: 'in_progress', close: 'resolved', waiting: 'waiting' },
-  task: { start: 'open', reply: 'in_progress', close: 'done', reject: 'rejected' },
+  task: { start: 'backlog', reply: 'in_progress', close: 'done', reject: 'rejected' },
 };
 
 /**

@@ -45,15 +45,16 @@ export function manualStatusChoices<T extends { id: string }>(
 }
 
 /**
- * Status zur Wahl beim Typwechsel von Hand: alle Status des Zieltyps (der Ablauf gilt hier nicht). Den Ablehnen-Status
- * des Zieltyps gibt es nur, wenn der Vorgang im Ablehnen-Status seines bisherigen Typs steht.
+ * Status zur Wahl beim Typwechsel von Hand: alle Status des Zieltyps (der Ablauf gilt hier nicht), ohne dessen
+ * Ablehnen-Status. Zur Störung gibt es ihn, wenn der Vorgang im Ablehnen-Status der Aufgaben steht; zur Aufgabe nie
+ * (seit 23.10.2026). «current» null: aus dem Eingang.
  */
 export function typeChangeChoices<T extends { id: string }>(
   targetStatuses: T[],
   targets: StatusTargetsByType,
-  current: { id: string; type: ItemType },
+  current: { id: string; type: ItemType } | null,
   targetType: ItemType,
 ): T[] {
-  const fromReject = current.id === targets[current.type].reject;
+  const fromReject = targetType === 'incident' && !!current && current.id === targets[current.type].reject;
   return targetStatuses.filter((s) => fromReject || s.id !== targets[targetType].reject);
 }

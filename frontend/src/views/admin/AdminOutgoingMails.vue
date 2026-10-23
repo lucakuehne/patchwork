@@ -2,10 +2,11 @@
 import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../api';
+import MailAttachmentList from '../../components/MailAttachmentList.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import SimulateMailDialog from '../../components/SimulateMailDialog.vue';
 import TestModeSettings from '../../components/TestModeSettings.vue';
-import { formatDateTime, formatSize, itemRef } from '../../format';
+import { formatDateTime, itemRef } from '../../format';
 import { incomingResultText } from '../../incoming';
 import { renderOwnMailHtml } from '../../markdown';
 import { OUTGOING_STATUS } from '../../outgoing';
@@ -167,12 +168,7 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
       </dl>
       <div v-if="open.html" class="prose mail-html mail-body own-mail" v-html="renderOwnMailHtml(open.html)" />
       <pre v-else class="mail-body mail-text own-mail">{{ open.text }}</pre>
-      <div v-if="open.attachments.length" class="stack attachments">
-        <h3>Anhänge</h3>
-        <a v-for="a in open.attachments" :key="a.index" :href="`/api/admin/outgoing-mails/${open.id}/attachments/${a.index}`">
-          {{ a.filename }} <span class="faint">({{ formatSize(a.size) }})</span>
-        </a>
-      </div>
+      <MailAttachmentList :attachments="open.attachments" :path="(index) => `/api/admin/outgoing-mails/${open!.id}/attachments/${index}`" />
       <template #footer>
         <a class="btn" :href="`/api/admin/outgoing-mails/${open.id}/eml`">Als .eml herunterladen</a>
         <button v-if="session.info?.testMode" class="btn" type="button" @click="startReply">Antwort simulieren</button>
@@ -220,9 +216,6 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
   margin: 0;
   white-space: pre-wrap;
   font-family: var(--font);
-}
-.attachments {
-  gap: 4px;
 }
 .badge.sent {
   background: var(--success-soft);

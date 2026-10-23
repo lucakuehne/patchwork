@@ -46,9 +46,10 @@ export function moveTarget<S extends NamedStatus>(all: readonly S[], targets: Ta
 }
 
 /**
- * Status nach einem Typwechsel: der gewählte Status des neuen Typs oder, ohne Wahl, der Vorschlag nach der Rolle des
- * bisherigen Status (aus dem Eingang: «Neuer Vorgang erhält»). Den Ablehnen-Status des neuen Typs gibt es nur, wenn
- * der Vorgang im Ablehnen-Status seines bisherigen Typs steht.
+ * Status nach einem Typwechsel von Hand. Störung: der gewählte Status oder, ohne Wahl, der Vorschlag nach der Rolle des
+ * bisherigen Status (aus dem Eingang: «Neuer Vorgang erhält»). Aufgabe: nur ein gewählter Status, nie der
+ * Ablehnen-Status (seit 23.10.2026). Den Ablehnen-Status der Störung gibt es nur, wenn der Vorgang im Ablehnen-Status
+ * der Aufgaben steht.
  */
 export function typeChangeStatus<S extends NamedStatus>(
   all: readonly S[],
@@ -57,12 +58,13 @@ export function typeChangeStatus<S extends NamedStatus>(
   type: ItemType,
   statusId?: string | null,
 ): S {
+  if (type === 'task' && !statusId) throw new BadRequestException('Bitte einen Status für die Aufgabe wählen');
   const id = statusId ?? suggestTypeChangeStatus(targets, current ?? null, type);
   const status = all.find((s) => s.id === id && s.type === type);
   if (!status) {
     throw new BadRequestException(statusId ? 'Der Status passt nicht zum Typ' : 'Für diesen Typ fehlt ein Ziel-Status');
   }
-  const fromReject = !!current && current.id === targets[current.type].reject;
+  const fromReject = type === 'incident' && !!current && current.id === targets[current.type].reject;
   if (status.id === targets[type].reject && !fromReject) {
     throw new BadRequestException(`«${status.label}» ist nur über «Ablehnen» erreichbar`);
   }

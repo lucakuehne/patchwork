@@ -2,7 +2,19 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { and, asc, desc, eq, gte, inArray, isNotNull, max, sql } from 'drizzle-orm';
 import { LdapService } from '../auth/ldap.service';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
-import { checklistTemplates, entries, items, mailboxes, ruleRuns, rules, statuses, users, type Item, type Rule } from '../db/schema';
+import {
+  checklistTemplates,
+  entries,
+  items,
+  mailboxes,
+  ruleRuns,
+  rules,
+  statuses,
+  users,
+  type Item,
+  type ItemType,
+  type Rule,
+} from '../db/schema';
 import { ChecklistsService } from '../items/checklists.service';
 import { ItemsService, PRIORITY_LABELS, TYPE_LABELS } from '../items/items.service';
 import { NotificationsService } from '../mail/notifications.service';
@@ -21,6 +33,8 @@ export interface RuleRun {
   apply(tx: Tx, item: Item): Promise<void>;
   /** Nach dem Commit: Mails (z.B. an den Zuständigen) */
   afterCommit(): Promise<void>;
+  /** Nach der Eingangsbestätigung (bzw. nach afterCommit): Mail «Erledigt», wenn eine Regel den Vorgang abschliesst */
+  afterConfirmation(): Promise<void>;
   /** Nur bei neuen Vorgängen gesetzt */
   readonly suppressConfirmation: boolean;
   readonly discarded: boolean;
@@ -128,6 +142,13 @@ export class RulesService {
       const [user] = await this.db.select().from(users).where(eq(users.id, assigneeId)).limit(1);
       if (!user || !user.active || (user.role !== 'admin' && user.role !== 'it')) {
         throw new BadRequestException('Zuständig kann nur ein aktiver Admin- oder IT-Benutzer sein');
+      }
+    }
+    if (input.actions.type === 'task' && input.actions.statusId) {
+      const [status] = await this.db.select().from(statuses).where(eq(statuses.id, input.actions.statusId)).limit(1);
+      if (!status || status.type !== 'task') throw new BadRequestException('Der gewählte Status der Aufgabe existiert nicht mehr');
+      if (status.id === (await this.statuses.targets()).task.reject) {
+        throw new BadRequestException(`«${status.label}» ist nur über «Ablehnen» erreichbar`);
       }
     }
     if (checklistTemplateId) {
@@ -291,7 +312,13 @@ export class RulesService {
   private run(trigger: RuleTrigger, matched: Rule[]): RuleRun {
     const isNew = isNewItemTrigger(trigger);
     const pending: (() => Promise<void>)[] = [];
+    const late: (() => Promise<void>)[] = [];
     const state = { suppressConfirmation: false, discarded: false };
+    const runJobs = async (jobs: (() => Promise<void>)[]) => {
+      for (const job of jobs.splice(0)) {
+        await job().catch((err: Error) => this.logger.error(`Benachrichtigung nach Regel fehlgeschlagen: ${err.message}`));
+      }
+    };
     return {
       get suppressConfirmation() {
         return state.suppressConfirmation;
@@ -309,13 +336,10 @@ export class RulesService {
           state.discarded = true;
           return;
         }
-        await this.applyActions(tx, item, matched, isNew, state, pending);
+        await this.applyActions(tx, item, matched, isNew, state, pending, late);
       },
-      afterCommit: async () => {
-        for (const job of pending) {
-          await job().catch((err: Error) => this.logger.error(`Benachrichtigung nach Regel fehlgeschlagen: ${err.message}`));
-        }
-      },
+      afterCommit: () => runJobs(pending),
+      afterConfirmation: () => runJobs(late),
     };
   }
 
@@ -327,6 +351,7 @@ export class RulesService {
     isNew: boolean,
     state: { suppressConfirmation: boolean },
     pending: (() => Promise<void>)[],
+    late: (() => Promise<void>)[],
   ) {
     const staff = new Map(
       (await tx.select().from(users).where(inArray(users.role, ['admin', 'it'])))
@@ -336,19 +361,23 @@ export class RulesService {
     const changes: Partial<typeof items.$inferInsert> = {};
     let type = item.type;
     let assignedBy: Rule | null = null;
+    /** Abgeschlossener Status aus «Typ: Aufgabe» (Mail «Erledigt» nach der Eingangsbestätigung) */
+    let closedStatus: string | null = null;
     const templates: { rule: Rule; templateId: string }[] = [];
     const log: { rule: Rule; parts: string[] }[] = [];
 
     for (const rule of matched) {
       const a = rule.actions;
       const parts: string[] = [];
-      // Typ nur für neue Vorgänge bzw. solange der Vorgang im Eingang liegt; Status «Neuer Vorgang erhält»
+      // Typ nur für neue Vorgänge bzw. solange der Vorgang im Eingang liegt
       if (a.type && !item.type) {
-        const target = await this.statuses.targetStatus(a.type, 'start', tx);
+        const target = await this.typeStatus(tx, rule, a.type);
         type = a.type;
         changes.type = a.type;
         changes.statusId = target.id;
+        changes.closedAt = target.closed ? new Date() : null;
         changes.suggestedType = null;
+        closedStatus = target.closed ? target.label : null;
         parts.push(`den Typ ${q(TYPE_LABELS[a.type])} gesetzt (Status ${q(target.label)})`);
       }
       if (a.priority) {
@@ -406,6 +435,29 @@ export class RulesService {
         if (updated) await this.notifications.assigned(updated, null, by);
       });
     }
+    if (closedStatus) {
+      const label = closedStatus;
+      const itemId = item.id;
+      late.push(async () => {
+        const [updated] = await this.db.select().from(items).where(eq(items.id, itemId)).limit(1);
+        if (updated) await this.notifications.done(updated, null, label);
+      });
+    }
+  }
+
+  /**
+   * Status bei der Aktion «Typ»: Störungen erhalten «Neuer Vorgang erhält», Aufgaben den Status der Regel. Gibt es
+   * diesen nicht mehr oder ist er inzwischen der Ablehnen-Status, gilt «Neuer Vorgang erhält».
+   */
+  private async typeStatus(tx: Tx, rule: Rule, type: ItemType) {
+    const statusId = rule.actions.statusId;
+    if (type === 'task' && statusId) {
+      const [all, targets] = await Promise.all([this.statuses.list(tx), this.statuses.targets(tx)]);
+      const status = all.find((s) => s.id === statusId && s.type === 'task');
+      if (status && status.id !== targets.task.reject) return status;
+      this.logger.warn(`Regel «${rule.name}»: Der Status der Aufgabe fehlt, sie erhält den Status für neue Vorgänge`);
+    }
+    return this.statuses.targetStatus(type, 'start', tx);
   }
 
   /**

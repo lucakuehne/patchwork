@@ -7,6 +7,7 @@ import { InjectDb, type Db } from '../db/db.module';
 import { attachments, items, mailMessages, mutes, participants, statuses, users, type Item, type User } from '../db/schema';
 import { embedImageTags, imagesAsText, imageSize, type EmbeddedImage } from '../items/inline-images';
 import { PortalAccessService } from '../portal/portal-access.service';
+import { AreasService } from '../settings/areas';
 import { StorageService } from '../storage/storage.service';
 import { itemRef, subjectFor } from './mail-content';
 import { mentionsAsText } from '../items/mentions';
@@ -42,7 +43,8 @@ interface ReporterMail {
 /**
  * Entscheidet, wer zu welchem Ereignis eine Mail erhält, und stellt sie in die Versand-Queue.
  * Grundregeln: keine Mail an den Auslöser selbst, keine Mail an Benutzer, die den Vorgang
- * stummgeschaltet haben (vorläufig ausser Kraft, siehe MUTES_ACTIVE), keine Mail an deaktivierte Benutzer.
+ * stummgeschaltet haben (vorläufig ausser Kraft, siehe MUTES_ACTIVE), keine Mail an deaktivierte Benutzer, keine Mail
+ * an IT-Mitarbeitende ohne Zugriff auf den Bereich des Vorgangs (ausser als Melder).
  */
 @Injectable()
 export class NotificationsService {
@@ -55,6 +57,7 @@ export class NotificationsService {
     private readonly templates: MailTemplatesService,
     private readonly storage: StorageService,
     private readonly portalAccess: PortalAccessService,
+    private readonly areas: AreasService,
   ) {}
 
   /**
@@ -83,8 +86,11 @@ export class NotificationsService {
     });
   }
 
-  /** Vorgang wurde von Hand in einen abgeschlossenen Status (ausser dem Ablehnen-Status) gesetzt. */
-  async done(item: Item, actorId: string, statusLabel: string): Promise<void> {
+  /**
+   * Vorgang wurde von Hand in einen abgeschlossenen Status (ausser dem Ablehnen-Status) gesetzt, oder eine Regel hat
+   * eine neue Aufgabe abgeschlossen (actorId null).
+   */
+  async done(item: Item, actorId: string | null, statusLabel: string): Promise<void> {
     const reporter = await this.eligible(item, item.reporterId, actorId);
     if (!reporter) return;
     await this.sendToReporter(item, [reporter.email], [], { template: 'done', values: { Status: statusLabel }, automated: true });
@@ -331,6 +337,8 @@ export class NotificationsService {
   }
 
   private async sendToStaff(item: Item, recipient: User, key: TemplateKey, extra: Record<string, string>) {
+    // Ohne Zugriff auf den Bereich des Vorgangs keine Mail (Bereiche je Rolle), auch wenn zuständig oder erwähnt
+    if (!(await this.areas.canSee(recipient, item.type))) return;
     const mailbox = await this.mailboxes.forSending(item.mailboxId);
     if (!mailbox) {
       this.logger.warn(`Kein aktives Postfach für Benachrichtigungen zu ${itemRef(item.number)}`);
@@ -372,7 +380,10 @@ export class NotificationsService {
     return muted ? null : user;
   }
 
-  /** Adressen der Beteiligten für CC: aktiv, nicht stummgeschaltet, ohne Melder und Auslöser. */
+  /**
+   * Adressen der Beteiligten für CC: aktiv, nicht stummgeschaltet, ohne Melder und Auslöser, ohne IT-Mitarbeitende
+   * ohne Zugriff auf den Bereich des Vorgangs (Bereiche je Rolle).
+   */
   private async participantEmails(item: Item, actorId: string): Promise<string[]> {
     const rows = await this.db
       .select({ user: users })
@@ -380,9 +391,10 @@ export class NotificationsService {
       .innerJoin(users, eq(users.id, participants.userId))
       .where(eq(participants.itemId, item.id));
     const muted = await this.mutedUserIds(item.id);
+    const sees = await this.areas.checker();
     return rows
       .map((r) => r.user)
-      .filter((u) => u.active && u.id !== actorId && u.id !== item.reporterId && !muted.has(u.id))
+      .filter((u) => u.active && u.id !== actorId && u.id !== item.reporterId && !muted.has(u.id) && sees(u, item.type))
       .map((u) => u.email);
   }
 

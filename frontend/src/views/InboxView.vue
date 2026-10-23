@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { api } from '../api';
 import ItemTable from '../components/ItemTable.vue';
 import MineToggle from '../components/MineToggle.vue';
+import TypeChangeDialog from '../components/TypeChangeDialog.vue';
 import { useMineFilter } from '../composables';
 import { itemRef } from '../format';
 import { useSession } from '../stores/session';
@@ -45,7 +46,20 @@ async function load() {
 }
 watch(mine, load, { immediate: true });
 
+// Zur Aufgabe fragt ein Dialog nach dem Status (ohne Vorauswahl); eine Störung erhält den Start-Status
+const taskFor = ref<ItemSummary | null>(null);
+async function onTaskAssigned() {
+  const item = taskFor.value!;
+  taskFor.value = null;
+  toast.success(`${itemRef(item.number)} ist jetzt eine Aufgabe`);
+  await Promise.all([load(), session.refreshCounts()]);
+}
+
 async function assign(item: ItemSummary, type: ItemType) {
+  if (type === 'task') {
+    taskFor.value = item;
+    return;
+  }
   busy.value = item.number;
   try {
     await api.post(`/items/${item.number}/type`, { type });
@@ -85,7 +99,9 @@ async function discard(item: ItemSummary) {
       <template #actions="{ item }">
         <div class="row">
           <!-- Der Vorschlag des Melders aus dem Portal ist hervorgehoben -->
+          <!-- Nur Typen, deren Bereich man sieht (Bereiche je Rolle) -->
           <button
+            v-if="session.canSee('incident')"
             class="btn btn-sm"
             :class="{ 'btn-primary': item.suggestedType === 'incident' }"
             type="button"
@@ -95,6 +111,7 @@ async function discard(item: ItemSummary) {
             Störung
           </button>
           <button
+            v-if="session.canSee('task')"
             class="btn btn-sm"
             :class="{ 'btn-primary': item.suggestedType === 'task' }"
             type="button"
@@ -118,4 +135,13 @@ async function discard(item: ItemSummary) {
   </div>
 
   <NewItemDialog v-if="newOpen" @close="newOpen = false" @created="onCreated" />
+  <TypeChangeDialog
+    v-if="taskFor"
+    :number="taskFor.number"
+    :type="null"
+    :status="null"
+    target-type="task"
+    @close="taskFor = null"
+    @done="onTaskAssigned"
+  />
 </template>

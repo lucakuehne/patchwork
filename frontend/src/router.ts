@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useSession } from './stores/session';
+import type { Area } from './types';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -7,25 +8,29 @@ export const router = createRouter({
     { path: '/', redirect: '/eingang' },
     { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
     { path: '/einrichtung', name: 'setup', component: () => import('./views/SetupView.vue'), meta: { public: true } },
-    { path: '/eingang', name: 'inbox', component: () => import('./views/InboxView.vue') },
+    // «area»: nur mit Zugriff auf diesen Bereich (Bereiche je Rolle, siehe beforeEach)
+    { path: '/eingang', name: 'inbox', component: () => import('./views/InboxView.vue'), meta: { area: 'inbox' } },
     {
       path: '/stoerungen',
       name: 'incidents',
       component: () => import('./views/IncidentsView.vue'),
       props: { closed: false },
+      meta: { area: 'incident' },
     },
     {
       path: '/stoerungen/geloest',
       name: 'incidents-closed',
       component: () => import('./views/IncidentsView.vue'),
       props: { closed: true },
+      meta: { area: 'incident' },
     },
-    { path: '/aufgaben', name: 'board', component: () => import('./views/BoardView.vue') },
+    { path: '/aufgaben', name: 'board', component: () => import('./views/BoardView.vue'), meta: { area: 'task' } },
     {
       path: '/aufgaben/erledigt',
       name: 'tasks-done',
       component: () => import('./views/TasksClosedView.vue'),
       props: { view: 'tasks-done' },
+      meta: { area: 'task' },
     },
     // Nur mit Ablehnen-Ziel für Aufgaben (siehe beforeEach)
     {
@@ -33,6 +38,7 @@ export const router = createRouter({
       name: 'tasks-rejected',
       component: () => import('./views/TasksClosedView.vue'),
       props: { view: 'tasks-rejected' },
+      meta: { area: 'task' },
     },
     { path: '/suche', name: 'search', component: () => import('./views/SearchView.vue') },
     {
@@ -126,9 +132,12 @@ router.beforeEach(async (to) => {
   }
   if (portalRoute) {
     // Admin und IT nutzen die normale Oberfläche; Links auf einen Vorgang im Portal führen direkt dorthin
-    return to.name === 'portal-item' ? { name: 'item', params: { number: to.params.number } } : { name: 'inbox' };
+    return to.name === 'portal-item' ? { name: 'item', params: { number: to.params.number } } : { name: session.homeRoute };
   }
-  if (to.matched.some((r) => r.meta.admin) && !session.isAdmin) return { name: 'inbox' };
+  if (to.matched.some((r) => r.meta.admin) && !session.isAdmin) return { name: session.homeRoute };
+  // Bereiche ohne Zugriff (z.B. «/» bzw. Eingang, wenn die IT ihn nicht sieht): zum ersten sichtbaren Bereich
+  const area = to.meta.area as Area | undefined;
+  if (area && !session.areas.includes(area)) return { name: session.homeRoute };
   // Ohne Ablehnen-Ziel für Aufgaben gibt es die Ansicht «Abgelehnt» nicht; abgeschlossene Aufgaben stehen unter «Erledigt»
   if (to.name === 'tasks-rejected' && !session.statusTargets.task.reject) return { name: 'tasks-done' };
   return true;

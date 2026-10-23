@@ -19,7 +19,9 @@ const props = defineProps<{ initialType?: ItemType; fixedType?: ItemType; initia
 const emit = defineEmits<{ close: []; created: [number: number, type: ItemType] }>();
 const session = useSession();
 
-const type = ref<ItemType>(props.fixedType ?? props.initialType ?? 'incident');
+// Nur Typen, deren Bereich der Benutzer sieht (Bereiche je Rolle)
+const types = computed(() => (['incident', 'task'] as ItemType[]).filter((t) => session.canSee(t)));
+const type = ref<ItemType>(props.fixedType ?? props.initialType ?? types.value[0] ?? 'incident');
 const dialogTitle = computed(() =>
   props.fixedType === 'incident' ? 'Neue Störung' : props.fixedType === 'task' ? 'Neue Aufgabe' : 'Neuer Vorgang',
 );
@@ -95,7 +97,7 @@ async function save() {
   <ModalDialog :title="dialogTitle" wide @close="emit('close')">
     <div v-if="!fixedType" class="field">
       <span class="label">Typ</span>
-      <TypeChoice v-model="type" />
+      <TypeChoice v-model="type" :types="types" />
     </div>
     <div class="field">
       <label for="new-title">Titel</label>

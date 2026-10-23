@@ -25,10 +25,12 @@ import { CurrentUser } from '../auth/auth.decorators';
 import { appConfig } from '../config';
 import { emailSchema, nullableUuid, ZodPipe } from '../common/zod.pipe';
 import { InjectDb, type Db } from '../db/db.module';
-import { attachments, mailMessages, outgoingMails, type User } from '../db/schema';
+import { attachments, entries, mailMessages, outgoingMails, type User } from '../db/schema';
 import { itemRef } from '../mail/mail-content';
 import { templateByKey } from '../mail/mail-templates';
-import { disposition, mailView, sendMailAttachment } from '../mail/mail-view';
+import { AreasService } from '../settings/areas';
+import { disposition, mailAttachmentPreview, mailView, sendMailAttachment } from '../mail/mail-view';
+import { buildPreview, nestedAttachment, sendFile } from '../storage/attachment-preview';
 import { sendAttachment } from '../storage/attachment-response';
 import { StorageService } from '../storage/storage.service';
 import { ChecklistsService } from './checklists.service';
@@ -122,16 +124,19 @@ export class ItemsController {
     private readonly links: LinksService,
     private readonly checklists: ChecklistsService,
     private readonly storage: StorageService,
+    private readonly areas: AreasService,
   ) {}
 
+  // Routen mit «:number» prüft der AuthGuard auf die Bereiche des Benutzers (Bereiche je Rolle), die übrigen hier
+
   @Get('items')
-  list(@Query(new ZodPipe(listSchema)) query: z.infer<typeof listSchema>, @CurrentUser() user: User) {
-    return this.items.list(query.view, { ...query, userId: user.id });
+  async list(@Query(new ZodPipe(listSchema)) query: z.infer<typeof listSchema>, @CurrentUser() user: User) {
+    return this.items.list(query.view, { ...query, userId: user.id, areas: await this.areas.limit(user) });
   }
 
   @Get('items/counts')
-  counts() {
-    return this.items.counts();
+  async counts(@CurrentUser() user: User) {
+    return this.items.counts(await this.areas.limit(user));
   }
 
   @Post('items')
@@ -141,6 +146,7 @@ export class ItemsController {
     @UploadedFiles() files: UploadedFile[] | undefined,
     @CurrentUser() user: User,
   ) {
+    await this.areas.assertType(user, body.type);
     const item = await this.items.createInternal(user, body, files ?? []);
     return { number: item.number };
   }
@@ -150,7 +156,7 @@ export class ItemsController {
     const item = await this.items.detail(number, user);
     return {
       ...item,
-      links: await this.links.forItem(item.id),
+      links: await this.links.forItem(item.id, await this.areas.limit(user)),
       // Checklisten gibt es nur bei Aufgaben; bei Störungen bleiben sie gespeichert, aber ausgeblendet
       checklists: item.type === 'task' ? await this.checklists.forItem(item.id) : [],
     };
@@ -173,6 +179,8 @@ export class ItemsController {
     @Body(new ZodPipe(typeChangeSchema)) body: z.infer<typeof typeChangeSchema>,
     @CurrentUser() user: User,
   ) {
+    // Nur in einen Bereich, den man selbst sieht (Entscheid vom 23.10.2026)
+    await this.areas.assertType(user, body.type);
     await this.items.setType(user, number, body.type, body.statusId);
   }
 
@@ -225,6 +233,8 @@ export class ItemsController {
     @Body(new ZodPipe(noteEditSchema)) body: z.infer<typeof noteEditSchema>,
     @CurrentUser() user: User,
   ) {
+    const [entry] = await this.db.select({ itemId: entries.itemId }).from(entries).where(eq(entries.id, id)).limit(1);
+    if (entry) await this.areas.assertItem(user, entry.itemId);
     await this.items.editNote(user, id, body.body);
   }
 
@@ -283,17 +293,29 @@ export class ItemsController {
     return mailView(await this.readStored(storageKey), (index) => `/api/items/${item.number}/original/attachments/${index}${query}`, true);
   }
 
+  /** Anhang der Originalmail; «inline=1» zeigt Bilder und PDF im Browser an (Vorschau). */
   @Get('items/:number/original/attachments/:index')
   async originalAttachment(
     @Param('number', ParseIntPipe) number: number,
     @Param('index', ParseIntPipe) index: number,
     @Query('messageId') messageId: string,
+    @Query('inline') inline: string | undefined,
     @Res() res: Response,
   ) {
     const { storageKey } = await this.originalMail(number, messageId);
-    if (!sendMailAttachment(await simpleParser(await this.readStored(storageKey)), index, res)) {
+    if (!sendMailAttachment(await simpleParser(await this.readStored(storageKey)), index, res, inline === '1')) {
       throw new NotFoundException('Anhang nicht gefunden');
     }
+  }
+
+  @Get('items/:number/original/attachments/:index/preview')
+  async originalAttachmentPreview(
+    @Param('number', ParseIntPipe) number: number,
+    @Param('index', ParseIntPipe) index: number,
+    @Query('messageId') messageId: string,
+  ) {
+    const { storageKey } = await this.originalMail(number, messageId);
+    return mailAttachmentPreview(await simpleParser(await this.readStored(storageKey)), index);
   }
 
   /** Eine von Patchwork zu diesem Vorgang versendete Mail, so wie sie (ohne Testbetrieb) versendet wird. */
@@ -337,12 +359,23 @@ export class ItemsController {
     @Param('number', ParseIntPipe) number: number,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('index', ParseIntPipe) index: number,
+    @Query('inline') inline: string | undefined,
     @Res() res: Response,
   ) {
     const { mail } = await this.sentMailRow(number, id);
-    if (!sendMailAttachment(await simpleParser(await this.readStored(mail.storageKey)), index, res)) {
+    if (!sendMailAttachment(await simpleParser(await this.readStored(mail.storageKey)), index, res, inline === '1')) {
       throw new NotFoundException('Anhang nicht gefunden');
     }
+  }
+
+  @Get('items/:number/mails/:id/attachments/:index/preview')
+  async sentMailAttachmentPreview(
+    @Param('number', ParseIntPipe) number: number,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('index', ParseIntPipe) index: number,
+  ) {
+    const { mail } = await this.sentMailRow(number, id);
+    return mailAttachmentPreview(await simpleParser(await this.readStored(mail.storageKey)), index);
   }
 
   private async sentMailRow(number: number, id: string) {
@@ -372,26 +405,55 @@ export class ItemsController {
       return await this.storage.read(storageKey);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new NotFoundException('Die gespeicherte Mail ist nicht mehr vorhanden (Datei fehlt in der Ablage)');
+        throw new NotFoundException('Die gespeicherte Datei ist nicht mehr vorhanden (fehlt in der Ablage)');
       }
       throw err;
     }
   }
 
   @Get('attachments/:id')
-  download(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    return this.sendAttachment(id, res, false);
+  download(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response, @CurrentUser() user: User) {
+    return this.sendAttachment(user, id, res, false);
   }
 
   /** Bilder zur Anzeige im Browser (eingebettete Mail-Bilder, Vorschau). Andere Typen werden heruntergeladen. */
   @Get('attachments/:id/inline')
-  inline(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    return this.sendAttachment(id, res, true);
+  inline(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response, @CurrentUser() user: User) {
+    return this.sendAttachment(user, id, res, true);
   }
 
-  private async sendAttachment(id: string, res: Response, inline: boolean) {
+  /** Vorschau eines Anhangs: Text und Mails aufbereitet, für Bilder und PDF nur die Art (die zeigt der Browser) */
+  @Get('attachments/:id/preview')
+  async preview(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    const att = await this.attachment(user, id);
+    const preview = await buildPreview({ ...att, content: await this.readStored(att.storageKey) });
+    if (!preview) throw new NotFoundException('Für diesen Dateityp gibt es keine Vorschau');
+    return preview;
+  }
+
+  /** Anhang einer Mail, die selbst ein Anhang ist (.eml, .msg), zum Herunterladen aus der Vorschau */
+  @Get('attachments/:id/mail-attachments/:index')
+  async nested(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('index', ParseIntPipe) index: number,
+    @Res() res: Response,
+    @CurrentUser() user: User,
+  ) {
+    const att = await this.attachment(user, id);
+    const file = await nestedAttachment({ ...att, content: await this.readStored(att.storageKey) }, index);
+    if (!file) throw new NotFoundException('Anhang nicht gefunden');
+    sendFile(res, file, false);
+  }
+
+  /** Anhang über seine ID, nur in den Bereichen des Benutzers */
+  private async attachment(user: User, id: string) {
     const [att] = await this.db.select().from(attachments).where(eq(attachments.id, id)).limit(1);
     if (!att) throw new NotFoundException('Anhang nicht gefunden');
-    sendAttachment(this.storage, att, res, inline);
+    await this.areas.assertItem(user, att.itemId);
+    return att;
+  }
+
+  private async sendAttachment(user: User, id: string, res: Response, inline: boolean) {
+    sendAttachment(this.storage, await this.attachment(user, id), res, inline);
   }
 }

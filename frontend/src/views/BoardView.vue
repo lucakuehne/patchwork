@@ -177,7 +177,7 @@ function onCreated(number: number) {
                 <span v-else-if="element.priority === 'low'" class="prio prio-low">Niedrig</span>
               </div>
               <div class="task-title">{{ element.title }}</div>
-              <div v-if="element.checklist || element.dueDate || element.descriptionPreview || element.commentCount" class="task-meta">
+              <div v-if="element.dueDate || element.descriptionPreview || element.commentCount" class="task-meta">
                 <span
                   v-if="element.descriptionPreview"
                   class="meta-icon"
@@ -196,7 +196,6 @@ function onCreated(number: number) {
                   </svg>
                   {{ element.commentCount }}
                 </span>
-                <ChecklistProgress v-if="element.checklist" :done="element.checklist.done" :total="element.checklist.total" />
                 <span
                   v-if="element.dueDate"
                   class="badge due"
@@ -210,6 +209,8 @@ function onCreated(number: number) {
                   {{ formatDay(element.dueDate) }}
                 </span>
               </div>
+              <!-- Fortschritt der Checklisten über die ganze Breite der Karte -->
+              <ChecklistProgress v-if="element.checklist" fill :done="element.checklist.done" :total="element.checklist.total" />
               <div class="task-foot">
                 <span class="faint" :title="element.reporter.email">{{ element.reporter.name }}</span>
                 <span class="spacer" />

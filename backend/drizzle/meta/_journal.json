@@ -211,6 +211,13 @@
       "when": 1792572975738,
       "tag": "0029_status_offen",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792753395573,
+      "tag": "0030_status_offen_entfernen",
+      "breakpoints": true
     }
   ]
 }

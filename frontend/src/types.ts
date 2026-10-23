@@ -1,5 +1,7 @@
 export type Role = 'admin' | 'it' | 'standard';
 export type ItemType = 'incident' | 'task';
+/** Bereiche der Oberfläche (Bereiche je Rolle): Eingang (ohne Typ), Störungen, Aufgaben */
+export type Area = 'inbox' | ItemType;
 export type Priority = 'high' | 'normal' | 'low';
 export type View = 'inbox' | 'incidents' | 'incidents-closed' | 'board' | 'tasks-done' | 'tasks-rejected' | 'search';
 
@@ -177,6 +179,8 @@ export interface ItemLink {
     title: string;
     type: ItemType | null;
     status: { label: string; closed: boolean; color: StatusColor } | null;
+    /** Ausserhalb der eigenen Bereiche (Bereiche je Rolle): nur die Nummer, ohne Titel und Link */
+    hidden: boolean;
   };
 }
 
@@ -601,6 +605,8 @@ export interface RuleGroup {
 
 export interface RuleActions {
   type?: ItemType;
+  /** Status bei «Typ: Aufgabe» (Pflicht) */
+  statusId?: string;
   priority?: Priority;
   assigneeId?: string;
   checklistTemplateId?: string;

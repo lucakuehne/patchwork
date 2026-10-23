@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-/** Fortschritt der Checklisten als schmaler Balken mit «3/5» daneben (Board-Karten und Listen). */
-const props = defineProps<{ done: number; total: number }>();
+/**
+ * Fortschritt der Checklisten als schmaler Balken mit «3/5» daneben (Board-Karten und Listen).
+ * «fill»: Der Balken füllt die verfügbare Breite (Board-Karten).
+ */
+const props = defineProps<{ done: number; total: number; fill?: boolean }>();
 
 const percent = computed(() => (props.total > 0 ? Math.round((props.done / props.total) * 100) : 0));
 const complete = computed(() => props.total > 0 && props.done === props.total);
 </script>
 
 <template>
-  <span class="checklist-progress" :class="{ complete }" :title="`Checklisten: ${done} von ${total} erledigt`">
+  <span class="checklist-progress" :class="{ complete, stretch: fill }" :title="`Checklisten: ${done} von ${total} erledigt`">
     <span
       class="bar"
       role="progressbar"
@@ -41,6 +44,14 @@ const complete = computed(() => props.total > 0 && props.done === props.total);
   border-radius: 3px;
   background: var(--border);
   overflow: hidden;
+}
+.stretch {
+  display: flex;
+  width: 100%;
+}
+.stretch .bar {
+  flex: 1;
+  width: auto;
 }
 .fill {
   position: absolute;

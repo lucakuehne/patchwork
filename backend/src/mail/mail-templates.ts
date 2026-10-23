@@ -91,7 +91,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Erledigt',
     description:
       'An den Melder beim Wechsel von Hand in einen abgeschlossenen Status (nicht beim Ablehnen und nicht zwischen zwei ' +
-      'abgeschlossenen Status).',
+      'abgeschlossenen Status) und wenn eine Regel eine neue Aufgabe gleich abschliesst.',
     subject: '{{Status}}: {{Titel}}',
     body:
       'Hallo {{Melder Vorname}}\n\nDein Anliegen «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +

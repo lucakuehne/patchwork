@@ -6,6 +6,7 @@ import { attachments, entries, items, links, participants, statuses, users, type
 import { itemRef } from '../mail/mail-content';
 import { replaceImages } from './inline-images';
 import { NotificationsService } from '../mail/notifications.service';
+import { areaOf, type Area } from '../settings/areas';
 import { StatusesService } from '../statuses/statuses.service';
 import { ItemsService, TYPE_LABELS } from './items.service';
 
@@ -61,8 +62,11 @@ export class LinksService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  /** Verknüpfungen eines Vorgangs mit den Angaben zum jeweils anderen Vorgang. */
-  async forItem(itemId: string) {
+  /**
+   * Verknüpfungen eines Vorgangs mit den Angaben zum jeweils anderen Vorgang. Liegt dieser ausserhalb von «areas»
+   * (Bereiche je Rolle, null = alle), bleibt nur seine Nummer («hidden»).
+   */
+  async forItem(itemId: string, areas: Area[] | null = null) {
     const rows = await this.db
       .select({
         link: links,
@@ -80,12 +84,17 @@ export class LinksService {
       .leftJoin(statuses, eq(statuses.id, otherItem.statusId))
       .where(or(eq(links.fromId, itemId), eq(links.toId, itemId)));
     return rows
-      .map((r) => ({
-        id: r.link.id,
-        role: roleOf(r.link, itemId),
-        createdAt: r.link.createdAt,
-        other: { ...r.other, status: r.status?.label ? r.status : null },
-      }))
+      .map((r) => {
+        const hidden = !!areas && !areas.includes(areaOf(r.other.type));
+        return {
+          id: r.link.id,
+          role: roleOf(r.link, itemId),
+          createdAt: r.link.createdAt,
+          other: hidden
+            ? { id: r.other.id, number: r.other.number, title: '', type: null, status: null, hidden: true }
+            : { ...r.other, status: r.status?.label ? r.status : null, hidden: false },
+        };
+      })
       .sort((a, b) => LINK_ROLES.indexOf(a.role) - LINK_ROLES.indexOf(b.role) || a.other.number - b.other.number);
   }
 

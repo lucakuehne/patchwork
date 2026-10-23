@@ -15,7 +15,8 @@ export type TimelineBlock =
 export interface EventPart {
   /** Satzteil ohne «hat», z.B. «den Status von «Neu» auf «In Arbeit» geändert» */
   text: string;
-  link: { to: string; text: string } | null;
+  /** «to» null: Vorgang ausserhalb der eigenen Bereiche, nur die Nummer ohne Link */
+  link: { to: string | null; text: string } | null;
 }
 
 const isMessage = (e: Entry) => e.kind === 'reply' || e.kind === 'note';
@@ -167,14 +168,16 @@ function groupEntries(newestFirst: Entry[]): TimelineBlock[] {
 
 const q = (v: unknown) => (v === null || v === undefined || v === '' ? '–' : `«${String(v)}»`);
 
-/** Verweis auf einen anderen Vorgang (Verknüpfungen, Duplikat) */
+/** Verweis auf einen anderen Vorgang (Verknüpfungen, Duplikat); gesperrte («refHidden») nur mit Nummer, ohne Link */
 function otherLink(e: Entry): EventPart['link'] {
   const m = e.meta ?? {};
+  const hidden = m.refHidden === true;
   if (typeof m.otherNumber === 'number') {
+    if (hidden) return { to: null, text: itemRef(m.otherNumber) };
     return { to: `/v/${m.otherNumber}`, text: `${itemRef(m.otherNumber)} «${String(m.otherTitle ?? '')}»` };
   }
   if (e.kind === 'status' && typeof m.duplicateOf === 'number') {
-    return { to: `/v/${m.duplicateOf}`, text: `Original ${itemRef(m.duplicateOf)}` };
+    return { to: hidden ? null : `/v/${m.duplicateOf}`, text: `Original ${itemRef(m.duplicateOf)}` };
   }
   return null;
 }

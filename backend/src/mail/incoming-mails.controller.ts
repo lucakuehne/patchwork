@@ -27,7 +27,7 @@ import type { UploadedFile } from '../items/items.service';
 import { StorageService } from '../storage/storage.service';
 import { MailFetcherService } from './mail-fetcher.service';
 import { MailSimulationService } from './mail-simulation.service';
-import { disposition, mailView, sendMailAttachment } from './mail-view';
+import { disposition, mailAttachmentPreview, mailView, sendMailAttachment } from './mail-view';
 
 /** Ohne den Ablageschlüssel, der nur intern gebraucht wird */
 const withoutKey = <T extends { storageKey: string }>({ storageKey: _, ...rest }: T) => rest;
@@ -116,13 +116,26 @@ export class IncomingMailsController {
       .pipe(res);
   }
 
+  /** Anhang der Mail; «inline=1» zeigt Bilder und PDF im Browser an (Vorschau). */
   @Get(':id/attachments/:index')
-  async attachment(@Param('id', ParseUUIDPipe) id: string, @Param('index', ParseIntPipe) index: number, @Res() res: Response) {
+  async attachment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('index', ParseIntPipe) index: number,
+    @Query('inline') inline: string | undefined,
+    @Res() res: Response,
+  ) {
     const [summary] = await this.summaries(eq(incomingMails.id, id), 1);
     if (!summary) throw new NotFoundException('Mail nicht gefunden');
-    if (!sendMailAttachment(await simpleParser(await this.read(summary.storageKey)), index, res)) {
+    if (!sendMailAttachment(await simpleParser(await this.read(summary.storageKey)), index, res, inline === '1')) {
       throw new NotFoundException('Anhang nicht gefunden');
     }
+  }
+
+  @Get(':id/attachments/:index/preview')
+  async attachmentPreview(@Param('id', ParseUUIDPipe) id: string, @Param('index', ParseIntPipe) index: number) {
+    const [summary] = await this.summaries(eq(incomingMails.id, id), 1);
+    if (!summary) throw new NotFoundException('Mail nicht gefunden');
+    return mailAttachmentPreview(await simpleParser(await this.read(summary.storageKey)), index);
   }
 
   /** Mail mit Fehler noch einmal verarbeiten. */

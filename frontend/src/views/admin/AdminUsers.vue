@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { api, errorMessage } from '../../api';
+import ItAreasCard from '../../components/ItAreasCard.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import PersonSearch from '../../components/PersonSearch.vue';
 import { formatDateTime, ROLE_LABELS } from '../../format';
@@ -310,6 +311,8 @@ async function removePassword() {
       </table>
       <div v-if="!visible.length" class="empty">Keine Benutzer</div>
     </div>
+
+    <ItAreasCard />
 
     <ModalDialog v-if="draft" :title="draft.id ? 'Benutzer bearbeiten' : 'Neuer Benutzer'" @close="draft = null">
       <div v-if="!draft.id && ldapEnabled" class="segmented">

@@ -1,5 +1,7 @@
+import { NotFoundException } from '@nestjs/common';
 import type { Response } from 'express';
 import { simpleParser, type ParsedMail } from 'mailparser';
+import { buildPreview, sendFile } from '../storage/attachment-preview';
 import { sanitizeMailHtml } from './mail-content';
 
 /** Dateiname für Content-Disposition: ASCII-Ersatz und UTF-8-Variante */
@@ -40,14 +42,33 @@ export async function mailView(raw: Buffer, attachmentUrl: (index: number) => st
   };
 }
 
-/** Anhang einer gespeicherten Mail ausliefern, immer als Download und in einer Sandbox. */
-export function sendMailAttachment(parsed: ParsedMail, index: number, res: Response): boolean {
+/** Anhang einer gespeicherten Mail als Datei (Name, Typ, Inhalt); null = nicht vorhanden */
+export function mailAttachmentFile(parsed: ParsedMail, index: number) {
   const attachment = parsed.attachments[index];
-  if (!attachment) return false;
-  res.setHeader('Content-Type', attachment.contentType || 'application/octet-stream');
-  res.setHeader('Content-Disposition', disposition(attachment.filename ?? `Anhang ${index + 1}`));
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-  res.send(attachment.content);
+  if (!attachment) return null;
+  return {
+    filename: attachment.filename ?? `Anhang ${index + 1}`,
+    contentType: attachment.contentType || 'application/octet-stream',
+    content: attachment.content,
+  };
+}
+
+/**
+ * Anhang einer gespeicherten Mail ausliefern: als Download in einer Sandbox, mit «inline» Bilder und PDF zur Anzeige
+ * (Vorschau, siehe attachmentHeaders).
+ */
+export function sendMailAttachment(parsed: ParsedMail, index: number, res: Response, inline = false): boolean {
+  const file = mailAttachmentFile(parsed, index);
+  if (!file) return false;
+  sendFile(res, file, inline);
   return true;
+}
+
+/** Vorschau eines Anhangs einer gespeicherten Mail (Text, Mail; Bilder und PDF zeigt der Browser) */
+export async function mailAttachmentPreview(parsed: ParsedMail, index: number) {
+  const file = mailAttachmentFile(parsed, index);
+  if (!file) throw new NotFoundException('Anhang nicht gefunden');
+  const preview = await buildPreview(file);
+  if (!preview) throw new NotFoundException('Für diesen Dateityp gibt es keine Vorschau');
+  return preview;
 }

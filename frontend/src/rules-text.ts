@@ -118,6 +118,7 @@ export interface RuleLookups {
   mailbox: (id: string) => string | undefined;
   user: (id: string) => string | undefined;
   template: (id: string) => string | undefined;
+  status?: (id: string) => string | undefined;
 }
 
 function describeCondition(c: RuleCondition, lookups: RuleLookups): string {
@@ -144,7 +145,10 @@ export function describeConditions(group: RuleGroup, lookups: RuleLookups, neste
 export function describeActions(a: RuleActions, lookups: RuleLookups): string {
   const parts: string[] = [];
   if (a.discard) parts.push('verwerfen');
-  if (a.type) parts.push(`Typ ${TYPE_LABELS[a.type]}`);
+  if (a.type) {
+    const status = a.statusId ? (lookups.status?.(a.statusId) ?? 'gelöscht') : null;
+    parts.push(`Typ ${TYPE_LABELS[a.type]}${status ? ` («${status}»)` : ''}`);
+  }
   if (a.priority) parts.push(`Priorität ${PRIORITY_LABELS[a.priority]}`);
   if (a.assigneeId) parts.push(`zuständig ${lookups.user(a.assigneeId) ?? '(unbekannt)'}`);
   if (a.checklistTemplateId) parts.push(`Checkliste «${lookups.template(a.checklistTemplateId) ?? 'gelöscht'}»`);

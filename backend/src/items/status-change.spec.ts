@@ -34,7 +34,7 @@ describe('closedAtAfter', () => {
 
 describe('newItemStatus', () => {
   it('ohne Wahl: «Neuer Vorgang erhält»', () => {
-    expect(newItemStatus(all, targets.task, 'task').id).toBe('task:open');
+    expect(newItemStatus(all, targets.task, 'task').id).toBe('task:backlog');
     expect(newItemStatus(all, targets.incident, 'incident', null).id).toBe('incident:new');
   });
 
@@ -62,15 +62,20 @@ describe('moveTarget', () => {
 });
 
 describe('typeChangeStatus', () => {
-  it('ohne Wahl: Vorschlag nach der Rolle des bisherigen Status', () => {
-    expect(typeChangeStatus(all, targets, byKey('incident', 'waiting'), 'task').id).toBe('task:in_progress');
-    expect(typeChangeStatus(all, targets, byKey('incident', 'new'), 'task').id).toBe('task:open');
+  it('Störung ohne Wahl: Vorschlag nach der Rolle des bisherigen Status', () => {
     expect(typeChangeStatus(all, targets, byKey('task', 'rejected'), 'incident').id).toBe('incident:resolved');
     expect(typeChangeStatus(all, targets, byKey('task', 'done'), 'incident', null).id).toBe('incident:resolved');
+    expect(typeChangeStatus(all, targets, byKey('task', 'planned'), 'incident').id).toBe('incident:in_progress');
   });
 
-  it('aus dem Eingang: «Neuer Vorgang erhält»', () => {
+  it('Störung aus dem Eingang: «Neuer Vorgang erhält»', () => {
     expect(typeChangeStatus(all, targets, undefined, 'incident').id).toBe('incident:new');
+  });
+
+  it('Aufgabe nur mit gewähltem Status (seit 23.10.2026), auch aus dem Eingang', () => {
+    expect(() => typeChangeStatus(all, targets, byKey('incident', 'new'), 'task')).toThrow(/Status für die Aufgabe wählen/);
+    expect(() => typeChangeStatus(all, targets, undefined, 'task', null)).toThrow(/Status für die Aufgabe wählen/);
+    expect(typeChangeStatus(all, targets, undefined, 'task', 'task:planned').id).toBe('task:planned');
   });
 
   it('übernimmt den gewählten Status des neuen Typs', () => {
@@ -97,5 +102,16 @@ describe('typeChangeStatus', () => {
     );
     expect(() => typeChangeStatus(all, targets, byKey('incident', 'resolved'), 'task', 'task:rejected')).toThrow(/nur über «Ablehnen»/);
     expect(() => typeChangeStatus(all, targets, undefined, 'task', 'task:rejected')).toThrow(/nur über «Ablehnen»/);
+  });
+
+  it('zur Aufgabe nie in den Ablehnen-Status, auch nicht aus dem Ablehnen-Status der Störung', () => {
+    const withReject: TargetsByType = { ...targets, incident: { ...targets.incident, reject: 'incident:abgelehnt' } };
+    const withRejectStatus = [
+      ...all,
+      { id: 'incident:abgelehnt', key: 'abgelehnt', label: 'Abgelehnt', type: 'incident' as const, closed: true, position: 4 },
+    ];
+    const rejected = withRejectStatus.at(-1);
+    expect(() => typeChangeStatus(withRejectStatus, withReject, rejected, 'task', 'task:rejected')).toThrow(/nur über «Ablehnen»/);
+    expect(typeChangeStatus(withRejectStatus, withReject, rejected, 'task', 'task:done').id).toBe('task:done');
   });
 });

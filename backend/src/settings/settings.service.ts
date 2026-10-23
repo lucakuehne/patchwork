@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
 import { settings } from '../db/schema';
+import type { AreaSettings } from './areas';
 
 export interface GeneralSettings {
   appName: string;
@@ -117,6 +118,7 @@ interface SettingsMap {
   microsoft: MicrosoftSettings;
   mailTemplates: MailTemplateOverrides;
   userNames: UserNamesSettings;
+  areas: AreaSettings;
 }
 
 const DEFAULTS: SettingsMap = {
@@ -133,6 +135,8 @@ const DEFAULTS: SettingsMap = {
   microsoft: { clientId: '' },
   mailTemplates: {},
   userNames: { directorySyncedAt: null },
+  // Ohne Einstellung sieht die IT alle Bereiche (Entscheid vom 23.10.2026)
+  areas: { it: ['inbox', 'incident', 'task'] },
 };
 
 @Injectable()

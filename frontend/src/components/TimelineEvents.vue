@@ -43,7 +43,9 @@ const times = computed(() =>
     <TimelineHead :name="author" :system="!!rule || !latest.author" :time="latest.createdAt" :time-title="times" />
     <ul class="changes">
       <li v-for="(part, i) in parts" :key="i">
-        {{ asListItem(part.text) }}<RouterLink v-if="part.link" class="other" :to="part.link.to">{{ part.link.text }}</RouterLink>
+        {{ asListItem(part.text)
+        }}<RouterLink v-if="part.link?.to" class="other" :to="part.link.to">{{ part.link.text }}</RouterLink
+        ><span v-else-if="part.link" class="other" title="Kein Zugriff auf diesen Bereich">{{ part.link.text }}</span>
       </li>
     </ul>
     <div v-if="rejection" class="reason prose" v-html="rejection" />

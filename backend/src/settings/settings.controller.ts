@@ -16,7 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { X509Certificate } from 'node:crypto';
 import { z } from 'zod';
-import { AdminOnly, Public } from '../auth/auth.decorators';
+import { AdminOnly, CurrentUser, Public } from '../auth/auth.decorators';
 import { AuthService } from '../auth/auth.service';
 import { LdapService } from '../auth/ldap.service';
 import { encryptSecret } from '../common/crypto';
@@ -28,6 +28,8 @@ import { isLive } from '../mail/test-delivery';
 import { PortalAccessService } from '../portal/portal-access.service';
 import { StorageService } from '../storage/storage.service';
 import { TlsService } from '../tls/tls.service';
+import type { User } from '../db/schema';
+import { AREAS, AreasService } from './areas';
 import { SettingsService, type LdapSettings } from './settings.service';
 
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
@@ -46,6 +48,13 @@ const portalSchema = z.object({
   access: scope,
   emails: addressList,
   groupDn: z.string().trim().max(500).default(''),
+});
+/** Bereiche der Rolle IT, in der Reihenfolge der Navigation */
+const areasSchema = z.object({
+  it: z
+    .array(z.enum(AREAS))
+    .min(1, 'Die IT muss mindestens einen Bereich sehen')
+    .transform((list) => AREAS.filter((a) => list.includes(a))),
 });
 const microsoftSchema = z.object({
   clientId: z
@@ -115,6 +124,7 @@ export class SettingsController {
     private readonly ldap: LdapService,
     private readonly tls: TlsService,
     private readonly portalAccess: PortalAccessService,
+    private readonly areas: AreasService,
   ) {}
 
   /** Angaben für Login-Seite und Kopfzeile. */
@@ -191,6 +201,26 @@ export class SettingsController {
   async updatePortal(@Body(new ZodPipe(portalSchema)) body: z.infer<typeof portalSchema>) {
     await this.settings.set('portal', body);
     this.portalAccess.forget();
+    return body;
+  }
+
+  /** Bereiche des angemeldeten Benutzers (Navigation, Weiterleitung beim Anmelden) */
+  @Get('areas')
+  async myAreas(@CurrentUser() user: User) {
+    return { areas: await this.areas.of(user) };
+  }
+
+  @AdminOnly()
+  @Get('settings/areas')
+  areaSettings() {
+    return this.settings.get('areas');
+  }
+
+  /** Welche Bereiche die Rolle IT sieht (mindestens einer). Gilt sofort, auch für angemeldete Benutzer. */
+  @AdminOnly()
+  @Put('settings/areas')
+  async updateAreas(@Body(new ZodPipe(areasSchema)) body: z.infer<typeof areasSchema>) {
+    await this.settings.set('areas', body);
     return body;
   }
 

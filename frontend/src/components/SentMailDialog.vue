@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
-import { formatDateTime, formatSize } from '../format';
+import { formatDateTime } from '../format';
 import { renderOwnMailHtml } from '../markdown';
 import { OUTGOING_STATUS } from '../outgoing';
 import type { OutgoingStatus, SentMail } from '../types';
+import MailAttachmentList from './MailAttachmentList.vue';
 import ModalDialog from './ModalDialog.vue';
 
 /**
@@ -74,12 +75,7 @@ watch(
       </dl>
       <div v-if="mail.html" class="prose mail-html mail-body own-mail" v-html="renderOwnMailHtml(mail.html)" />
       <pre v-else class="mail-body mail-text own-mail">{{ mail.text }}</pre>
-      <div v-if="mail.attachments.length" class="stack attachments">
-        <h3>Anhänge</h3>
-        <a v-for="a in mail.attachments" :key="a.index" :href="`${base}/attachments/${a.index}`">
-          {{ a.filename }} <span class="faint">({{ formatSize(a.size) }})</span>
-        </a>
-      </div>
+      <MailAttachmentList :attachments="mail.attachments" :path="(index) => `${base}/attachments/${index}`" />
     </template>
     <template #footer>
       <a v-if="mail" class="btn" :href="`${base}/eml`">Als .eml herunterladen</a>
@@ -118,9 +114,6 @@ watch(
   margin: 0;
   white-space: pre-wrap;
   font-family: var(--font);
-}
-.attachments {
-  gap: 4px;
 }
 .badge.sent {
   background: var(--success-soft);

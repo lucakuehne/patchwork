@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   ParseIntPipe,
   ParseUUIDPipe,
@@ -21,6 +22,7 @@ import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
 import { ItemsService, type UploadedFile } from '../items/items.service';
 import { RulesService } from '../rules/rules.service';
+import { buildPreview, nestedAttachment, sendFile } from '../storage/attachment-preview';
 import { sendAttachment } from '../storage/attachment-response';
 import { StorageService } from '../storage/storage.service';
 import { PortalService } from './portal.service';
@@ -109,5 +111,27 @@ export class PortalController {
   @Get('attachments/:id/inline')
   async inline(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User, @Res() res: Response) {
     sendAttachment(this.storage, await this.portal.attachment(user, id), res, true);
+  }
+
+  /** Vorschau eines eigenen Anhangs (wie in Patchwork) */
+  @Get('attachments/:id/preview')
+  async preview(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    const att = await this.portal.attachment(user, id);
+    const preview = await buildPreview({ ...att, content: await this.storage.read(att.storageKey) });
+    if (!preview) throw new NotFoundException('Für diesen Dateityp gibt es keine Vorschau');
+    return preview;
+  }
+
+  @Get('attachments/:id/mail-attachments/:index')
+  async nested(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('index', ParseIntPipe) index: number,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const att = await this.portal.attachment(user, id);
+    const file = await nestedAttachment({ ...att, content: await this.storage.read(att.storageKey) }, index);
+    if (!file) throw new NotFoundException('Anhang nicht gefunden');
+    sendFile(res, file, false);
   }
 }

@@ -10,7 +10,9 @@ export class ZodPipe<T extends z.ZodType> implements PipeTransform {
     if (!result.success) {
       const first = result.error.issues[0];
       const path = first?.path.join('.');
-      throw new BadRequestException(path ? `Ungültige Eingabe bei «${path}»: ${first.message}` : 'Ungültige Eingabe');
+      if (path) throw new BadRequestException(`Ungültige Eingabe bei «${path}»: ${first.message}`);
+      // Eigene Prüfungen über mehrere Felder (refine/superRefine ohne Pfad) haben eine verständliche Meldung
+      throw new BadRequestException(first?.code === 'custom' ? first.message : 'Ungültige Eingabe');
     }
     return result.data;
   }

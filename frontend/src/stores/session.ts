@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { api } from '../api';
 import { rejectAllowed, transitionAllowed } from '../status-flow';
 import type {
+  Area,
   Channel,
   ChannelDefaults,
   Counts,
@@ -15,6 +16,9 @@ import type {
   StatusTargetsByType,
   User,
 } from '../types';
+
+/** Startseite je Bereich */
+export const AREA_ROUTES: Record<Area, string> = { inbox: 'inbox', incident: 'incidents', task: 'board' };
 
 export const useSession = defineStore('session', () => {
   const info = ref<PublicInfo | null>(null);
@@ -31,8 +35,14 @@ export const useSession = defineStore('session', () => {
   const channelDefaults = ref<ChannelDefaults>({ incident: null, task: null });
   const staff = ref<User[]>([]);
   const mailboxes = ref<MailboxOption[]>([]);
+  /** Bereiche des Benutzers (Admins alle, IT laut Verwaltung → Benutzer) */
+  const areas = ref<Area[]>(['inbox', 'incident', 'task']);
 
   const isAdmin = computed(() => user.value?.role === 'admin');
+  /** Sieht der Benutzer den Bereich eines Typs (null = Eingang)? */
+  const canSee = (type: ItemType | null) => areas.value.includes(type ?? 'inbox');
+  /** Erster sichtbarer Bereich: Ziel nach dem Anmelden und bei gesperrten Ansichten */
+  const homeRoute = computed(() => AREA_ROUTES[areas.value[0] ?? 'inbox']);
   /** Admin und IT nutzen die Oberfläche, Standard-Benutzer das Portal */
   const isStaff = computed(() => user.value?.role === 'admin' || user.value?.role === 'it');
   const appName = computed(() => info.value?.appName ?? 'Patchwork');
@@ -117,7 +127,11 @@ export const useSession = defineStore('session', () => {
 
   /** Stammdaten nach dem Login. */
   async function loadAppData() {
-    await Promise.all([refreshCounts(), loadStatuses(), loadChannels(), loadStaff(), loadMailboxes()]);
+    await Promise.all([refreshCounts(), loadStatuses(), loadChannels(), loadStaff(), loadMailboxes(), loadAreas()]);
+  }
+
+  async function loadAreas() {
+    areas.value = (await api.get<{ areas: Area[] }>('/areas')).areas;
   }
 
   async function loadChannels() {
@@ -191,6 +205,10 @@ export const useSession = defineStore('session', () => {
     channelDefaults,
     staff,
     mailboxes,
+    areas,
+    canSee,
+    homeRoute,
+    loadAreas,
     isAdmin,
     isStaff,
     appName,

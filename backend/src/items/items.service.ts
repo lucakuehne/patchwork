@@ -39,8 +39,10 @@ import { duplicateRedirect } from './duplicates';
 import { imageRefs, replaceImages, TEXT_IMAGE_TYPES } from './inline-images';
 import { mentionedIds } from './mentions';
 import { noteEditRefusal } from './note-rules';
+import { hideReferences, referencedNumbers } from './references';
 import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
 import type { RuleRun } from '../rules/rules.service';
+import { areaCondition, AreasService, type Area } from '../settings/areas';
 import { assigneeUser, reporterUser, searchCondition, summaryColumns, viewQuery, type View } from './item-views';
 
 export interface UploadedFile {
@@ -71,15 +73,25 @@ export class ItemsService {
     private readonly mailboxes: MailboxesService,
     private readonly notifications: NotificationsService,
     private readonly storage: StorageService,
+    private readonly areas: AreasService,
   ) {}
 
   // ---------------------------------------------------------------- Lesen
 
-  async list(view: View, opts: { userId: string; mine: boolean; q: string; limit: number; offset: number }) {
+  /** «areas»: nur Vorgänge dieser Bereiche (Bereiche je Rolle), null = alle */
+  async list(
+    view: View,
+    opts: { userId: string; mine: boolean; q: string; limit: number; offset: number; areas: Area[] | null },
+  ) {
     const { where, orderBy } = viewQuery(view);
     const search = searchCondition(opts.q);
     if (view === 'search' && !search) return { items: [], total: 0 };
-    const condition = and(where, search, opts.mine ? eq(items.assigneeId, opts.userId) : undefined);
+    const condition = and(
+      where,
+      search,
+      opts.mine ? eq(items.assigneeId, opts.userId) : undefined,
+      opts.areas ? areaCondition(opts.areas) : undefined,
+    );
 
     const paged = view !== 'board' && view !== 'incidents' && view !== 'inbox';
     const base = this.db
@@ -104,8 +116,8 @@ export class ItemsService {
     return { items: rows.map((r) => this.toSummary(r)), total };
   }
 
-  /** Anzahl offener Vorgänge je Tab (Status nicht abgeschlossen). */
-  async counts() {
+  /** Anzahl offener Vorgänge je Tab (Status nicht abgeschlossen); Bereiche ausserhalb von «areas» zählen 0. */
+  async counts(areas: Area[] | null = null) {
     const [row] = await this.db
       .select({
         inbox: sql<number>`count(*) filter (where ${items.type} is null and not ${items.discarded})::int`,
@@ -114,7 +126,13 @@ export class ItemsService {
       })
       .from(items)
       .leftJoin(statuses, eq(statuses.id, items.statusId));
-    return row ?? { inbox: 0, incidents: 0, tasks: 0 };
+    const counts = row ?? { inbox: 0, incidents: 0, tasks: 0 };
+    if (!areas) return counts;
+    return {
+      inbox: areas.includes('inbox') ? counts.inbox : 0,
+      incidents: areas.includes('incident') ? counts.incidents : 0,
+      tasks: areas.includes('task') ? counts.tasks : 0,
+    };
   }
 
   async detail(number: number, viewer: User) {
@@ -213,6 +231,7 @@ export class ItemsService {
     });
     const originalByEntry = new Map(mailRows.filter((m) => m.entryId).map((m) => [m.entryId!, m.messageId]));
     const originalOfItem = item.source === 'mail' ? (mailRows.find((m) => !m.entryId)?.messageId ?? null) : null;
+    const hidden = await this.hiddenReferences(viewer, entryRows.map((r) => r.entry.meta));
 
     return {
       id: item.id,
@@ -246,7 +265,7 @@ export class ItemsService {
         kind: entry.kind,
         body: entry.body,
         bodyHtml: entry.bodyHtml,
-        meta: entry.meta,
+        meta: hideReferences(entry.meta, hidden),
         createdAt: entry.createdAt,
         editedAt: entry.editedAt,
         author: author && toPublicUser(author),
@@ -268,6 +287,15 @@ export class ItemsService {
         error: r.error,
       })),
     };
+  }
+
+  /** Nummern der Vorgänge, auf die der Verlauf verweist und die der Betrachter nicht sehen darf (Bereiche je Rolle) */
+  private async hiddenReferences(viewer: User, metas: Entry['meta'][]): Promise<Set<number>> {
+    const numbers = referencedNumbers(metas);
+    const limit = numbers.length > 0 ? await this.areas.limit(viewer) : null;
+    if (!limit) return new Set();
+    const rows = await this.db.select({ number: items.number, type: items.type }).from(items).where(inArray(items.number, numbers));
+    return new Set(rows.filter((r) => !limit.includes(r.type ?? 'inbox')).map((r) => r.number));
   }
 
   /** Namen der Benutzer zu Mail-Adressen (für die Empfänger im Verlauf). */
@@ -737,6 +765,7 @@ export class ItemsService {
     });
     await rules?.afterCommit();
     if (!rules?.suppressConfirmation && !rules?.discarded) await this.notifications.confirmation(item);
+    await rules?.afterConfirmation();
     return item;
   }
 
@@ -766,6 +795,7 @@ export class ItemsService {
       updated = item;
     });
     await rules?.afterCommit();
+    await rules?.afterConfirmation();
     if (updated) await this.notifications.inboundReply(updated, reporter, text);
   }
 
@@ -868,9 +898,13 @@ export class ItemsService {
         .innerJoin(items, eq(items.id, attachments.itemId))
         .leftJoin(entries, eq(entries.id, attachments.entryId))
         .where(inArray(attachments.id, attachmentIds));
+      const areas = await this.areas.limit(actor);
       for (const { att, item, entryKind, entryMeta } of rows) {
         if (att.itemId === itemId && att.entryId === entryId) kept.add(att.id);
-        else if (TEXT_IMAGE_TYPES.has(att.contentType) && this.canSeeAttachment(actor, item, att, entryKind, entryMeta)) {
+        else if (
+          TEXT_IMAGE_TYPES.has(att.contentType) &&
+          this.canSeeAttachment(actor, item, att, entryKind, entryMeta, areas)
+        ) {
           sources.set(`attachment:${att.id}`, att);
         }
       }
@@ -900,15 +934,19 @@ export class ItemsService {
     });
   }
 
-  /** IT sieht alle Anhänge, ein Melder nur die öffentlichen seiner eigenen Vorgänge (wie im Portal). */
+  /**
+   * IT sieht alle Anhänge in ihren Bereichen («areas», null = alle), ein Melder nur die öffentlichen seiner eigenen
+   * Vorgänge (wie im Portal).
+   */
   private canSeeAttachment(
     actor: User,
     item: Item,
     att: Attachment,
     entryKind: Entry['kind'] | null,
     entryMeta: Entry['meta'] | null,
+    areas: Area[] | null,
   ): boolean {
-    if (actor.role === 'admin' || actor.role === 'it') return true;
+    if (actor.role === 'admin' || actor.role === 'it') return !areas || areas.includes(item.type ?? 'inbox');
     return item.reporterId === actor.id && !item.discarded && visibleInPortal(att.entryId, entryKind, entryMeta);
   }
 

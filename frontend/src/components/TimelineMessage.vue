@@ -37,7 +37,10 @@ const label = computed(() => {
   }
   if (meta.value.automated) return 'Öffentlich · automatische Mail';
   if (meta.value.source === 'merge') {
-    return `Öffentlich · zusammengeführt aus ${itemRef(Number(meta.value.mergedFrom))} «${String(meta.value.mergedTitle ?? '')}»`;
+    const from = itemRef(Number(meta.value.mergedFrom));
+    // Gesperrter Vorgang (Bereiche je Rolle): nur die Nummer
+    if (meta.value.refHidden) return `Öffentlich · zusammengeführt aus ${from}`;
+    return `Öffentlich · zusammengeführt aus ${from} «${String(meta.value.mergedTitle ?? '')}»`;
   }
   if (meta.value.source === 'portal') return 'Öffentlich · im Portal';
   return fromMail.value ? 'Öffentlich · per Mail' : 'Öffentlich';
@@ -139,7 +142,7 @@ async function save() {
     </div>
     <template v-else>
       <div class="prose msg-body" :class="{ 'mail-html': !!entry.bodyHtml }" v-html="html" />
-      <AttachmentList :attachments="entry.attachments" :text="entry.body" />
+      <AttachmentList :attachments="entry.attachments" :text="entry.body" :html="entry.bodyHtml" />
     </template>
     <OriginalMailDialog
       v-if="showOriginal && entry.originalMessageId"

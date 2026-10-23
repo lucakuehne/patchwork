@@ -1,10 +1,11 @@
 import type { Response } from 'express';
 import type { Attachment } from '../db/schema';
+import { attachmentHeaders } from './attachment-preview';
 import type { StorageService } from './storage.service';
 
 /**
- * Liefert einen Anhang aus. Inline nur für Bilder (Vorschau, eingebettete Mail-Bilder),
- * alle anderen Typen werden heruntergeladen. Inhalte laufen in einer Sandbox.
+ * Liefert einen Anhang aus. Inline nur für Bilder (Vorschau, eingebettete Mail-Bilder) und PDF (Vorschau),
+ * alle anderen Typen werden heruntergeladen (siehe attachmentHeaders).
  */
 export function sendAttachment(
   storage: StorageService,
@@ -12,15 +13,7 @@ export function sendAttachment(
   res: Response,
   inline: boolean,
 ) {
-  const isImage = /^image\/(png|jpe?g|gif|webp|bmp)$/i.test(att.contentType);
-  const disposition = inline && isImage ? 'inline' : 'attachment';
-  res.setHeader('Content-Type', isImage || !inline ? att.contentType : 'application/octet-stream');
-  res.setHeader(
-    'Content-Disposition',
-    `${disposition}; filename="${att.filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(att.filename)}`,
-  );
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  attachmentHeaders(res, att, inline);
   res.setHeader('Cache-Control', 'private, max-age=86400');
   storage
     .stream(att.storageKey)

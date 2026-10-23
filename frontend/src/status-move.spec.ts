@@ -39,9 +39,16 @@ describe('typeChangeChoices', () => {
     expect(ids(typeChangeChoices(incident, targets, { id: 'doing', type: 'task' }, 'incident'))).toEqual(ids(incident));
   });
 
-  it('den Ablehnen-Status nur aus dem Ablehnen-Status des bisherigen Typs', () => {
+  it('zur Störung den Ablehnen-Status nur aus dem Ablehnen-Status der Aufgaben', () => {
+    const withReject: StatusTargetsByType = { ...targets, incident: { ...targets.incident, reject: 'storniert' } };
+    const incidents = [...incident, s('storniert')];
+    expect(ids(typeChangeChoices(incidents, withReject, { id: 'abgelehnt', type: 'task' }, 'incident'))).toContain('storniert');
+    expect(ids(typeChangeChoices(incidents, withReject, { id: 'erledigt', type: 'task' }, 'incident'))).not.toContain('storniert');
+  });
+
+  it('zur Aufgabe nie den Ablehnen-Status, auch aus dem Eingang', () => {
     const rejectedIncident: StatusTargetsByType = { ...targets, incident: { ...targets.incident, reject: 'storniert' } };
-    expect(ids(typeChangeChoices(task, rejectedIncident, { id: 'storniert', type: 'incident' }, 'task'))).toEqual(ids(task));
-    expect(ids(typeChangeChoices(task, rejectedIncident, { id: 'geloest', type: 'incident' }, 'task'))).not.toContain('abgelehnt');
+    expect(ids(typeChangeChoices(task, rejectedIncident, { id: 'storniert', type: 'incident' }, 'task'))).not.toContain('abgelehnt');
+    expect(ids(typeChangeChoices(task, targets, null, 'task'))).toEqual(['backlog', 'geplant', 'doing', 'erledigt']);
   });
 });

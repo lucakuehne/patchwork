@@ -112,6 +112,37 @@ export function htmlMail(bodyHtml: string, footer: string): string {
 }
 
 /** Bereinigt HTML aus eingehenden Mails für die Anzeige. Externe Bilder werden entfernt (Tracking). */
+/** Marken eingebetteter Bilder im Text einer Mail: Outlook «[cid:…]», Gmail «[image: Name]» (klein geschrieben) */
+export function inlineImageMarkers(text: string): { cids: Set<string>; names: Set<string> } {
+  return {
+    cids: new Set([...text.matchAll(/\[cid:([^\]\s]+)\]/gi)].map((m) => m[1]!.toLowerCase())),
+    names: new Set([...text.matchAll(/\[image:\s*([^\]\n]+?)\s*\]/gi)].map((m) => m[1]!.toLowerCase())),
+  };
+}
+
+/** Steht das eingebettete Bild (Content-ID, Dateiname) mit einer Marke im Text? */
+export function hasImageMarker(markers: ReturnType<typeof inlineImageMarkers>, contentId: string, filename: string | null): boolean {
+  return markers.cids.has(contentId.toLowerCase()) || (!!filename && markers.names.has(filename.toLowerCase()));
+}
+
+/**
+ * Ersetzt die Marken eingebetteter Bilder durch Bilder im Text («![Name](attachment:<id>)»), damit sie an ihrer Stelle
+ * erscheinen. Bilder ohne Marke bleiben Anhänge.
+ */
+export function placeInlineImages(text: string, images: { id: string; filename: string; contentId: string | null }[]): string {
+  const markdown = (image: { id: string; filename: string }) => `![${image.filename.replace(/[[\]\\]/g, '')}](attachment:${image.id})`;
+  const withCid = images.filter((i) => i.contentId);
+  return text
+    .replace(/\[cid:([^\]\s]+)\]/gi, (all, cid: string) => {
+      const image = withCid.find((i) => i.contentId!.toLowerCase() === cid.toLowerCase());
+      return image ? markdown(image) : all;
+    })
+    .replace(/\[image:\s*([^\]\n]+?)\s*\]/gi, (all, name: string) => {
+      const image = withCid.find((i) => i.filename.toLowerCase() === name.toLowerCase());
+      return image ? markdown(image) : all;
+    });
+}
+
 export function sanitizeMailHtml(html: string, inlineUrls: Map<string, string>): string {
   return sanitizeHtml(html, {
     allowedTags: [
@@ -144,14 +175,16 @@ export function sanitizeMailHtml(html: string, inlineUrls: Map<string, string>):
         const src = attribs.src ?? '';
         if (src.toLowerCase().startsWith('cid:')) {
           const url = inlineUrls.get(src.slice(4).replace(/^<|>$/g, ''));
-          return url ? { tagName, attribs: { ...attribs, src: url } } : { tagName: 'span', attribs: {} };
+          // Ohne passenden Anhang: Bild ohne Adresse, fällt unten ganz weg
+          return url ? { tagName, attribs: { ...attribs, src: url } } : { tagName, attribs: {} };
         }
         if (/^data:image\/(png|jpe?g|gif|webp);/i.test(src)) return { tagName, attribs };
-        return { tagName: 'span', attribs: {} };
+        return { tagName, attribs: {} };
       },
     },
     // img-src wird oben in transformTags geprüft (nur eingebettete Bilder und data:-Bilder)
     allowedSchemesAppliedToAttributes: ['href', 'cite'],
-    exclusiveFilter: (frame) => frame.tag === 'span' && !frame.text.trim() && Object.keys(frame.attribs).length === 0,
+    // Nur entfernte Bilder (ohne Adresse) fallen weg; ein leeres <span> um ein Bild (bei Outlook häufig) bleibt samt Bild
+    exclusiveFilter: (frame) => frame.tag === 'img' && !frame.attribs.src,
   });
 }

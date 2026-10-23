@@ -55,6 +55,8 @@ interface Draft {
   scheduleDays: number;
   conditions: RuleGroup;
   type: ItemType | '';
+  /** Status bei «Typ: Aufgabe» */
+  statusId: string;
   priority: Priority | '';
   assigneeId: string;
   checklistTemplateId: string;
@@ -73,6 +75,7 @@ const lookups = computed<RuleLookups>(() => ({
   mailbox: (id) => mailboxes.value.find((m) => m.id === id)?.name,
   user: (id) => session.staff.find((u) => u.id === id)?.name,
   template: (id) => templates.value.find((t) => t.id === id)?.name,
+  status: (id) => session.statuses.find((s) => s.id === id)?.label,
 }));
 
 async function load() {
@@ -146,6 +149,7 @@ function create() {
     scheduleDays: 7,
     conditions: { kind: 'group', op: 'and', children: [newCondition()] },
     type: '',
+    statusId: '',
     priority: '',
     assigneeId: '',
     checklistTemplateId: '',
@@ -171,6 +175,8 @@ function edit(rule: Rule) {
     // Tiefe Kopie (structuredClone geht nicht mit reaktiven Objekten)
     conditions: JSON.parse(JSON.stringify(rule.conditions)) as RuleGroup,
     type: a.type ?? '',
+    // Nur ein noch vorhandener Status der Aufgaben ausser dem Ablehnen-Status, sonst neu wählen
+    statusId: taskStatuses.value.some((s) => s.id === a.statusId) ? a.statusId! : '',
     priority: a.priority ?? '',
     assigneeId: a.assigneeId ?? '',
     checklistTemplateId: a.checklistTemplateId ?? '',
@@ -199,6 +205,8 @@ const scheduleOf = (d: Draft) => ({ statusIds: d.scheduleStatusIds, waiting: d.s
 const timedWaiting = computed(() => !!draft.value && timed.value && waitingOnly(scheduleOf(draft.value)));
 /** Zur Wahl: offene Status je Typ */
 const scheduleGroups = computed(() => scheduleChoices(session.statuses));
+/** «Typ: Aufgabe»: alle Status der Aufgaben ausser dem Ablehnen-Status */
+const taskStatuses = computed(() => session.statusesOf('task').filter((s) => s.id !== session.targetId('task', 'reject')));
 /** Status «Wartet auf den Melder» der Typen, als Hinweis beim Eintrag */
 const waitingStatuses = computed(() =>
   (['incident', 'task'] as ItemType[]).flatMap((type) => {
@@ -230,6 +238,7 @@ function actionsOf(d: Draft): RuleActions {
     return a;
   }
   if (d.type) a.type = d.type;
+  if (d.type === 'task' && d.statusId) a.statusId = d.statusId;
   if (d.checklistTemplateId) a.checklistTemplateId = d.checklistTemplateId;
   if (d.suppressConfirmation) a.suppressConfirmation = true;
   if (d.discard) a.discard = true;
@@ -431,6 +440,13 @@ async function runPreview() {
               <option value="">– nicht ändern –</option>
               <option v-for="(label, key) in TYPE_LABELS" :key="key" :value="key">{{ label }}</option>
             </select>
+            <template v-if="draft.type === 'task'">
+              <label for="rule-status">Status der Aufgabe</label>
+              <select id="rule-status" v-model="draft.statusId" class="select" :disabled="draft.discard">
+                <option value="" disabled>– Status wählen –</option>
+                <option v-for="s in taskStatuses" :key="s.id" :value="s.id">{{ s.label }}{{ s.closed ? ' (abgeschlossen)' : '' }}</option>
+              </select>
+            </template>
           </template>
           <label for="rule-priority">Priorität</label>
           <select id="rule-priority" v-model="draft.priority" class="select" :disabled="draft.discard">

@@ -226,12 +226,40 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - **Mail bei Fälligkeit:** am Fälligkeitstag ab 07:00 einmal an den Zuständigen (nicht bei Stummschaltung), nur bei offenen Aufgaben. Wird das Datum später auf heute oder früher gesetzt, kommt die Mail innert 15 Minuten. Ohne Zuständigen keine Mail. Vorlage «Fällig» unter Verwaltung → Mail-Vorlagen (IT).
 - **Checklisten im Verlauf** (ersetzt «Kein Timeline-Eintrag pro Haken»): Abhaken und Zurücknehmen eines Punkts stehen im Verlauf, z.B. «Punkt «AD-Konto anlegen» abgehakt». Mehrere Haken derselben Person innert 2 Minuten erscheinen als eine Karte; abgehakt und gleich wieder zurückgenommen fällt weg. Hinzufügen, Umbenennen und Löschen erscheinen nicht.
 - **Antworten auf Aufgaben** sind im Antwortfeld standardmässig «Intern». Bei Störungen und im Eingang bleibt «Öffentlich» die Vorgabe.
-- **Fortschritt der Checklisten** als schmaler Balken mit kleiner Zahl daneben («3/5»), auf den Board-Karten und in den Listen, statt «☑ 3/5».
+- **Fortschritt der Checklisten** als schmaler Balken mit kleiner Zahl daneben («3/5»), auf den Board-Karten und in den Listen, statt «☑ 3/5». Auf den Board-Karten füllt der Balken die ganze Breite der Karte (gewünscht am 23.10.2026).
 - **Aufgabe in einer Spalte erstellen:** «+» im Kopf jeder offenen Spalte des Boards öffnet «Neue Aufgabe» mit diesem Status vorgewählt. Abgeschlossene Spalten haben kein «+».
 - **Board-Karte** (bestätigt am 21.10.2026): ein kleines Text-Symbol, wenn die Aufgabe eine Beschreibung hat, beim Darüberfahren die ersten Zeilen als Text. Dazu eine Sprechblase mit der Anzahl Kommentare: öffentliche Antworten (auch die des Melders) und interne Notizen, ohne Änderungen, automatische Mails und Abwesenheitsnotizen; bei 0 keine.
 - **Nach dem Erstellen einer Aufgabe** (bestätigt am 21.10.2026) bleibt man, wo man ist (z.B. auf dem Board, die Karte erscheint in ihrer Spalte), mit der Meldung «PW-123 erstellt» und «Öffnen». Gilt für alle neuen Aufgaben, auch über «+ Neu». Neue Störungen öffnen wie bisher.
 - **Erwähnen** (bestätigt am 21.10.2026): Mit «@» im Antwortfeld (öffentliche Antworten und interne Notizen, auch beim Bearbeiten einer Notiz) öffnet sich eine Auswahl der IT-Mitarbeitenden und Admins. Die Erwähnung erscheint in Patchwork hervorgehoben. Beim Melder (Mail und Portal) steht sie als gewöhnlicher Text «@Vorname Nachname». Die Erwähnten erhalten eine Mail «Erwähnt» mit dem Text und dem Link (Vorlage unter Verwaltung → Mail-Vorlagen, IT), nicht an sich selbst; beim Bearbeiten einer Notiz nur neu hinzugekommene Erwähnte.
 - **Stummschalten ausgeblendet** (bestätigt am 21.10.2026): Die Option «Benachrichtigungen für mich stummschalten» ist vorläufig ausgeblendet. Bestehende Stummschaltungen bleiben gespeichert, wirken aber nicht mehr: Alle erhalten wieder ihre Mails. Wird die Option später wieder eingeblendet, gelten sie wieder.
+
+## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
+
+- **Bereiche je Rolle:** Unter Verwaltung legt man für die Rolle IT fest, welche Bereiche (Eingang, Störungen, Aufgaben) sie sieht. Admins sehen immer alles. Standard-Benutzer nutzen wie bisher nur das Portal.
+  - «Nicht sehen» heisst kein Zugriff: Der Bereich fehlt in Navigation und Zählern, Vorgänge dieses Bereichs (Eingang = ohne Typ) sind gesperrt, auch per Link, und fehlen in Suche und Verknüpfungen.
+  - IT-Mitarbeitende ohne Zugriff bleiben bei solchen Vorgängen als Zuständige wählbar und erwähnbar, öffnen können sie sie aber nicht, und sie erhalten dazu keine Mails (Zugewiesen, Neue Antwort, Fällig, Erwähnt …), auch nicht als Beteiligte (CC).
+  - Details (bestätigt am 23.10.2026):
+    - Die Einstellung steht unter Verwaltung → Benutzer als Karte «Bereiche der IT». Mindestens ein Bereich bleibt gewählt; nach dem Anmelden landet die IT im ersten sichtbaren Bereich.
+    - Die IT kann einen Vorgang nicht in einen Bereich verschieben, den sie nicht sieht: Typen ohne Zugriff stehen beim Erfassen und beim Typwechsel nicht zur Wahl.
+    - Verweise auf gesperrte Vorgänge (Verknüpfungen, Duplikate im Verlauf) zeigen nur die Nummer, ohne Titel und nicht anklickbar.
+    - Antwortet jemand aus der IT per Mail auf einen Vorgang ohne Zugriff (z.B. auf eine alte Benachrichtigung), wird die Mail wie bisher als interne Notiz angenommen.
+- **Status beim Typ «Aufgabe»:** Wird ein Vorgang von Hand zur Aufgabe (aus dem Eingang oder von einer Störung umklassiert), öffnet sich immer ein Dialog mit den Status der Aufgaben (ohne Ablehnen-Status) ohne Vorauswahl; erst nach der Wahl wird der Typ gesetzt. Bei Störungen bleibt es wie bisher.
+  - Regeln mit der Aktion «Typ: Aufgabe» wählen den Status in der Regel (Pflicht), alle Status der Aufgaben ausser dem Ablehnen-Status (bestätigt am 23.10.2026). Bestehende Regeln erhalten den Start-Status der Aufgaben (Backlog). Setzt eine Regel einen abgeschlossenen Status, erhält der Melder nach der Eingangsbestätigung auch die Mail «Erledigt». Wird der Status einer Regel gelöscht, erhält die Regel den Ersatzstatus bzw. den Start-Status der Aufgaben.
+- **Status «Offen» entfällt** (ersetzt die Entscheidung vom 21.10.2026): Aufgaben in «Offen» kommen nach «Backlog», «Backlog» wird wieder Start-Status, «Offen» wird gelöscht, auch aus den Standardstatus neuer Installationen.
+- Umgesetzt am 23.10.2026, technisch:
+  - Migration 0030: Aufgaben, Ziele, Pfeile und zeitgesteuerte Regeln von «Offen» gehen auf das Backlog (fehlt es, auf den ersten übrigen offenen Status ausser dem Wartet-Status), dann wird «Offen» gelöscht. Bestehende Regeln mit «Typ: Aufgabe» erhalten den Start-Status der Aufgaben.
+  - Bereiche: Einstellung `areas` (`{ it: [...] }`). Der AuthGuard prüft jede Route mit `:number`; Anhänge, Notizen und Checklisten (über ihre ID), Listen, Zähler, Suche, Verknüpfungen und aus anderen Vorgängen kopierte Bilder prüfen selbst. Mails an die IT laufen über eine Stelle, die ohne Zugriff nichts versendet; Beteiligte ohne Zugriff fallen aus dem CC.
+  - Gesperrte Vorgänge antworten mit 403 «Kein Zugriff auf den Bereich …», die Oberfläche zeigt «PW-… ist für Sie gesperrt».
+
+## Eingebettete Bilder und Vorschau von Anhängen (bestätigt am 23.10.2026)
+
+- **Eingebettete Bilder aus Mails** erscheinen im Text, nicht als Anhang:
+  - Ursprüngliche Meldung (HTML): Bilder, die im HTML stehen, erscheinen nicht noch einmal in der Anhangsliste. Behoben: Bilder in einem leeren `<span>` (bei Outlook häufig) gingen beim Bereinigen verloren und blieben nur als Anhang.
+  - Antworten und Notizen per Mail (nur Text): eingebettete Bilder erscheinen an der Stelle, an die der Absender sie gesetzt hat (Marke `[cid:…]` im Text der Mail). Eingebettete Bilder, die nur im zitierten Verlauf stehen (z.B. aus früheren Mails), werden nicht mehr als Anhang übernommen; die Originalmail enthält sie weiterhin. Echte Anhänge und eingebettete Bilder ohne Marke bleiben Anhänge.
+- **Vorschau von Anhängen** in einem Fenster statt Herunterladen, mit Knopf «Herunterladen» (ohne Blättern):
+  - Bilder (PNG, JPEG, GIF, WebP, BMP, SVG als Bild), Text (text/*, .txt, .log, .csv, .json, .xml, .md, .ini, .cfg, .conf, .yaml), PDF mit dem PDF-Betrachter des Browsers, Mails (.eml und Outlook-.msg: Kopf, Text bzw. bereinigtes HTML, Liste ihrer Anhänge).
+  - Übrige Typen (Word, Excel, ZIP …) werden wie bisher heruntergeladen.
+  - Überall, wo Anhänge stehen: Vorgang (Meldung, Antworten, Notizen), Portal und die Fenster Originalmail, Mail ansehen, Ein- und Ausgehende Mails.
 
 ## Bilder im Text (bestätigt am 20.10.2026)
 

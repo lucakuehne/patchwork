@@ -7,7 +7,7 @@ import { InjectDb, type Db } from '../db/db.module';
 import { items, outgoingMails, type OutgoingMailRow } from '../db/schema';
 import { StorageService } from '../storage/storage.service';
 import { MailSenderService } from './mail-sender.service';
-import { disposition, mailView, sendMailAttachment } from './mail-view';
+import { disposition, mailAttachmentPreview, mailView, sendMailAttachment } from './mail-view';
 
 const STATUSES = ['queued', 'sent', 'partial', 'held', 'failed'] as const;
 type Status = (typeof STATUSES)[number];
@@ -57,16 +57,24 @@ export class OutgoingMailsController {
       .pipe(res);
   }
 
+  /** Anhang der Mail; «inline=1» zeigt Bilder und PDF im Browser an (Vorschau). */
   @Get(':id/attachments/:index')
   async attachment(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('index', ParseIntPipe) index: number,
+    @Query('inline') inline: string | undefined,
     @Res() res: Response,
   ) {
     const { mail } = await this.get(id);
-    if (!sendMailAttachment(await simpleParser(await this.read(mail)), index, res)) {
+    if (!sendMailAttachment(await simpleParser(await this.read(mail)), index, res, inline === '1')) {
       throw new NotFoundException('Anhang nicht gefunden');
     }
+  }
+
+  @Get(':id/attachments/:index/preview')
+  async attachmentPreview(@Param('id', ParseUUIDPipe) id: string, @Param('index', ParseIntPipe) index: number) {
+    const { mail } = await this.get(id);
+    return mailAttachmentPreview(await simpleParser(await this.read(mail)), index);
   }
 
   /** Fehlgeschlagene Mail noch einmal versenden. */

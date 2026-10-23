@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
+import { AreasService } from '../settings/areas';
 import { LINK_ROLES, LinksService } from './links.service';
 
 const linkSchema = z.object({
@@ -12,7 +13,10 @@ const linkSchema = z.object({
 
 @Controller()
 export class LinksController {
-  constructor(private readonly links: LinksService) {}
+  constructor(
+    private readonly links: LinksService,
+    private readonly areas: AreasService,
+  ) {}
 
   @Post('items/:number/links')
   @HttpCode(204)
@@ -21,6 +25,8 @@ export class LinksController {
     @Body(new ZodPipe(linkSchema)) body: z.infer<typeof linkSchema>,
     @CurrentUser() user: User,
   ) {
+    // Der eigene Vorgang ist schon geprüft (AuthGuard), der andere muss ebenfalls in den Bereichen des Benutzers liegen
+    await this.areas.assertNumber(user, body.otherNumber);
     await this.links.add(user.id, number, body.role, body.otherNumber);
   }
 

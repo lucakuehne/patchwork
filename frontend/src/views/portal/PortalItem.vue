@@ -123,7 +123,7 @@ async function send() {
         </div>
         <div v-if="e.kind === 'rejected'" class="faint small">Begründung:</div>
         <div class="prose" :class="{ 'mail-html': !!e.bodyHtml }" v-html="entryHtml(e)" />
-        <AttachmentList :attachments="e.attachments" base="/api/portal/attachments" :text="e.bodyHtml ? '' : e.body" />
+        <AttachmentList :attachments="e.attachments" base="/api/portal/attachments" :text="e.body" :html="e.bodyHtml" />
       </div>
     </div>
 
@@ -138,7 +138,8 @@ async function send() {
       <AttachmentList
         :attachments="item.attachments"
         base="/api/portal/attachments"
-        :text="item.descriptionHtml ? '' : item.description"
+        :text="item.description"
+        :html="item.descriptionHtml"
       />
     </section>
   </div>

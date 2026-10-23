@@ -256,7 +256,8 @@ export class StatusesService {
   /**
    * Löscht einen Status. Vorgänge erhalten den Ersatzstatus, jedes Ziel, das auf den Status zeigt, den angegebenen
    * Ersatz (freiwillige Ziele auch keinen). Zeitgesteuerte Regeln erhalten den Ersatzstatus, wenn er offen ist, sonst
-   * fällt der Status weg; eine Regel ohne Status wird ausgeschaltet.
+   * fällt der Status weg; eine Regel ohne Status wird ausgeschaltet. Regeln mit «Typ: Aufgabe» erhalten den
+   * Ersatzstatus bzw. den Start-Status der Aufgaben.
    */
   async remove(id: string, input: RemoveInput): Promise<void> {
     await this.db.transaction(async (tx) => {
@@ -309,6 +310,15 @@ export class StatusesService {
         if (replacement && !replacement.closed && !statusIds.includes(replacement.id)) statusIds.push(replacement.id);
         const active = rule.active && (schedule.waiting || statusIds.length > 0);
         await tx.update(rules).set({ schedule: { ...schedule, statusIds }, active }).where(eq(rules.id, rule.id));
+      }
+
+      // Regeln mit «Typ: Aufgabe» und diesem Status: Ersatzstatus (nicht der Ablehnen-Status) bzw. Start-Status
+      if (current.type === 'task') {
+        const ruleStatus = replacement && replacement.id !== own.reject ? replacement.id : own.start!;
+        const typed = await tx.select().from(rules).where(sql`${rules.actions}->>'statusId' = ${id}`);
+        for (const rule of typed) {
+          await tx.update(rules).set({ actions: { ...rule.actions, statusId: ruleStatus } }).where(eq(rules.id, rule.id));
+        }
       }
 
       await this.writeTargets(tx, current.type, own);
