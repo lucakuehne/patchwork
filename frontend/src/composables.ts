@@ -1,4 +1,5 @@
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import { EMPTY_FILTERS, type ListFilterValues, type ListSort } from './list-filters';
 
 /**
  * Höhe des oben klebenden Blocks (Hinweisbalken und Kopfzeile) als CSS-Variable «--sticky-top», damit klebende
@@ -48,6 +49,49 @@ export function useMineFilter(key: string): Ref<boolean> {
     }
   });
   return mine;
+}
+
+/** Wert pro Ansicht im Browser gemerkt (JSON); fehlt der Speicher oder ist der Wert ungültig, gilt «initial». */
+function useStored<T>(storageKey: string, initial: T, valid: (value: unknown) => boolean): Ref<T> {
+  let start = initial;
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored !== null) {
+      const parsed: unknown = JSON.parse(stored);
+      if (valid(parsed)) start = parsed as T;
+    }
+  } catch {
+    // Speicher nicht verfügbar oder ungültig
+  }
+  const value = ref(start) as Ref<T>;
+  watch(
+    value,
+    (current) => {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(current));
+      } catch {
+        // ignorieren
+      }
+    },
+    { deep: true },
+  );
+  return value;
+}
+
+/** Filter einer Liste (Priorität, Zuständig, Status, Meldeweg), pro Ansicht im Browser gemerkt. */
+export function useListFilters(key: string): Ref<ListFilterValues> {
+  const stored = useStored<ListFilterValues>(`patchwork.filter.${key}`, { ...EMPTY_FILTERS }, (v) => typeof v === 'object' && v !== null);
+  stored.value = { ...EMPTY_FILTERS, ...stored.value };
+  return stored;
+}
+
+/** Sortierung einer Liste per Spaltenkopf, pro Ansicht im Browser gemerkt; null = Reihenfolge der Ansicht. */
+export function useListSort(key: string): Ref<ListSort | null> {
+  return useStored<ListSort | null>(
+    `patchwork.sort.${key}`,
+    null,
+    (v) => v === null || (typeof v === 'object' && typeof (v as ListSort).field === 'string'),
+  );
 }
 
 /** Verzögert Änderungen an einem Suchfeld. */

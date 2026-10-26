@@ -43,7 +43,18 @@ import { hideReferences, referencedNumbers } from './references';
 import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
 import type { RuleRun } from '../rules/rules.service';
 import { areaCondition, AreasService, type Area } from '../settings/areas';
-import { assigneeUser, reporterUser, searchCondition, summaryColumns, viewQuery, type View } from './item-views';
+import {
+  assigneeUser,
+  filterCondition,
+  reporterUser,
+  searchCondition,
+  sortOrder,
+  summaryColumns,
+  viewQuery,
+  type ListFilters,
+  type SortField,
+  type View,
+} from './item-views';
 
 export interface UploadedFile {
   originalname: string;
@@ -81,16 +92,29 @@ export class ItemsService {
   /** «areas»: nur Vorgänge dieser Bereiche (Bereiche je Rolle), null = alle */
   async list(
     view: View,
-    opts: { userId: string; mine: boolean; q: string; limit: number; offset: number; areas: Area[] | null },
+    opts: {
+      userId: string;
+      mine: boolean;
+      q: string;
+      limit: number;
+      offset: number;
+      areas: Area[] | null;
+      /** Filter der Liste (Priorität, Zuständig, Status, Meldeweg) */
+      filters?: ListFilters;
+      /** Sortierung per Spaltenkopf; ohne Angabe die Reihenfolge der Ansicht (auf dem Board immer) */
+      sort?: { field: SortField; dir: 'asc' | 'desc' };
+    },
   ) {
-    const { where, orderBy } = viewQuery(view);
+    const query = viewQuery(view);
+    const orderBy = opts.sort && view !== 'board' ? sortOrder(opts.sort.field, opts.sort.dir) : query.orderBy;
     const search = searchCondition(opts.q);
     if (view === 'search' && !search) return { items: [], total: 0 };
     const condition = and(
-      where,
+      query.where,
       search,
       opts.mine ? eq(items.assigneeId, opts.userId) : undefined,
       opts.areas ? areaCondition(opts.areas) : undefined,
+      opts.filters ? filterCondition(opts.filters) : undefined,
     );
 
     const paged = view !== 'board' && view !== 'incidents' && view !== 'inbox';
@@ -783,7 +807,7 @@ export class ItemsService {
       const duplicateOf = await duplicateRedirect(tx, item);
       if (duplicateOf) {
         throw new BadRequestException(
-          `Dieser Vorgang wird unter PW-${duplicateOf.number} weiterbearbeitet. Bitte antworten Sie auf die zugehörige Mail.`,
+          `Diese Meldung wird unter PW-${duplicateOf.number} weiterbearbeitet. Bitte antworte auf die zugehörige Mail.`,
         );
       }
       const entry = await this.addEntry(tx, item.id, reporter.id, 'reply', body, { source: 'portal' });

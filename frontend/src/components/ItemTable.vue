@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { formatAge, formatDate, itemRef, TYPE_LABELS } from '../format';
+import { nextSort, type ListSort, type SortField } from '../list-filters';
 import { useSession } from '../stores/session';
 import type { ItemSummary } from '../types';
 import ChannelIcon from './ChannelIcon.vue';
@@ -15,8 +17,19 @@ const props = defineProps<{
   showStatus?: boolean;
   showClosed?: boolean;
   emptyText?: string;
+  /** Sortierung per Spaltenkopf (v-model:sort); ohne die Prop sind die Köpfe nicht klickbar */
+  sort?: ListSort | null;
 }>();
+const emit = defineEmits<{ 'update:sort': [sort: ListSort | null] }>();
 defineSlots<{ actions?(props: { item: ItemSummary }): unknown }>();
+
+const sortable = computed(() => props.sort !== undefined);
+const arrow = (field: SortField) => (props.sort?.field === field ? (props.sort.dir === 'asc' ? '▲' : '▼') : '');
+const ariaSort = (field: SortField) =>
+  props.sort?.field === field ? (props.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined;
+function sortBy(field: SortField) {
+  if (sortable.value) emit('update:sort', nextSort(props.sort ?? null, field));
+}
 
 const router = useRouter();
 const session = useSession();
@@ -32,17 +45,17 @@ const channelProps = (item: ItemSummary) => {
   <div class="card table-wrap">
     <table v-if="props.items.length" class="table">
       <thead>
-        <tr>
-          <th>Nr.</th>
-          <th>Titel</th>
+        <tr :class="{ sortable }">
+          <th class="sort" :aria-sort="ariaSort('number')" @click="sortBy('number')">Nr. {{ arrow('number') }}</th>
+          <th class="sort" :aria-sort="ariaSort('title')" @click="sortBy('title')">Titel {{ arrow('title') }}</th>
           <th v-if="showType">Typ</th>
-          <th v-if="showStatus">Status</th>
-          <th>Priorität</th>
-          <th class="channel-head">Meldeweg</th>
-          <th>Melder</th>
-          <th>Zuständig</th>
-          <th v-if="showClosed">Abgeschlossen</th>
-          <th v-else>Alter</th>
+          <th v-if="showStatus" class="sort" :aria-sort="ariaSort('status')" @click="sortBy('status')">Status {{ arrow('status') }}</th>
+          <th class="sort" :aria-sort="ariaSort('priority')" @click="sortBy('priority')">Priorität {{ arrow('priority') }}</th>
+          <th class="channel-head sort" :aria-sort="ariaSort('channel')" @click="sortBy('channel')">Meldeweg {{ arrow('channel') }}</th>
+          <th class="sort" :aria-sort="ariaSort('reporter')" @click="sortBy('reporter')">Melder {{ arrow('reporter') }}</th>
+          <th class="sort" :aria-sort="ariaSort('assignee')" @click="sortBy('assignee')">Zuständig {{ arrow('assignee') }}</th>
+          <th v-if="showClosed" class="sort" :aria-sort="ariaSort('closed')" @click="sortBy('closed')">Abgeschlossen {{ arrow('closed') }}</th>
+          <th v-else class="sort" :aria-sort="ariaSort('age')" @click="sortBy('age')">Alter {{ arrow('age') }}</th>
           <th v-if="$slots.actions" />
         </tr>
       </thead>
@@ -84,6 +97,15 @@ const channelProps = (item: ItemSummary) => {
 </template>
 
 <style scoped>
+/* Sortieren per Klick auf den Spaltenkopf */
+.sortable th.sort {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.sortable th.sort:hover {
+  color: var(--text);
+}
 .channel-head,
 .channel-cell {
   width: 1%;

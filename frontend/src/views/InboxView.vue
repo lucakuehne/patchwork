@@ -3,9 +3,11 @@ import { defineAsyncComponent, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import ItemTable from '../components/ItemTable.vue';
+import ListFilters from '../components/ListFilters.vue';
 import MineToggle from '../components/MineToggle.vue';
 import TypeChangeDialog from '../components/TypeChangeDialog.vue';
-import { useMineFilter } from '../composables';
+import { useListFilters, useListSort, useMineFilter } from '../composables';
+import { listParams } from '../list-filters';
 import { itemRef } from '../format';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
@@ -35,16 +37,21 @@ function onCreated(number: number, type: ItemType) {
   void router.push({ name: 'item', params: { number } });
 }
 
+// Filter (ohne Status, Vorgänge im Eingang haben keinen) und Sortierung, pro Ansicht gemerkt
+const filters = useListFilters('inbox');
+const sort = useListSort('inbox');
+
 async function load() {
   try {
-    items.value = (await api.get<{ items: ItemSummary[] }>(`/items?view=inbox&mine=${mine.value ? 1 : 0}`)).items;
+    const params = new URLSearchParams({ view: 'inbox', mine: mine.value ? '1' : '0', ...listParams(filters.value, sort.value) });
+    items.value = (await api.get<{ items: ItemSummary[] }>(`/items?${params}`)).items;
   } catch (err) {
     toast.error(err);
   } finally {
     loading.value = false;
   }
 }
-watch(mine, load, { immediate: true });
+watch([mine, () => JSON.stringify(filters.value), () => JSON.stringify(sort.value)], load, { immediate: true });
 
 // Zur Aufgabe fragt ein Dialog nach dem Status (ohne Vorauswahl); eine Störung erhält den Start-Status
 const taskFor = ref<ItemSummary | null>(null);
@@ -95,7 +102,8 @@ async function discard(item: ItemSummary) {
       <MineToggle v-model="mine" />
       <button class="btn" type="button" @click="newOpen = true">+ Neu</button>
     </div>
-    <ItemTable v-if="!loading" :items="items" empty-text="Der Eingang ist leer.">
+    <ListFilters v-model="filters" :mine="mine" />
+    <ItemTable v-if="!loading" v-model:sort="sort" :items="items" empty-text="Der Eingang ist leer.">
       <template #actions="{ item }">
         <div class="row">
           <!-- Der Vorschlag des Melders aus dem Portal ist hervorgehoben -->

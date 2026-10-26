@@ -65,7 +65,7 @@ export class PortalService {
       .leftJoin(statuses, eq(statuses.id, items.statusId))
       .where(and(eq(items.number, number), eq(items.reporterId, user.id), eq(items.discarded, false)))
       .limit(1);
-    if (!row) throw new NotFoundException('Vorgang nicht gefunden');
+    if (!row) throw new NotFoundException('Meldung nicht gefunden');
     const item = row.item;
 
     // Sichtbar: öffentliche Antworten und eine Ablehnung, bei der der Melder informiert wurde
@@ -107,9 +107,9 @@ export class PortalService {
       entries: visible.map(({ entry, author }) => ({
         id: entry.id,
         kind: entry.kind === 'reply' ? ('reply' as const) : ('rejected' as const),
-        // Eigene Nachrichten als «Sie», Antworten der IT ohne Namen des Bearbeiters
+        // Eigene Nachrichten als «Du», Antworten der IT ohne Namen des Bearbeiters
         author:
-          author?.id === user.id ? 'Sie' : author && (author.role === 'admin' || author.role === 'it') ? 'IT' : (author?.name ?? 'IT'),
+          author?.id === user.id ? 'Du' : author && (author.role === 'admin' || author.role === 'it') ? 'IT' : (author?.name ?? 'IT'),
         own: author?.id === user.id,
         simulated: !!entry.meta?.simulated,
         body: entry.body,

@@ -185,7 +185,7 @@ function onRejected() {
 <template>
   <div class="page">
     <div v-if="notFound" class="empty">Vorgang {{ itemRef(number) }} wurde nicht gefunden.</div>
-    <div v-else-if="forbidden" class="empty">{{ itemRef(number) }} ist für Sie gesperrt: {{ forbidden }}.</div>
+    <div v-else-if="forbidden" class="empty">{{ itemRef(number) }} ist für dich gesperrt: {{ forbidden }}.</div>
 
     <div v-else-if="item" class="layout">
       <div class="main stack">

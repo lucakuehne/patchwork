@@ -125,6 +125,8 @@ export const mailboxes = pgTable('mailboxes', {
   lastUid: bigint('last_uid', { mode: 'number' }).notNull().default(0),
   lastPollAt: timestamp('last_poll_at', { withTimezone: true }),
   lastError: text('last_error'),
+  /** Seit wann der Abruf ohne Unterbruch fehlschlägt (Hinweis an Admins nach 60 Minuten); null = letzter Abruf ok */
+  errorSince: timestamp('error_since', { withTimezone: true }),
   createdAt: createdAt(),
 });
 
@@ -389,6 +391,8 @@ export const outgoingMails = pgTable(
     deliveredTo: jsonb('delivered_to').$type<string[]>().notNull().default([]),
     /** Letzter Fehler beim Versand */
     error: text('error'),
+    /** Fehlgeschlagene Mail von einem Admin als erledigt markiert (kein Hinweis mehr); «Erneut senden» hebt das auf */
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
     attempts: integer('attempts').notNull().default(0),
     /** Angaben zur Mail für «Erneut senden» */
     payload: jsonb('payload').$type<Record<string, unknown>>(),

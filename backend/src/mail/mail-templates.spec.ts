@@ -67,7 +67,7 @@ describe('Platzhalter', () => {
 
   it('Standardtexte mit Vor- und Nachname, per Du, Fusszeilen mit «Patchwork» (übernommen am 21.10.2026)', () => {
     expect(templateByKey('assigned')!.body).toContain('Melder: {{Melder Vorname}} {{Melder Nachname}} ({{Melder E-Mail}})');
-    expect(templateByKey('confirmation')!.body).toMatch(/^Hallo \{\{Melder Vorname\}\}\n\nDeine Nachricht/);
+    expect(templateByKey('confirmation')!.body).toMatch(/^Hallo \{\{Melder Vorname\}\}\n\nDeine Meldung/);
     expect(templateByKey('reporterFooter')!.body).toBe('Patchwork · {{Nummer}}\nBitte lass bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.');
     expect(templateByKey('staffFooter')!.body).toBe('Patchwork · Benachrichtigung zu {{Nummer}}');
   });

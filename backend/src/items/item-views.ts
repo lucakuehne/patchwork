@@ -1,4 +1,4 @@
-import { and, desc, asc, eq, gte, ilike, isNull, not, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, asc, eq, gte, ilike, isNull, not, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
   checklistItems,
@@ -149,4 +149,43 @@ export function viewQuery(view: View): { where: SQL | undefined; orderBy: SQL[] 
     case 'search':
       return { where: undefined, orderBy: [desc(items.updatedAt)] };
   }
+}
+
+/** Filter der Listen (Entscheid vom 26.10.2026): Priorität, Zuständig, Status, Meldeweg; «none» = ohne Angabe */
+export interface ListFilters {
+  priority?: 'high' | 'normal' | 'low';
+  assignee?: string;
+  status?: string;
+  channel?: string;
+}
+
+export function filterCondition(filters: ListFilters): SQL | undefined {
+  const parts: SQL[] = [];
+  if (filters.priority) parts.push(eq(items.priority, filters.priority));
+  if (filters.assignee) parts.push(filters.assignee === 'none' ? isNull(items.assigneeId) : eq(items.assigneeId, filters.assignee));
+  if (filters.status) parts.push(eq(items.statusId, filters.status));
+  if (filters.channel) parts.push(filters.channel === 'none' ? isNull(items.channelId) : eq(items.channelId, filters.channel));
+  return parts.length ? and(...parts) : undefined;
+}
+
+/** Sortierbare Spalten der Listen; ohne Angabe gilt die Reihenfolge der Ansicht */
+export const SORT_FIELDS = ['number', 'title', 'status', 'priority', 'channel', 'reporter', 'assignee', 'created', 'closed'] as const;
+export type SortField = (typeof SORT_FIELDS)[number];
+
+/** Reihenfolge für eine Spalte; Leere (z.B. ohne Zuständigen) zuletzt, bei Gleichstand die neueren Vorgänge zuerst */
+export function sortOrder(field: SortField, dir: 'asc' | 'desc'): SQL[] {
+  const by = (column: SQL | AnyColumn) => sql`${column} ${sql.raw(dir)} nulls last`;
+  const key: Record<SortField, SQL> = {
+    number: by(items.number),
+    title: by(sql`lower(${items.title})`),
+    status: by(statuses.position),
+    // Reihenfolge der Aufzählung: hoch, normal, niedrig
+    priority: by(sql`${items.priority}`),
+    channel: by(sql`(select lower(label) from channels c where c.id = ${items.channelId})`),
+    reporter: by(sql`lower(${reporterUser.name})`),
+    assignee: by(sql`lower(${assigneeUser.name})`),
+    created: by(items.createdAt),
+    closed: by(items.closedAt),
+  };
+  return [key[field], desc(items.number)];
 }

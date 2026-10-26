@@ -162,7 +162,7 @@ export class NotificationsService {
     if (!reporter) return;
     await this.sendToReporter(item, [reporter.email], [], {
       template: 'waitingReminder',
-      values: { Schliessung: closeOn ? `Ohne Rückmeldung schliessen wir den Vorgang am ${formatDate(closeOn)}.` : '' },
+      values: { Schliessung: closeOn ? `Ohne Rückmeldung schliessen wir die Meldung am ${formatDate(closeOn)}.` : '' },
       automated: true,
     });
   }

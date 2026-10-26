@@ -55,7 +55,7 @@ async function send() {
     await api.post(`/portal/items/${props.number}/replies`, form);
     body.value = '';
     files.value = [];
-    toast.success('Ihre Nachricht wurde gesendet.');
+    toast.success('Deine Antwort wurde gesendet.');
     await load();
   } catch (err) {
     error.value = errorMessage(err);
@@ -66,7 +66,7 @@ async function send() {
 </script>
 
 <template>
-  <div v-if="notFound" class="card empty">Vorgang {{ itemRef(number) }} wurde nicht gefunden.</div>
+  <div v-if="notFound" class="card empty">Meldung {{ itemRef(number) }} wurde nicht gefunden.</div>
 
   <div v-else-if="item" class="stack">
     <RouterLink to="/portal" class="back">← Meine Vorgänge</RouterLink>
@@ -83,7 +83,7 @@ async function send() {
       </RouterLink>
       <template v-else>{{ itemRef(item.duplicateOf.number) }} «{{ item.duplicateOf.title }}»</template>
       und wird dort weiterbearbeitet.
-      <template v-if="!item.duplicateOf.accessible">Sie erhalten die Updates per Mail.</template>
+      <template v-if="!item.duplicateOf.accessible">Du erhältst die Updates per Mail.</template>
     </div>
 
     <div v-else class="card composer">
@@ -129,7 +129,7 @@ async function send() {
 
     <section class="card original">
       <div class="row original-head">
-        <span class="original-label">Ihre Meldung</span>
+        <span class="original-label">Deine Meldung</span>
         <span class="muted small">vom {{ formatDateTime(item.createdAt) }}</span>
         <span v-if="item.simulated" class="badge simulated" title="Im Testbetrieb simuliert">simuliert</span>
       </div>

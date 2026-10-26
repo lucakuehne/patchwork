@@ -7,6 +7,9 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 
 - **Ein Vorgang, zwei Typen:** Störung oder Aufgabe, Typwechsel mit einem Klick. Verlauf, Kommentare und Anhänge bleiben erhalten.
 - **Tabs:** Eingang (Mails ohne Typ, mit «+ Neu» für einen Vorgang beliebigen Typs), Störungen (Liste, dringend zuerst; Ansicht «Gelöst»), Aufgaben (Board mit Drag & Drop; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge und hat den Filter «Nur meine».
+- **Filter und Sortierung** in Eingang, Störungen (offen und gelöst), auf dem Aufgaben-Board und unter Erledigt/Abgelehnt: nach Priorität, Zuständig (auch «niemand»), Status (wo es mehrere gibt) und Meldeweg; in den Listen zusätzlich Sortieren per Klick auf den Spaltenkopf (aufsteigend, absteigend, zurück). Die Auswahl bleibt pro Ansicht im Browser gespeichert.
+- **Hinweise bei Störungen** für Admins als Balken oben: Mail-Abruf eines Postfachs seit 60 Minuten gestört, fehlgeschlagene ausgehende Mails (bis «Erneut senden» oder «Als erledigt markieren»), weniger als 10 % freier Platz auf dem Datenträger der Ablage.
+- **Anrede:** Patchwork, Portal und alle Mails sprechen per du an; gegenüber Meldern heisst ein Vorgang «Meldung».
 - **Status pro Typ** in der Verwaltung bearbeitbar: flache Liste (Reihenfolge = Board-Spalten), Farbe und Häkchen «abgeschlossen». Den Status neuer Vorgänge legt man im Ablaufdiagramm fest, indem man den Startpfeil auf einen offenen Status zieht. Pro Typ legen «Automatische Wechsel» fest, wohin eine Antwort des Melders führt, wohin automatisch geschlossen und abgelehnt wird und welcher Status auf den Melder wartet. Ein Ablaufdiagramm legt auf Wunsch fest, welche Wechsel von Hand erlaubt sind (Pfeile in den Ablehnen-Status steuern «Ablehnen») und zeigt die Ziele als Marken. Beim Typwechsel fragt ein Dialog nach dem neuen Status: Wird ein Vorgang zur Aufgabe (auch aus dem Eingang), wählt man den Status immer selbst (ohne Vorauswahl, ohne Ablehnen-Status); zur Störung ist er nach der Rolle des bisherigen Status vorgeschlagen.
 - **E-Mail rein und raus:** mehrere Postfächer (IMAP/SMTP mit Passwort, Microsoft 365 über Microsoft Graph mit Anmeldung), die Patchwork nur liest (Mails bleiben ungelesen im Postfach), Abruf aus einem wählbaren Ordner ab einem einstellbaren Zeitpunkt, Zuordnung von Antworten über Mail-Header oder `[PW-1234]` im Betreff, Eingangsbestätigung, öffentliche Antworten an Melder und CC-Beteiligte, interne Notizen, Benachrichtigungen an Zuständige, Stummschalten pro Vorgang.
 - **Login:** lokale Benutzer und LDAP/AD (Rolle über AD-Gruppen). Erster Admin über den Einrichtungs-Assistenten.
@@ -20,7 +23,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 - **Eingebettete Bilder eingehender Mails** stehen an ihrer Stelle im Text, auch in Antworten und Notizen per Mail (dort über die Marken `[cid:…]` von Outlook bzw. `[image: …]` von Gmail im Text). Bilder, die nur im zitierten Verlauf einer Antwort stehen, übernimmt Patchwork nicht.
 - **Vorschau von Anhängen** in einem Fenster statt als Download: Bilder, Text (.txt, .log, .csv, .json, .xml, .ini, .yaml …), PDF und Mails (.eml, Outlook-.msg) mit Kopf, Text, eingebetteten Bildern und ihren Anhängen. Überall, wo Anhänge stehen (Verlauf, Meldung, Originalmail, versendete Mails, Protokolle, Portal), mit «Herunterladen»; übrige Dateitypen sowie Ctrl+Klick laden direkt herunter.
 - **Aus einer echten Mail simulieren** (Testbetrieb, Admin): im Fenster «Originalmail» eines Vorgangs oder unter Verwaltung → Eingehende Mails «Als simulierte Mail …». Der Dialog übernimmt Absender, Postfach, Betreff, Text und Anhänge, alles änderbar; optional als Antwort auf einen bestehenden Vorgang und mit «Original verwerfen». So lässt sich z.B. eine im Eingang gelandete Antwort auf ein HelpSpot-Ticket durchspielen.
-- **Ausgehende Mails** (Verwaltung → Ausgehende Mails): Protokoll jeder Mail, die Patchwork verschickt oder zurückhält, vollständig mit Anhängen und als .eml, mit Status (versendet, teilweise versendet, nicht versendet, Fehler) und «Erneut senden» bei Fehlern. Im Verlauf eines Vorgangs stehen die automatischen Mails an Melder und Beteiligte (Eingangsbestätigung, Erledigt, Abgelehnt, Duplikat-Hinweise, Erinnerung, automatisch geschlossen) als kurze Zeile, z.B. «Mail «Erledigt» an Anna Muster», mit Vermerk bei Abweichungen; «ansehen» öffnet die Mail, wie sie versendet wurde. Duplikat-Hinweise stehen beim Original und beim Duplikat. Bei öffentlichen Antworten öffnet «Mail ansehen» dieselbe Ansicht. Benachrichtigungen an die IT erscheinen nicht im Verlauf.
+- **Ausgehende Mails** (Verwaltung → Ausgehende Mails): Protokoll jeder Mail, die Patchwork verschickt oder zurückhält, vollständig mit Anhängen und als .eml, mit Status (versendet, teilweise versendet, nicht versendet, Fehler) und «Erneut senden» bei Fehlern. Im Verlauf eines Vorgangs stehen die automatischen Mails an Melder und Beteiligte (Eingangsbestätigung, Abgeschlossen, Abgelehnt, Duplikat-Hinweise, Erinnerung, automatisch geschlossen) als kurze Zeile, z.B. «Mail «Abgeschlossen» an Anna Muster», mit Vermerk bei Abweichungen; «ansehen» öffnet die Mail, wie sie versendet wurde. Duplikat-Hinweise stehen beim Original und beim Duplikat. Bei öffentlichen Antworten öffnet «Mail ansehen» dieselbe Ansicht. Benachrichtigungen an die IT erscheinen nicht im Verlauf.
 - **Eingehende Mails** (Verwaltung → Eingehende Mails): Protokoll jeder abgeholten Mail mit Ergebnis (neuer Vorgang, Antwort, interne Notiz, automatische Antwort, ignoriert mit Grund, Fehler), vollständig mit Anhängen und als .eml, «Erneut verarbeiten» bei Fehlern. Die Originalmail einer Nachricht öffnet sich auch im Vorgang als Ansicht.
 - **E-Mail-Vorlagen** (Verwaltung → E-Mail-Vorlagen): Betreff und Text aller Mails an Melder und IT, dazu Link- und Fusszeile, Text im WYSIWYG-Editor mit Platzhaltern wie `{{Titel}}`, `{{Melder Vorname}}` oder `{{Zuständig Nachname}}` (per Klick einfügen, hervorgehoben), mit Vorschau und «Auf Standard zurücksetzen». Die Nummer `[PW-123]` steht immer vor dem Betreff.
 - **Testbetrieb** (Verwaltung → Ausgehende Mails): zwei frei kombinierbare Empfängerkreise, IT-Mitarbeitende (Rolle IT oder Admin) und alle übrigen, je an niemanden, nur an ausgewählte oder an alle. Mails an andere Empfänger stellt Patchwork zusammen, versendet sie aber nicht; geht eine Mail nur an einen Teil der Empfänger, stehen im Kopf nur diese. Öffentliche Antworten tragen in der Timeline den Vermerk «nicht versendet» bzw. «teilweise versendet», alle Benutzer sehen oben einen Hinweis. Antworten auf ausgehende Mails und neue Mails lassen sich simulieren: Patchwork verarbeitet sie wie echte, sie landen aber nicht im Postfach und sind als «simuliert» gekennzeichnet.
@@ -40,7 +43,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 
 ## Etappe 3
 
-- **Regeln** (Verwaltung → Regeln) für neue Mails, neue Portal-Meldungen und Antworten. Bedingungen: Absender bzw. Domain, Betreff, Text, Postfach, AD-Gruppe, mit UND/ODER und Gruppen. Aktionen: Typ (bei «Aufgabe» mit dem Status, auch einem abgeschlossenen; dann erhält der Melder nach der Eingangsbestätigung die Mail «Erledigt»), Priorität, Zuständig, Checklisten-Vorlage, Eingangsbestätigung unterdrücken, Verwerfen. Abarbeitung von oben nach unten, Vorschau auf die letzten 30 Tage.
+- **Regeln** (Verwaltung → Regeln) für neue Mails, neue Portal-Meldungen und Antworten. Bedingungen: Absender bzw. Domain, Betreff, Text, Postfach, AD-Gruppe, mit UND/ODER und Gruppen. Aktionen: Typ (bei «Aufgabe» mit dem Status, auch einem abgeschlossenen; dann erhält der Melder nach der Eingangsbestätigung die Mail «Abgeschlossen»), Priorität, Zuständig, Checklisten-Vorlage, Eingangsbestätigung unterdrücken, Verwerfen. Abarbeitung von oben nach unten, Vorschau auf die letzten 30 Tage.
 - **Zeitgesteuerte Regeln:** «seit N Tagen in …» mit Auswahl offener Status oder «Wartet auf den Melder», z.B. Eskalation per Priorität und Zuständigem oder beim Warten auf den Melder eine Erinnerung und das automatische Schliessen.
 - **Textbausteine** (Verwaltung → Textbausteine) im WYSIWYG-Editor mit Platzhaltern wie `{{Melder Vorname}}`, `{{Zuständig Nachname}}` oder `{{Bearbeiter Vorname}}`, die sich per Knopf einfügen lassen, im Antwortfeld über «Textbaustein» einfügbar.
 - **Vor- und Nachname** je Benutzer für die Platzhalter: AD-Konten aus `givenName` und `sn`, sonst aus dem Namen geschätzt («Muster, Anna», «anna.muster»), unter Verwaltung → Benutzer korrigierbar.
@@ -84,8 +87,10 @@ pnpm db:generate       # Migration aus Änderungen an backend/src/db/schema.ts e
 ### Smoke-Test
 
 `backend/test/smoke.mjs` prüft den ganzen Ablauf (Einrichtung, Mail-Eingang, Antworten, Typwechsel, Board, Ablehnen, Rechte, Checklisten, Verknüpfungen, Duplikate, Portal, Regeln, Textbausteine, Auswertungen …)
-gegen eine laufende Instanz mit **leerer** Datenbank und einem lokalen Testmailserver. Ist `SMOKE_DATABASE_URL` auf die
-Datenbank der Test-Instanz gesetzt, prüft er auch die zeitgesteuerten Regeln (mit zurückgestellter Zeit), sonst wird dieser
+gegen eine laufende Instanz mit **leerer** Datenbank und einem lokalen Testmailserver. Die Schritte stehen nach Bereichen in
+`backend/test/smoke/` (gemeinsame Teile in `lib.mjs`); schlägt ein Schritt fehl, laufen die übrigen weiter, am Ende stehen
+die fehlgeschlagenen Schritte (Exit-Code 1). Ist `SMOKE_DATABASE_URL` auf die Datenbank der Test-Instanz gesetzt, prüft er
+auch Zeitabhängiges (zeitgesteuerte Regeln, Hinweis bei gestörtem Mail-Abruf) mit zurückgestellter Zeit, sonst wird dieser
 Teil übersprungen:
 
 ```bash
@@ -99,6 +104,24 @@ pnpm --filter backend test:smoke
 **Auf dem Docker-Server:** [deploy/test-stack.yml](deploy/test-stack.yml) startet als vorübergehender Portainer-Stack eine
 Test-Instanz mit leerer Datenbank, GreenMail, OpenLDAP und Samba-AD. Die Testskripte holt er aus dem Repo (Variable
 `TEST_REF`), der Ablauf für Smoke-, LDAP- und AD-Test steht in der Datei. Danach den Stack samt Volumes entfernen.
+
+### Betriebsskripte (`ops/`)
+
+PowerShell-Skripte (Windows PowerShell 5.1), die über die Portainer-API auf dem Docker-Server arbeiten; auf dem eigenen
+Rechner läuft dabei nichts ausser den Skripten. Einmalig `ops/config.example.ps1` nach `ops/config.ps1` kopieren und
+Portainer-Adresse, Umgebung, Stack der Produktion und Adresse von Patchwork eintragen; das Access Token von Portainer gehört
+in die dort genannte Datei. Beides steht nicht im Repo, Ausgaben (Bildschirmfotos, Protokolle) landen in `ops/out/`.
+
+| Skript | Zweck |
+| --- | --- |
+| `build-test.ps1` | Image `patchwork:dev` aus dem Arbeitsstand bauen, Test-Stack damit ausrollen, alte Images aufräumen, Smoke-Test und Prüfung im Browser (`ops/ui/ui-check.mjs`, Bilder in `ops/out/shots`) |
+| `all-tests.ps1` | wie `build-test.ps1`, danach LDAP- und AD-Tests (`ldap-ad-test.ps1`) |
+| `smoke.ps1 [-Upload]` | nur den Smoke-Test erneut, mit frischer Datenbank (`-Upload`: Testskripte aus dem Arbeitsstand) |
+| `browser-check.ps1` | nur die Prüfung im Browser (Playwright in einem vorübergehenden Container) |
+| `update-test.ps1` | Migrationen prüfen: veröffentlichte Version mit Testdaten, dann Update auf den Arbeitsstand |
+| `deploy.ps1 -Sha <commit> [-Dump]` | nach erfolgreichem GitHub-Actions-Lauf die Produktion neu ausrollen und prüfen |
+| `remove-test-stack.ps1` | Test-Stack samt Volumes und Test-Images entfernen |
+| `cleanup-images.ps1` | ungenutzte Images früherer Builds entfernen, damit die Platte nicht vollläuft |
 
 ### LDAP-Tests
 
@@ -272,8 +295,14 @@ backend/
   src/statuses/    Status pro Typ, Ziel-Status und Ablauf
   src/tls/         HTTPS: Zertifikatsanforderung, Zertifikat, Server
   src/db/          Schema und Migrationen (drizzle/)
-  test/smoke.mjs   End-to-End-Test
+  test/smoke.mjs   End-to-End-Test (Bereiche in test/smoke/), dazu LDAP- und AD-Tests
 frontend/
   src/views/       Seiten (Eingang, Störungen, Board, Detail, Verwaltung)
   src/components/  Bausteine (Tabelle, Timeline, Dialoge)
+deploy/            Portainer-Stacks für Produktion und Tests
+ops/               Betriebsskripte (Build, Tests und Rollout auf dem Docker-Server)
+docs/              Entscheidungen
 ```
+
+**Namen:** Bezeichner, Datenbank, API, Migrationen und Dateinamen englisch; Kommentare, Oberfläche, Commits und Dokumente
+deutsch (Schweizer Rechtschreibung, Anrede per du).

@@ -75,7 +75,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     description: 'An den Melder, wenn eine neue Meldung per Mail oder im Portal eingeht.',
     subject: '{{Titel}}',
     body:
-      'Hallo {{Melder Vorname}}\n\nDeine Nachricht ist bei uns eingegangen und wurde unter der Nummer **{{Nummer}}** erfasst. ' +
+      'Hallo {{Melder Vorname}}\n\nDeine Meldung ist bei uns eingegangen und wurde unter der Nummer **{{Nummer}}** erfasst. ' +
       'Wir melden uns so bald wie möglich.\n\nFür Ergänzungen antworte bitte direkt auf diese E-Mail.',
     placeholders: [...ITEM, PORTAL_LINK],
   },
@@ -91,13 +91,13 @@ export const TEMPLATES: TemplateDefinition[] = [
   {
     key: 'done',
     group: 'reporter',
-    label: 'Erledigt',
+    label: 'Abgeschlossen',
     description:
       'An den Melder beim Wechsel von Hand in einen abgeschlossenen Status (nicht beim Ablehnen und nicht zwischen zwei ' +
       'abgeschlossenen Status) und wenn eine Regel eine neue Aufgabe gleich abschliesst.',
     subject: '{{Status}}: {{Titel}}',
     body:
-      'Hallo {{Melder Vorname}}\n\nDein Anliegen «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +
+      'Hallo {{Melder Vorname}}\n\nDeine Meldung «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +
       'Falls noch etwas offen ist, antworte einfach auf diese Mail.',
     placeholders: [...ITEM, PORTAL_LINK],
   },
@@ -107,7 +107,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Abgelehnt',
     description: 'An den Melder, wenn ein Vorgang abgelehnt wird und «Melder informieren» gewählt ist.',
     subject: 'Abgelehnt: {{Titel}}',
-    body: 'Hallo {{Melder Vorname}}\n\nDein Anliegen «{{Titel}}» ({{Nummer}}) wurde abgelehnt.\n\n**Begründung:**\n\n> {{Begründung}}',
+    body: 'Hallo {{Melder Vorname}}\n\nDeine Meldung «{{Titel}}» ({{Nummer}}) wurde abgelehnt.\n\n**Begründung:**\n\n> {{Begründung}}',
     placeholders: [...ITEM, p('Begründung', 'Begründung der Ablehnung', 'Dafür ist die IT nicht zuständig.'), PORTAL_LINK],
   },
   {
@@ -119,7 +119,7 @@ export const TEMPLATES: TemplateDefinition[] = [
       'Nummer, Titel und Link gehören zum Original.',
     subject: '{{Titel}}',
     body:
-      'Hallo {{Melder Vorname}}\n\nDeine Nachricht {{Duplikat}} betrifft denselben Vorgang wie {{Original}} und wurde dort hinzugefügt. ' +
+      'Hallo {{Melder Vorname}}\n\nDeine Meldung {{Duplikat}} betrifft dasselbe wie {{Original}} und wurde dort hinzugefügt. ' +
       'Für Ergänzungen antworte bitte auf diese E-Mail.',
     placeholders: [
       ...ITEM,
@@ -161,7 +161,7 @@ export const TEMPLATES: TemplateDefinition[] = [
       p(
         'Schliessung',
         'Satz zum automatischen Schliessen, leer ohne passende Regel',
-        'Ohne Rückmeldung schliessen wir den Vorgang am 27.10.2026.',
+        'Ohne Rückmeldung schliessen wir die Meldung am 27.10.2026.',
       ),
       PORTAL_LINK,
     ],
@@ -176,7 +176,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     subject: '{{Status}}: {{Titel}}',
     body:
       'Hallo {{Melder Vorname}}\n\nZu «{{Titel}}» ({{Nummer}}) haben wir seit {{Tage}} Tagen keine Rückmeldung erhalten ' +
-      'und den Vorgang deshalb geschlossen.\n\nFalls noch etwas offen ist, antworte einfach auf diese E-Mail.',
+      'und die Meldung deshalb geschlossen.\n\nFalls noch etwas offen ist, antworte einfach auf diese E-Mail.',
     placeholders: [...ITEM, p('Tage', 'Tage ohne Rückmeldung', '7'), PORTAL_LINK],
   },
   {
@@ -255,7 +255,7 @@ export const TEMPLATES: TemplateDefinition[] = [
       'An IT-Mitarbeitende, die in einer öffentlichen Antwort oder internen Notiz mit «@» erwähnt werden (nicht an sich selbst; ' +
       'beim Bearbeiten einer Notiz nur an neu Erwähnte).',
     subject: 'Erwähnt: {{Titel}}',
-    body: '{{Bearbeiter}} hat Sie in {{Nummer}} «{{Titel}}» erwähnt ({{Art}}):\n\n> {{Text}}',
+    body: '{{Bearbeiter}} hat dich in {{Nummer}} «{{Titel}}» erwähnt ({{Art}}):\n\n> {{Text}}',
     placeholders: [
       ...ITEM,
       p('Bearbeiter', 'Wer erwähnt hat', 'Ada Admin'),

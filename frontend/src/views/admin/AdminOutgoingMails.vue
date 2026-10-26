@@ -73,6 +73,19 @@ async function show(m: OutgoingMail) {
   }
 }
 
+/** Fehlgeschlagene Mail als erledigt markieren: Der Hinweis für die Admins oben verschwindet, die Mail bleibt im Protokoll */
+async function dismiss() {
+  if (!open.value) return;
+  try {
+    await api.post(`/admin/outgoing-mails/${open.value.id}/dismiss`);
+    toast.success('Als erledigt markiert');
+    open.value = null;
+    await load();
+  } catch (err) {
+    toast.error(err);
+  }
+}
+
 async function resend() {
   if (!open.value) return;
   resending.value = true;
@@ -122,6 +135,9 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
             <td class="nowrap muted">{{ formatDateTime(m.createdAt) }}</td>
             <td class="nowrap">
               <span class="badge" :class="STATUS[m.status].kind" :title="m.error ?? undefined">{{ STATUS[m.status].label }}</span>
+              <span v-if="m.status === 'failed' && m.dismissedAt" class="badge" title="Als erledigt markiert, kein Hinweis mehr">
+                erledigt
+              </span>
             </td>
             <td>{{ recipients(m) }}</td>
             <td>{{ m.subject }}</td>
@@ -176,6 +192,9 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
         <a class="btn" :href="`/api/admin/outgoing-mails/${open.id}/eml`">Als .eml herunterladen</a>
         <!-- Antworten gibt es nur auf Mails zu einem Vorgang -->
         <button v-if="session.info?.testMode && open.item" class="btn" type="button" @click="startReply">Antwort simulieren</button>
+        <button v-if="open.status === 'failed' && !open.dismissedAt" class="btn" type="button" @click="dismiss">
+          Als erledigt markieren
+        </button>
         <button v-if="open.status === 'failed'" class="btn" type="button" :disabled="resending" @click="resend">
           Erneut senden
         </button>

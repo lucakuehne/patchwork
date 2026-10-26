@@ -357,6 +357,16 @@ export interface ItemDetail {
   mails: ItemMail[];
 }
 
+/** Hinweise bei Störungen für Admins (Balken oben) */
+export interface SystemAlerts {
+  /** Postfächer, deren Abruf seit mindestens 60 Minuten fehlschlägt */
+  mailboxes: { id: string; name: string; error: string; since: string }[];
+  /** Fehlgeschlagene ausgehende Mails, weder erneut gesendet noch als erledigt markiert */
+  failedMails: number;
+  /** Weniger als 10 % frei auf dem Datenträger der Ablage, sonst null */
+  disk: { freePercent: number; freeBytes: number; totalBytes: number } | null;
+}
+
 export interface Counts {
   inbox: number;
   incidents: number;
@@ -482,6 +492,8 @@ export interface OutgoingMail {
   reply: boolean;
   /** Vorlage der Mail, z.B. «welcome»; null bei älteren Mails */
   template: string | null;
+  /** Fehlgeschlagen, aber von einem Admin als erledigt markiert */
+  dismissedAt: string | null;
   /** null = Mail ohne Vorgang (Willkommens-Mail) */
   item: { number: number; title: string } | null;
 }

@@ -107,8 +107,17 @@ export class MailSenderService implements OnModuleInit {
     const [row] = await this.db.select().from(outgoingMails).where(eq(outgoingMails.id, id)).limit(1);
     if (!row) throw new NotFoundException('Mail nicht gefunden');
     if (row.status !== 'failed' || !row.payload) throw new BadRequestException('Erneut senden geht nur bei fehlgeschlagenen Mails');
-    await this.db.update(outgoingMails).set({ status: 'queued' }).where(eq(outgoingMails.id, id));
+    // Schlägt sie wieder fehl, erscheint sie wieder im Hinweis für die Admins
+    await this.db.update(outgoingMails).set({ status: 'queued', dismissedAt: null }).where(eq(outgoingMails.id, id));
     await (await this.boss.boss()).send(QUEUE_MAIL_SEND, row.payload, { retryLimit: 10, retryDelay: 30, retryBackoff: true });
+  }
+
+  /** Fehlgeschlagene Mail als erledigt markieren: kein Hinweis mehr an die Admins, sie bleibt im Protokoll. */
+  async dismiss(id: string): Promise<void> {
+    const [row] = await this.db.select({ status: outgoingMails.status }).from(outgoingMails).where(eq(outgoingMails.id, id)).limit(1);
+    if (!row) throw new NotFoundException('Mail nicht gefunden');
+    if (row.status !== 'failed') throw new BadRequestException('Als erledigt markieren geht nur bei fehlgeschlagenen Mails');
+    await this.db.update(outgoingMails).set({ dismissedAt: new Date() }).where(eq(outgoingMails.id, id));
   }
 
   /**

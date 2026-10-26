@@ -34,7 +34,7 @@ import { buildPreview, nestedAttachment, sendFile } from '../storage/attachment-
 import { sendAttachment } from '../storage/attachment-response';
 import { StorageService } from '../storage/storage.service';
 import { ChecklistsService } from './checklists.service';
-import { VIEWS } from './item-views';
+import { SORT_FIELDS, VIEWS } from './item-views';
 import { ItemsService, type UploadedFile } from './items.service';
 import { LinksService } from './links.service';
 
@@ -59,6 +59,13 @@ const listSchema = z.object({
   q: z.string().max(200).default(''),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+  // Filter der Liste; «none» = ohne Zuständigen bzw. ohne Meldeweg
+  priority: prioritySchema.optional(),
+  assignee: z.union([z.literal('none'), z.uuid()]).optional(),
+  status: z.uuid().optional(),
+  channel: z.union([z.literal('none'), z.uuid()]).optional(),
+  sort: z.enum(SORT_FIELDS).optional(),
+  dir: z.enum(['asc', 'desc']).default('asc'),
 });
 
 const createSchema = z.object({
@@ -131,7 +138,14 @@ export class ItemsController {
 
   @Get('items')
   async list(@Query(new ZodPipe(listSchema)) query: z.infer<typeof listSchema>, @CurrentUser() user: User) {
-    return this.items.list(query.view, { ...query, userId: user.id, areas: await this.areas.limit(user) });
+    const { priority, assignee, status, channel, sort, dir } = query;
+    return this.items.list(query.view, {
+      ...query,
+      userId: user.id,
+      areas: await this.areas.limit(user),
+      filters: { priority, assignee, status, channel },
+      sort: sort ? { field: sort, dir } : undefined,
+    });
   }
 
   @Get('items/counts')

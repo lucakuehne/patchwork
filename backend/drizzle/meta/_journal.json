@@ -225,6 +225,13 @@
       "when": 1792760074084,
       "tag": "0031_mail_ohne_vorgang",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793037192662,
+      "tag": "0032_system_alerts",
+      "breakpoints": true
     }
   ]
 }

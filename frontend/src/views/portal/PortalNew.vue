@@ -26,11 +26,11 @@ const choices = [
 async function submit() {
   error.value = '';
   if (!type.value) {
-    error.value = 'Bitte wählen Sie, worum es geht.';
+    error.value = 'Bitte wähle, worum es geht.';
     return;
   }
   if (!title.value.trim()) {
-    error.value = 'Bitte geben Sie einen kurzen Titel ein.';
+    error.value = 'Bitte gib einen kurzen Titel ein.';
     return;
   }
   sending.value = true;
@@ -41,7 +41,7 @@ async function submit() {
     form.append('description', description.value);
     for (const f of files.value) form.append('files', f, f.name);
     const result = await api.post<{ number: number }>('/portal/items', form);
-    toast.success(`Danke! Ihre Meldung ist eingegangen (${itemRef(result.number)}).`);
+    toast.success(`Danke! Deine Meldung ist eingegangen (${itemRef(result.number)}).`);
     await router.push(`/portal/v/${result.number}`);
   } catch (err) {
     error.value = errorMessage(err);
@@ -84,7 +84,7 @@ async function submit() {
           v-model:uploading="uploading"
           context="portal"
           :min-height="160"
-          placeholder="Was ist passiert bzw. was brauchen Sie? Seit wann? Welche Fehlermeldung?"
+          placeholder="Was ist passiert bzw. was brauchst du? Seit wann? Welche Fehlermeldung?"
           @submit="submit"
         />
       </div>

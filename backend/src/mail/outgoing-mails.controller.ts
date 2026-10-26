@@ -84,6 +84,13 @@ export class OutgoingMailsController {
     await this.sender.resend(id);
   }
 
+  /** Fehlgeschlagene Mail als erledigt markieren (Hinweis an die Admins verschwindet). */
+  @Post(':id/dismiss')
+  @HttpCode(204)
+  async dismiss(@Param('id', ParseUUIDPipe) id: string) {
+    await this.sender.dismiss(id);
+  }
+
   /** Die gespeicherte Mail (.eml); fehlt die Datei, eine verständliche Meldung statt Fehler 500. */
   private async read(mail: OutgoingMailRow): Promise<Buffer> {
     try {
@@ -122,6 +129,8 @@ export class OutgoingMailsController {
       subject: mail.subject,
       automated: mail.automated,
       error: mail.error,
+      /** Fehlgeschlagen, aber als erledigt markiert */
+      dismissedAt: mail.dismissedAt,
       attempts: mail.attempts,
       reply: !!mail.entryId,
       template: mail.template,

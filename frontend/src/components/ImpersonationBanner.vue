@@ -27,7 +27,7 @@ async function back() {
 
 <template>
   <div v-if="session.impersonator && session.user" class="impersonation" role="status">
-    Sie arbeiten als <strong>{{ session.user.name }}</strong>. Antworten, Notizen und Änderungen erscheinen unter diesem Namen.
+    Du arbeitest als <strong>{{ session.user.name }}</strong>. Antworten, Notizen und Änderungen erscheinen unter diesem Namen.
     <button class="back" type="button" :disabled="busy" @click="back">Zurück zu {{ session.impersonator.name }}</button>
   </div>
 </template>

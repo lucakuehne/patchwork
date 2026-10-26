@@ -8,3 +8,6 @@ coverage/
 ad-test-tls/
 portainer-token.txt
 deploy/tls/
+# Betriebsskripte: Zugang zum Server und Ausgaben (Bildschirmfotos, Protokolle) bleiben lokal
+ops/config.ps1
+ops/out/

@@ -1,8 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq, ne } from 'drizzle-orm';
+import { asc, eq, ne, sql } from 'drizzle-orm';
 import { encryptSecret } from '../common/crypto';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import { mailboxes, type GraphSync, type Mailbox } from '../db/schema';
+
+/** Beginn einer Folge fehlgeschlagener Abrufe: bleibt beim nächsten Fehler stehen, ein erfolgreicher Abruf löscht ihn */
+const errorSince = (error: string | null) => (error ? sql`coalesce(${mailboxes.errorSince}, now())` : null);
 
 export interface MailboxInput {
   name: string;
@@ -122,6 +125,7 @@ export class MailboxesService {
           // Die Anmeldung mit Microsoft gilt nur für dieses Verfahren
           ...(values.authType !== 'microsoft' ? { oauthRefreshTokenEnc: null, oauthAccount: null } : {}),
           lastError: null,
+          errorSince: null,
         })
         .where(eq(mailboxes.id, id))
         .returning();
@@ -154,6 +158,7 @@ export class MailboxesService {
         // Beim nächsten Abruf neu ermitteln, ob das angemeldete Konto selbst das Postfach ist
         graphSync: null,
         lastError: null,
+        errorSince: null,
       })
       .where(eq(mailboxes.id, id));
   }
@@ -162,7 +167,7 @@ export class MailboxesService {
   async recordGraphPoll(id: string, state: { sync: GraphSync | null; error: string | null }) {
     await this.db
       .update(mailboxes)
-      .set({ lastPollAt: new Date(), lastError: state.error, graphSync: state.sync })
+      .set({ lastPollAt: new Date(), lastError: state.error, errorSince: errorSince(state.error), graphSync: state.sync })
       .where(eq(mailboxes.id, id));
   }
 
@@ -177,6 +182,7 @@ export class MailboxesService {
       .set({
         lastPollAt: new Date(),
         lastError: state.error,
+        errorSince: errorSince(state.error),
         ...(state.uidValidity !== undefined ? { uidValidity: state.uidValidity } : {}),
         ...(state.lastUid !== undefined ? { lastUid: state.lastUid } : {}),
       })

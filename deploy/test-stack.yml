@@ -69,6 +69,13 @@ services:
     # Eigenes Volume wie in der Produktion: Ablage bleibt beim Wechsel des Images erhalten (Update-Tests)
     volumes:
       - patchworkdata:/data
+    # Wie in der Produktion (deploy/portainer.yml)
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     depends_on:
       net:
         condition: service_started

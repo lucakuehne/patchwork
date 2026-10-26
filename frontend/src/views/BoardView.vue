@@ -4,11 +4,13 @@ import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { api } from '../api';
 import ChecklistProgress from '../components/ChecklistProgress.vue';
+import ListFilters from '../components/ListFilters.vue';
 import MineToggle from '../components/MineToggle.vue';
 import { isCompleting } from '../status-flow';
 import { manualStatusChoices, moveItem } from '../status-move';
 import TasksNav from '../components/TasksNav.vue';
-import { useMineFilter } from '../composables';
+import { useListFilters, useMineFilter } from '../composables';
+import { listParams } from '../list-filters';
 import { dueState, formatAge, formatDay, initials, itemRef, plainPreview } from '../format';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
@@ -20,6 +22,7 @@ const session = useSession();
 const toast = useToast();
 const router = useRouter();
 const mine = useMineFilter('tasks');
+const filters = useListFilters('board');
 const columns = ref<Record<string, ItemSummary[]>>({});
 const loading = ref(true);
 const newOpen = ref(false);
@@ -62,7 +65,8 @@ const statuses = computed(() => manualStatusChoices(session.statusesOf('task'), 
 
 async function load() {
   try {
-    const { items } = await api.get<{ items: ItemSummary[] }>(`/items?view=board&mine=${mine.value ? 1 : 0}`);
+    const params = new URLSearchParams({ view: 'board', mine: mine.value ? '1' : '0', ...listParams(filters.value, null) });
+    const { items } = await api.get<{ items: ItemSummary[] }>(`/items?${params}`);
     const next: Record<string, ItemSummary[]> = {};
     for (const s of statuses.value) next[s.id] = [];
     for (const item of items) if (item.status) (next[item.status.id] ??= []).push(item);
@@ -73,7 +77,7 @@ async function load() {
     loading.value = false;
   }
 }
-watch([mine, statuses], load, { immediate: true });
+watch([mine, statuses, () => JSON.stringify(filters.value)], load, { immediate: true });
 
 interface ChangeEvent {
   added?: { element: ItemSummary; newIndex: number };
@@ -131,6 +135,7 @@ function onCreated(number: number) {
       <MineToggle v-model="mine" />
       <button class="btn" type="button" @click="createNew">+ Aufgabe</button>
     </div>
+    <ListFilters v-model="filters" :mine="mine" />
 
     <div v-if="!loading" class="board">
       <section

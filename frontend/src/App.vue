@@ -6,6 +6,7 @@ import AppHeader from './components/AppHeader.vue';
 import CertificateBanner from './components/CertificateBanner.vue';
 import ConfirmHost from './components/ConfirmHost.vue';
 import ImpersonationBanner from './components/ImpersonationBanner.vue';
+import SystemAlertsBanner from './components/SystemAlertsBanner.vue';
 import TestModeBanner from './components/TestModeBanner.vue';
 import ToastHost from './components/ToastHost.vue';
 import { useSession } from './stores/session';
@@ -28,6 +29,7 @@ session.watchOtherTabs();
     <ImpersonationBanner />
     <TestModeBanner />
     <CertificateBanner />
+    <SystemAlertsBanner />
     <AppHeader />
   </div>
   <main>

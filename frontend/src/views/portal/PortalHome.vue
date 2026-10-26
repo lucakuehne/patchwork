@@ -38,7 +38,7 @@ watch(state, load, { immediate: true });
 
     <div v-if="!loading && items.length === 0" class="card empty">
       <template v-if="state === 'open'">
-        Sie haben keine offenen Vorgänge.
+        Du hast keine offenen Meldungen.
         <div style="margin-top: 12px"><RouterLink to="/portal/neu" class="btn">Etwas melden</RouterLink></div>
       </template>
       <template v-else>Keine abgeschlossenen Vorgänge.</template>

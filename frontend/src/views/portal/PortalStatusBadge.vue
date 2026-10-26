@@ -9,7 +9,7 @@ defineProps<{ status: PortalStatus }>();
   <span
     class="badge"
     :class="[`st-${status.color}`, { waiting: status.waiting }]"
-    :title="status.waiting ? 'Wartet auf Ihre Rückmeldung' : undefined"
+    :title="status.waiting ? 'Wartet auf deine Rückmeldung' : undefined"
   >
     {{ status.label }}
   </span>

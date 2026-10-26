@@ -219,6 +219,10 @@ h3 {
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
+/* Filterleiste direkt unter der Kopfzeile einer Liste bzw. des Boards */
+.page-head + .list-filters {
+  margin: -6px 0 16px;
+}
 
 /* Buttons */
 .btn {

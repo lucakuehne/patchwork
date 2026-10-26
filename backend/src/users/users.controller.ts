@@ -225,9 +225,9 @@ export class UsersController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const admin = req.user!;
-    if (req.impersonator) throw new BadRequestException('Bitte zuerst zu Ihrem eigenen Konto zurückkehren.');
+    if (req.impersonator) throw new BadRequestException('Bitte zuerst zu deinem eigenen Konto zurückkehren.');
     const target = await this.users.getById(id);
-    if (target.id === admin.id) throw new BadRequestException('Das ist Ihr eigenes Konto.');
+    if (target.id === admin.id) throw new BadRequestException('Das ist dein eigenes Konto.');
     if (!target.active) throw new BadRequestException('Der Benutzer ist deaktiviert.');
     if (target.role !== 'admin' && target.role !== 'it') {
       throw new BadRequestException('Nur als Benutzer mit Rolle IT oder Admin möglich.');

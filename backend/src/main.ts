@@ -21,10 +21,10 @@ async function bootstrap() {
   app.disable('x-powered-by');
 
   // Läuft HTTPS und steht PUBLIC_URL auf https://, gehen Anfragen über http:// auf die öffentliche Adresse.
-  // Massgebend ist die Verbindung selbst, nicht X-Forwarded-Proto.
+  // Massgebend ist die Verbindung selbst, nicht X-Forwarded-Proto. Ausnahme: der Healthcheck im Container.
   const tls = app.get(TlsService);
   app.use((req: Request, res: Response, next: NextFunction) => {
-    if (!tls.redirects || (req.socket as TLSSocket).encrypted) return next();
+    if (!tls.redirects || (req.socket as TLSSocket).encrypted || req.path === '/api/health') return next();
     res.redirect(307, appConfig.publicUrl + req.originalUrl);
   });
 

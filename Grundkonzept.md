@@ -2,6 +2,9 @@
 
 Oct 15, 2026 · @Luca Kühne
 
+> Ursprüngliches Konzept, Stand 15.10.2026. Was seither entschieden wurde (auch Abweichungen von diesem Konzept), steht in
+> [docs/Entscheidungen.md](docs/Entscheidungen.md); dort ist der aktuelle Stand massgeblich.
+
 ## Ausgangslage und Ziel
 
 Patchwork ersetzt Wekan und HelpSpot durch ein einziges Tool, in dem Störungen und Aufgaben gemeinsam verwaltet werden.
@@ -138,6 +141,10 @@ Schon das MVP löst Wekan und HelpSpot ab. Die weiteren Etappen bauen darauf auf
 2. **Ausbau:** Portal, Verknüpfungen, Unteraufgaben für Projekte.
 3. **Komfort:** Regeln (z.B. «Mail von Absender X → Typ Aufgabe»), Auswertungen.
 
+Stand 26.10.2026: alle drei Etappen umgesetzt, mit zwei Ausnahmen. Den Import aus HelpSpot und Wekan gibt es nicht
+(entschieden, siehe docs/Entscheidungen.md), stattdessen einen Parallelbetrieb mit HelpSpot. Unteraufgaben für Projekte sind
+bewusst zurückgestellt; kleinere Abläufe decken die Checklisten der Aufgaben ab.
+
 ## Abgrenzung
 
 Bewusst nicht Teil von Patchwork:
@@ -150,7 +157,9 @@ Bewusst nicht Teil von Patchwork:
 
 ## Offene Punkte
 
-Diese Fragen sind noch nicht entschieden:
+Stand 26.10.2026:
 
-- [ ] Wie viele Prioritätsstufen gibt es, und gelten sie auch für Aufgaben?
-- [ ] Bleibt Patchwork privat oder wird es als Open Source veröffentlicht?
+- [x] Wie viele Prioritätsstufen gibt es, und gelten sie auch für Aufgaben? Drei Stufen (Hoch, Normal, Niedrig), für beide
+      Typen.
+- [ ] Bleibt Patchwork privat oder wird es als Open Source veröffentlicht? Das Repo ist seit dem 19.10.2026 öffentlich
+      (Images über GitHub Actions), eine Lizenz ist noch nicht festgelegt.

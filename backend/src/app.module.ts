@@ -7,6 +7,8 @@ import { ChannelsController } from './channels/channels.controller';
 import { ChannelsService } from './channels/channels.service';
 import { LdapService } from './auth/ldap.service';
 import { SessionService } from './auth/session.service';
+import { AlertsController } from './common/alerts.controller';
+import { HealthController } from './common/health.controller';
 import { DbModule } from './db/db.module';
 import { ChecklistsController } from './items/checklists.controller';
 import { ChecklistsService } from './items/checklists.service';
@@ -58,6 +60,8 @@ import { UsersService } from './users/users.service';
 @Module({
   imports: [DbModule],
   controllers: [
+    HealthController,
+    AlertsController,
     AuthController,
     SettingsController,
     UsersController,

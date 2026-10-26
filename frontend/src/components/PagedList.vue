@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { api } from '../api';
 import { useDebounced } from '../composables';
 import { useToast } from '../stores/toast';
+import { EMPTY_FILTERS, listParams, type ListFilterValues, type ListSort } from '../list-filters';
 import type { ItemSummary, View } from '../types';
 import ItemTable from './ItemTable.vue';
 
@@ -16,7 +17,11 @@ const props = defineProps<{
   showClosed?: boolean;
   hideSearch?: boolean;
   emptyText?: string;
+  /** Filter der Liste (siehe ListFilters) */
+  filters?: ListFilterValues;
 }>();
+/** Sortierung per Spaltenkopf (v-model:sort); ohne bleibt die Reihenfolge der Ansicht */
+const sort = defineModel<ListSort | null>('sort');
 
 const toast = useToast();
 const PAGE = 50;
@@ -36,6 +41,7 @@ async function load() {
       q: debounced.value.trim(),
       limit: String(PAGE),
       offset: String(offset.value),
+      ...listParams(props.filters ?? EMPTY_FILTERS, sort.value ?? null),
     });
     const result = await api.get<{ items: ItemSummary[]; total: number }>(`/items?${params}`);
     items.value = result.items;
@@ -48,7 +54,7 @@ async function load() {
 }
 
 watch(
-  () => [props.view, props.mine, debounced.value],
+  () => [props.view, props.mine, debounced.value, JSON.stringify(props.filters), JSON.stringify(sort.value)],
   () => {
     offset.value = 0;
     void load();
@@ -80,6 +86,8 @@ function page(delta: number) {
       :show-status="showStatus"
       :show-closed="showClosed"
       :empty-text="emptyText"
+      :sort="sort === undefined ? undefined : sort"
+      @update:sort="sort = $event"
     />
     <div v-if="total > PAGE" class="row">
       <span class="muted">{{ from }}–{{ to }} von {{ total }}</span>

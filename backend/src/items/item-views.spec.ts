@@ -1,6 +1,6 @@
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { viewQuery, type View } from './item-views';
+import { filterCondition, sortOrder, viewQuery, type View } from './item-views';
 
 const dialect = new PgDialect();
 const where = (view: View) => {
@@ -37,5 +37,23 @@ describe('viewQuery', () => {
 
   it('Suche ohne Filter nach Status', () => {
     expect(where('search')).toBeNull();
+  });
+});
+
+describe('Filter und Sortierung der Listen', () => {
+  const toSql = (condition: ReturnType<typeof filterCondition>) => (condition ? dialect.sqlToQuery(condition) : null);
+
+  it('ohne Filter keine Bedingung, sonst je Merkmal; «none» = ohne Angabe', () => {
+    expect(filterCondition({})).toBeUndefined();
+    const all = toSql(filterCondition({ priority: 'high', assignee: 'u1', status: 's1', channel: 'c1' }))!;
+    expect(all.params).toEqual(['high', 'u1', 's1', 'c1']);
+    const none = toSql(filterCondition({ assignee: 'none', channel: 'none' }))!;
+    expect(none.sql).toBe('("items"."assignee_id" is null and "items"."channel_id" is null)');
+  });
+
+  it('nach der Spalte, Leere zuletzt, bei Gleichstand die neueren zuerst', () => {
+    const order = sortOrder('assignee', 'desc').map((part) => dialect.sqlToQuery(part).sql);
+    expect(order).toEqual(['lower("assignee"."name") desc nulls last', '"items"."number" desc']);
+    expect(dialect.sqlToQuery(sortOrder('priority', 'asc')[0]!).sql).toBe('"items"."priority" asc nulls last');
   });
 });

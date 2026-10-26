@@ -66,7 +66,7 @@ export class AuthController {
   @Post('auth/impersonation/end')
   async endImpersonation(@Req() req: AuthedRequest, @Res({ passthrough: true }) res: Response) {
     const admin = req.impersonator;
-    if (!admin) throw new BadRequestException('Sie arbeiten nicht als anderer Benutzer.');
+    if (!admin) throw new BadRequestException('Du arbeitest nicht als anderer Benutzer.');
     await this.sessions.switchTo(req.sessionId, admin.id, res, null);
     this.logger.log(`${admin.email} arbeitet nicht mehr als ${req.user?.email}`);
     return toPublicUser(admin);

@@ -6,7 +6,7 @@ import { SettingsService } from '../settings/settings.service';
 /** Mitgliedschaft in der AD-Gruppe so lange zwischenspeichern */
 const GROUP_CACHE_MS = 5 * 60 * 1000;
 
-export const PORTAL_REFUSED = 'Das Portal ist für Sie nicht freigeschaltet. Bitte wenden Sie sich per Mail an die IT.';
+export const PORTAL_REFUSED = 'Das Portal ist für dich nicht freigeschaltet. Bitte wende dich per Mail an die IT.';
 
 /**
  * Wer das Portal nutzen darf: niemand, nur ausgewählte (einzelne Personen und Mitglieder einer AD-Gruppe) oder alle.

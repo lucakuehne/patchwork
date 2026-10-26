@@ -14,7 +14,7 @@ import {
 } from './mail-templates';
 
 /** Text des Bearbeiters in der Vorschau der öffentlichen Antwort */
-const EXAMPLE_REPLY = 'Guten Tag Frau Muster\n\nDer Drucker ist wieder eingerichtet. Bitte melden Sie sich, falls noch etwas fehlt.\n\nFreundliche Grüsse\nIvan IT';
+const EXAMPLE_REPLY = 'Hallo Anna\n\nDer Drucker ist wieder eingerichtet. Melde dich, falls noch etwas fehlt.\n\nGruss\nIvan';
 
 const normalize = (text: string) => text.replace(/\r\n?/g, '\n').trim();
 
