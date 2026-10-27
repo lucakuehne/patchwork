@@ -7,7 +7,7 @@ await step('Einstellungen pro Benutzer: Standard, Zusammenführen, ungültige We
   await loginAs('ada@test.local', 'geheim-geheim');
   const defaults = {
     layout: { incidents: 'list', tasks: 'board' },
-    open: { inbox: 'page', incident: 'page', task: 'page' },
+    open: { inbox: 'modal', incident: 'modal', task: 'modal' },
   };
   assert.deepEqual(await api('GET', '/me/preferences'), defaults);
   // Teiländerungen ergänzen den Rest
@@ -15,11 +15,11 @@ await step('Einstellungen pro Benutzer: Standard, Zusammenführen, ungültige We
     ...defaults,
     layout: { incidents: 'board', tasks: 'board' },
   });
-  assert.deepEqual(await api('PUT', '/me/preferences', { open: { task: 'modal' } }), {
+  assert.deepEqual(await api('PUT', '/me/preferences', { open: { task: 'page' } }), {
     layout: { incidents: 'board', tasks: 'board' },
-    open: { inbox: 'page', incident: 'page', task: 'modal' },
+    open: { inbox: 'modal', incident: 'modal', task: 'page' },
   });
-  assert.equal((await api('GET', '/me/preferences')).open.task, 'modal', 'gespeichert');
+  assert.equal((await api('GET', '/me/preferences')).open.task, 'page', 'gespeichert');
   await api('PUT', '/me/preferences', { layout: { incidents: 'grid' } }, { expect: [400] });
   await api('PUT', '/me/preferences', { open: { portal: 'modal' } }, { expect: [400] });
   await api('PUT', '/me/preferences', { colors: 'dark' }, { expect: [400] });

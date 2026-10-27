@@ -21,7 +21,7 @@ export interface StoredPreferences {
 
 export const DEFAULT_PREFERENCES: Preferences = {
   layout: { incidents: 'list', tasks: 'board' },
-  open: { inbox: 'page', incident: 'page', task: 'page' },
+  open: { inbox: 'modal', incident: 'modal', task: 'modal' },
 };
 
 export function withDefaults(stored: StoredPreferences | null | undefined): Preferences {

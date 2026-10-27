@@ -24,12 +24,27 @@ function onKey(e: KeyboardEvent) {
 function onBackdrop() {
   if (!props.huge) emit('close');
 }
+// Solange ein Dialog offen ist, scrollt die Seite dahinter nicht; die Breite der Bildlaufleiste bleibt als Abstand,
+// damit nichts verrutscht
+function lockScroll(lock: boolean) {
+  const root = document.documentElement;
+  if (lock) {
+    const scrollbar = window.innerWidth - root.clientWidth;
+    root.style.overflow = 'hidden';
+    if (scrollbar > 0) document.body.style.paddingRight = `${scrollbar}px`;
+  } else {
+    root.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+  }
+}
 onMounted(() => {
+  if (!openDialogs.length) lockScroll(true);
   openDialogs.push(self);
   document.addEventListener('keydown', onKey);
 });
 onBeforeUnmount(() => {
   openDialogs.splice(openDialogs.indexOf(self), 1);
+  if (!openDialogs.length) lockScroll(false);
   document.removeEventListener('keydown', onKey);
 });
 </script>
@@ -66,6 +81,8 @@ onBeforeUnmount(() => {
   padding: 6vh 16px;
   z-index: 200;
   overflow-y: auto;
+  /* Am Ende des Fensters nicht an die Seite dahinter weiterscrollen */
+  overscroll-behavior: contain;
 }
 .dialog {
   width: 100%;

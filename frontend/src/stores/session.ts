@@ -41,7 +41,7 @@ export const useSession = defineStore('session', () => {
   /** Einstellungen des Benutzers (auf dem Server gespeichert): Board oder Liste, Vorgang als Seite oder Fenster */
   const preferences = ref<Preferences>({
     layout: { incidents: 'list', tasks: 'board' },
-    open: { inbox: 'page', incident: 'page', task: 'page' },
+    open: { inbox: 'modal', incident: 'modal', task: 'modal' },
   });
   /** Wie ein Vorgang dieses Typs öffnet (null = Eingang) */
   const openMode = (type: ItemType | null) => preferences.value.open[type ?? 'inbox'];

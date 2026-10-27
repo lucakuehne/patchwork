@@ -571,9 +571,12 @@ await step('aufgaben-neu', async () => {
   await page.locator('.board-card', { hasText: 'Neue Aufgabe aus der Spalte' }).waitFor();
   await page.screenshot({ path: `${OUT}/40-erstellt-meldung.png` });
   console.log('Bild 40-erstellt-meldung');
+  // «Öffnen» zeigt die Aufgabe im Fenster (Standard); weiter geht es auf ihrer Seite
   await created.getByRole('link', { name: 'Öffnen' }).click();
-  await page.waitForURL(/\/v\/\d+$/);
-  const number = Number(page.url().split('/').pop());
+  await page.waitForURL(/\/aufgaben\?vorgang=\d+$/);
+  const number = Number(new URL(page.url()).searchParams.get('vorgang'));
+  await page.locator('.dialog.huge .composer').waitFor();
+  await page.goto(`${BASE}/v/${number}`);
 
   // Aufgabe: Antwortfeld standardmässig «Intern», Fälligkeit überfällig in der Seitenleiste
   await page.locator('.composer').waitFor();
@@ -671,13 +674,17 @@ await step('liste-board', async () => {
 });
 
 await step('fenster', async () => {
-  // Einstellungen im Benutzermenü: Aufgaben im Fenster öffnen
+  // Einstellungen im Benutzermenü: Standard überall «Fenster»; Störungen auf «Seite» umstellen
   await page.goto(`${BASE}/aufgaben`);
   await page.locator('.user-btn').click();
   await page.getByRole('link', { name: 'Einstellungen' }).click();
   await page.waitForURL(/\/einstellungen$/);
   await page.getByRole('heading', { name: 'Vorgang öffnen als' }).waitFor();
-  await page.getByRole('group', { name: 'Aufgaben', exact: true }).getByRole('button', { name: 'Fenster' }).click();
+  for (const area of ['Vorgänge im Eingang', 'Störungen', 'Aufgaben']) {
+    const active = await page.getByRole('group', { name: area, exact: true }).locator('button.active').innerText();
+    if (active.trim() !== 'Fenster') throw new Error(`Standard für «${area}»: ${active.trim()} statt Fenster`);
+  }
+  await page.getByRole('group', { name: 'Störungen', exact: true }).getByRole('button', { name: 'Seite' }).click();
   await page.locator('.toast', { hasText: 'Gespeichert' }).waitFor();
   await shot('62-einstellungen');
 
@@ -693,6 +700,14 @@ await step('fenster', async () => {
   if (!(await dialog.locator('.head h2').innerText()).includes(ref)) throw new Error('Fenster zeigt einen anderen Vorgang');
   if (!(await page.locator('.column').count())) throw new Error('Board unter dem Fenster fehlt');
   await shot('63-vorgang-fenster');
+  // Die Seite dahinter scrollt nicht mit, weder über dem Fenster noch daneben
+  for (const [x, y] of [[700, 500], [5, 500]]) {
+    await page.mouse.move(x, y);
+    await page.mouse.wheel(0, 3000);
+    await page.waitForTimeout(300);
+  }
+  const behind = await page.evaluate(() => window.scrollY);
+  if (behind !== 0) throw new Error(`Seite hinter dem Fenster gescrollt: ${behind} px`);
   // «Zurück» im Browser schliesst das Fenster, das Board bleibt
   await page.goBack();
   await page.waitForURL((url) => url.pathname === '/aufgaben' && !url.search);
@@ -717,11 +732,21 @@ await step('fenster', async () => {
   await page.waitForURL(/\/v\/\d+$/);
   await page.locator('.timeline').waitFor();
   if (await page.locator('.dialog.huge').count()) throw new Error('Fenster nach «Als Seite öffnen» noch offen');
-  // Die Einstellung gilt je Typ: Störungen öffnen weiterhin als Seite
+  // Die Einstellung gilt je Typ: Störungen öffnen jetzt als Seite
   await page.goto(`${BASE}/stoerungen`);
   await page.locator('table.table tbody tr').first().click();
   await page.waitForURL(/\/v\/\d+$/);
-  await api('PUT', '/me/preferences', { open: { task: 'page' } });
+  // Nach dem Schliessen scrollt die Seite wieder
+  await page.goto(`${BASE}/aufgaben`);
+  await card.click();
+  await dialog.locator('.timeline').waitFor();
+  await page.goBack();
+  await dialog.waitFor({ state: 'detached' });
+  await page.mouse.move(700, 500);
+  await page.mouse.wheel(0, 400);
+  await page.waitForTimeout(300);
+  if ((await page.evaluate(() => window.scrollY)) === 0) throw new Error('Seite scrollt nach dem Schliessen des Fensters nicht mehr');
+  await api('PUT', '/me/preferences', { open: { incident: 'modal' } });
 });
 
 await step('simulieren', async () => {

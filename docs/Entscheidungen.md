@@ -263,9 +263,10 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
     per Spaltenkopf umsortierbar wie jede Liste.
 - **Vorgang als Seite oder Fenster:** Unter «Einstellungen» im Benutzermenü wählt man je Bereich (Eingang, Störungen,
   Aufgaben), ob ein Vorgang als Seite (wie bisher, im gleichen Tab) oder in einem grossen Fenster über der Liste öffnet.
-  Standard überall «Seite». Gespeichert pro Benutzer. Die Wahl gilt überall in Patchwork (Listen, Board, Suche,
-  Verknüpfungen, Verweise im Verlauf, «Öffnen» in Meldungen), jeweils nach dem Typ des Vorgangs; Links aus Mails öffnen
-  immer als Seite. Ctrl+Klick bzw. die mittlere Maustaste öffnen wie gewohnt einen neuen Browser-Tab.
+  Standard überall «Fenster» (geändert am 27.10.2026, zuerst «Seite»; wer selbst gewählt hat, behält seine Wahl).
+  Gespeichert pro Benutzer. Die Wahl gilt überall in Patchwork (Listen, Board, Suche, Verknüpfungen, Verweise im Verlauf,
+  «Öffnen» in Meldungen), jeweils nach dem Typ des Vorgangs; Links aus Mails öffnen immer als Seite. Solange das Fenster
+  (oder ein anderer Dialog) offen ist, scrollt die Seite dahinter nicht mit. Ctrl+Klick bzw. die mittlere Maustaste öffnen wie gewohnt einen neuen Browser-Tab.
 - Technisch (entschieden am 27.10.2026): Das Fenster steht in der Adresse (`?vorgang=123`), «Zurück» im Browser schliesst
   es, Neuladen öffnet es wieder. Im Fenster gibt es «Als Seite öffnen». Ein Link auf einen anderen Vorgang öffnet diesen je
   nach Wahl wieder im Fenster (ersetzt den Inhalt, «Zurück» führt zum vorherigen) oder als Seite. Nach dem Schliessen lädt
