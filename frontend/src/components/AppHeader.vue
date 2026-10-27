@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { initials } from '../format';
 import { useSession } from '../stores/session';
 import type { Area } from '../types';
+import AppLogo from './AppLogo.vue';
 
 const session = useSession();
 const route = useRoute();
@@ -58,8 +59,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 <template>
   <header class="header">
     <RouterLink :to="{ name: session.homeRoute }" class="brand">
-      <img v-if="session.logoUrl" :src="session.logoUrl" alt="" class="logo" />
-      <span>{{ session.appName }}</span>
+      <AppLogo compact />
     </RouterLink>
 
     <nav class="tabs">
@@ -117,16 +117,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  font-size: 16px;
-  color: var(--text);
-  text-decoration: none;
-}
-.logo {
-  height: 28px;
-  max-width: 120px;
-  object-fit: contain;
+  flex-shrink: 0;
 }
 .tabs {
   display: flex;
@@ -208,7 +199,6 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
   background: var(--surface-hover);
   text-decoration: none;
 }
-.brand,
 .tab {
   white-space: nowrap;
 }
@@ -235,11 +225,6 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
   }
   .tab {
     padding: 0 8px;
-  }
-}
-@media (max-width: 560px) {
-  .brand span {
-    display: none;
   }
 }
 </style>

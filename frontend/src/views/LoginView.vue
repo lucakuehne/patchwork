@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { errorMessage } from '../api';
+import AppLogo from '../components/AppLogo.vue';
 import { useSession } from '../stores/session';
 
 const session = useSession();
@@ -33,10 +34,7 @@ async function submit() {
 <template>
   <div class="auth-page">
     <form class="card auth-card" @submit.prevent="submit">
-      <div class="brand">
-        <img v-if="session.logoUrl" :src="session.logoUrl" alt="" />
-        <h1>{{ session.appName }}</h1>
-      </div>
+      <h1 class="brand"><AppLogo size="large" /></h1>
       <div class="field">
         <label for="login-user">Benutzername oder E-Mail</label>
         <input id="login-user" v-model="username" class="input" autocomplete="username" autofocus required />
@@ -69,13 +67,7 @@ async function submit() {
 }
 .brand {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.brand img {
-  max-height: 56px;
-  max-width: 200px;
+  justify-content: center;
+  margin: 4px 0 10px;
 }
 </style>

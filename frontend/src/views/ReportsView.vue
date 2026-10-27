@@ -4,10 +4,10 @@ import { api } from '../api';
 import ItemLink from '../components/ItemLink.vue';
 import ReportChart from '../components/ReportChart.vue';
 import { barChartHeight, chartImage, type ChartSpec } from '../charts';
-import { formatDate, itemRef, PRIORITY_LABELS, TYPE_LABELS } from '../format';
+import { useReportScope } from '../composables';
+import { formatDate, formatDay, itemRef } from '../format';
 import {
   bucketFor,
-  bucketLabel,
   customPeriod,
   dayString,
   PERIOD_LABELS,
@@ -16,13 +16,28 @@ import {
   type Period,
   type PeriodKey,
 } from '../periods';
+import {
+  assigneeSpec,
+  channelSpec,
+  daysSince,
+  facts,
+  flowSpec,
+  oldestHint,
+  priorityTable,
+  resolutionTable,
+  SCOPE_NOUNS,
+  SCOPES,
+  statusSpec,
+  type SimpleTable,
+} from '../report-view';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
-import type { Priority, Report } from '../types';
+import type { Report } from '../types';
 
 const session = useSession();
 const toast = useToast();
 
+const scope = useReportScope();
 const periodKey = ref<PeriodKey>('thisMonth');
 const customFrom = ref(dayString(presetPeriod('thisMonth').from));
 const customTo = ref(dayString(new Date()));
@@ -38,15 +53,25 @@ const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const query = computed(() => {
   const p = period.value;
   if (!p) return '';
-  const params = new URLSearchParams({ from: p.from.toISOString(), to: p.to.toISOString(), tz: timeZone, bucket: bucket.value });
+  const params = new URLSearchParams({
+    from: p.from.toISOString(),
+    to: p.to.toISOString(),
+    tz: timeZone,
+    bucket: bucket.value,
+    scope: scope.value,
+  });
   return params.toString();
 });
 
+// Die Antwort gehört zur Ansicht, mit der sie geladen wurde (beim Umschalten nicht kurz die alte Ansicht neu deuten)
+const loadedScope = ref(scope.value);
 async function load() {
   if (!query.value) return;
   loading.value = true;
+  const requested = scope.value;
   try {
     report.value = await api.get<Report>(`/admin/reports?${query.value}`);
+    loadedScope.value = requested;
   } catch (err) {
     toast.error(err);
   } finally {
@@ -57,88 +82,14 @@ watch(query, load, { immediate: true });
 
 // ---------------------------------------------------------------- Darstellung
 
-const COLORS = {
-  incident: '#c93a3a',
-  incidentLight: '#ec9a9a',
-  task: '#2f5bea',
-  taskLight: '#9fb5f5',
-  inbox: '#9aa4b2',
-};
-const number = new Intl.NumberFormat('de-CH', { maximumFractionDigits: 1 });
-
-function duration(hours: number | null): string {
-  if (hours === null) return '–';
-  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} Min.`;
-  if (hours < 48) return `${number.format(hours)} Std.`;
-  return `${number.format(hours / 24)} Tage`;
-}
-
-const flowSpec = computed<ChartSpec | null>(() => {
-  const r = report.value;
-  if (!r) return null;
-  return {
-    title: 'Neue und abgeschlossene Vorgänge',
-    stacked: true,
-    labels: r.flow.map((f) => bucketLabel(f.start, bucket.value)),
-    datasets: [
-      { label: 'Neu: Störung', data: r.flow.map((f) => f.created.incident), color: COLORS.incident, stack: 'neu' },
-      { label: 'Neu: Aufgabe', data: r.flow.map((f) => f.created.task), color: COLORS.task, stack: 'neu' },
-      { label: 'Neu: Eingang', data: r.flow.map((f) => f.created.inbox), color: COLORS.inbox, stack: 'neu' },
-      { label: 'Abgeschlossen: Störung', data: r.flow.map((f) => f.closed.incident), color: COLORS.incidentLight, stack: 'zu' },
-      { label: 'Abgeschlossen: Aufgabe', data: r.flow.map((f) => f.closed.task), color: COLORS.taskLight, stack: 'zu' },
-    ],
-  };
-});
-
-const statusSpec = computed<ChartSpec | null>(() => {
-  const r = report.value;
-  if (!r) return null;
-  const rows = [
-    ...(r.open.inbox ? [{ label: 'Eingang', count: r.open.inbox, color: COLORS.inbox }] : []),
-    ...r.open.byStatus.map((s) => ({
-      label: `${TYPE_LABELS[s.type]}: ${s.label}`,
-      count: s.count,
-      color: s.type === 'incident' ? COLORS.incident : COLORS.task,
-    })),
-  ];
-  return {
-    title: 'Offene Vorgänge nach Status',
-    horizontal: true,
-    labels: rows.map((x) => x.label),
-    datasets: [{ label: 'Offen', data: rows.map((x) => x.count), color: rows.map((x) => x.color) }],
-  };
-});
-
-const assigneeSpec = computed<ChartSpec | null>(() => {
-  const r = report.value;
-  if (!r) return null;
-  return {
-    title: 'Offene Vorgänge nach Zuständigem',
-    horizontal: true,
-    labels: r.open.byAssignee.map((a) => a.name ?? 'niemand'),
-    datasets: [{ label: 'Offen', data: r.open.byAssignee.map((a) => a.count), color: COLORS.task }],
-  };
-});
-
-const channelSpec = computed<ChartSpec | null>(() => {
-  const r = report.value;
-  if (!r) return null;
-  return {
-    title: 'Neue Vorgänge nach Meldeweg',
-    horizontal: true,
-    labels: r.byChannel.map((c) => c.label ?? 'ohne Angabe'),
-    datasets: [{ label: 'Neu', data: r.byChannel.map((c) => c.count), color: COLORS.task }],
-  };
-});
-
-const priorities = computed(() =>
-  (['high', 'normal', 'low'] as Priority[]).map((p) => ({
-    priority: p,
-    count: report.value?.open.byPriority.find((x) => x.priority === p)?.count ?? 0,
-  })),
-);
-
-const ageDays = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 3600 * 1000));
+const noun = computed(() => SCOPE_NOUNS[loadedScope.value]);
+const factList = computed(() => (report.value ? facts(report.value, loadedScope.value) : []));
+const flow = computed(() => (report.value ? flowSpec(report.value, loadedScope.value, bucket.value) : null));
+const status = computed(() => (report.value ? statusSpec(report.value, loadedScope.value) : null));
+const assignee = computed(() => (report.value ? assigneeSpec(report.value, loadedScope.value) : null));
+const channel = computed(() => (report.value ? channelSpec(report.value, loadedScope.value) : null));
+const priorities = computed<SimpleTable | null>(() => (report.value ? priorityTable(report.value, loadedScope.value) : null));
+const resolution = computed<SimpleTable | null>(() => (report.value ? resolutionTable(report.value) : null));
 
 // ---------------------------------------------------------------- Export
 
@@ -173,59 +124,61 @@ function exportChart(spec: ChartSpec, height: number) {
 async function exportPdf() {
   const r = report.value;
   const p = period.value;
-  if (!r || !p || !flowSpec.value || !statusSpec.value || !assigneeSpec.value || !channelSpec.value) return;
+  if (!r || !p || !flow.value || !status.value || !assignee.value || !channel.value || !priorities.value) return;
+  const s = loadedScope.value;
   exporting.value = true;
   try {
     const { reportPdf } = await import('../report-pdf');
+    const barHeight = (spec: ChartSpec) => Math.min(150, 25 + spec.labels.length * 9);
+    const tables = [
+      { title: `Offene ${noun.value} nach Priorität`, head: priorities.value.head, body: priorities.value.rows, empty: '' },
+      ...(s === 'incident' && resolution.value
+        ? [{ title: 'Dauer bis «Gelöst» je Priorität', head: resolution.value.head, body: resolution.value.rows, empty: '' }]
+        : []),
+      ...(s === 'task'
+        ? [
+            {
+              title: `Überfällige Aufgaben (${r.overdue.total} insgesamt)`,
+              head: ['Nummer', 'Titel', 'Status', 'Zuständig', 'Fällig'],
+              body: r.overdue.items.map((i) => [itemRef(i.number), i.title, i.status, i.assignee ?? '–', overdueText(i.dueDate)]),
+              empty: 'Keine überfälligen Aufgaben.',
+            },
+          ]
+        : []),
+      {
+        title: 'Häufigste Melder im Zeitraum',
+        head: ['Name', 'E-Mail', 'Meldungen'],
+        body: r.topReporters.map((x) => [x.name, x.email, String(x.count)]),
+        empty: 'Keine Meldungen im Zeitraum.',
+      },
+      {
+        title: `Älteste offene ${noun.value} (${oldestHint(r, s)})`,
+        head: ['Nummer', 'Titel', 'Status', 'Zuständig', 'Offen seit'],
+        body: r.oldest.items.map((i) => [
+          itemRef(i.number),
+          i.title,
+          i.status ?? 'Eingang',
+          i.assignee ?? '–',
+          `${daysSince(i.createdAt)} Tagen`,
+        ]),
+        empty: 'Keine, die länger als 30 Tage offen sind.',
+      },
+    ];
     const blob = await reportPdf({
-      title: 'Auswertung',
+      title: s === 'all' ? 'Auswertung' : `Auswertung ${noun.value}`,
       subtitle: `${session.appName} · ${PERIOD_LABELS[periodKey.value]}: ${periodText(p)}`,
-      facts: [
-        ['Neue Vorgänge', String(r.totals.created)],
-        ['Abgeschlossene Vorgänge', String(r.totals.closed)],
-        ['Aktuell offen', String(r.totals.openNow)],
-        [
-          'Dauer bis «Gelöst»',
-          r.resolution.count
-            ? `Median ${duration(r.resolution.medianHours)}, Durchschnitt ${duration(r.resolution.averageHours)} (${r.resolution.count} Störungen)`
-            : '–',
-        ],
-      ],
+      facts: factList.value.map((f) => [f.label, f.hint ? `${f.value} (${f.hint})` : f.value]),
       charts: [
-        { spec: flowSpec.value, height: 95 },
-        { spec: statusSpec.value, height: Math.min(150, 25 + statusSpec.value.labels.length * 9) },
-        { spec: assigneeSpec.value, height: Math.min(150, 25 + assigneeSpec.value.labels.length * 9) },
-        { spec: channelSpec.value, height: Math.min(150, 25 + channelSpec.value.labels.length * 9) },
+        { spec: flow.value, height: 95 },
+        { spec: status.value, height: barHeight(status.value) },
+        { spec: assignee.value, height: barHeight(assignee.value) },
+        { spec: channel.value, height: barHeight(channel.value) },
       ],
-      tables: [
-        {
-          title: 'Offene Vorgänge nach Priorität',
-          head: ['Priorität', 'Anzahl'],
-          body: priorities.value.map((x) => [PRIORITY_LABELS[x.priority], String(x.count)]),
-          empty: '',
-        },
-        {
-          title: `Älteste offene Vorgänge (über 30 Tage, ${r.oldest.total} insgesamt)`,
-          head: ['Nummer', 'Titel', 'Status', 'Zuständig', 'Offen seit'],
-          body: r.oldest.items.map((i) => [
-            itemRef(i.number),
-            i.title,
-            i.status ?? 'Eingang',
-            i.assignee ?? '–',
-            `${ageDays(i.createdAt)} Tagen`,
-          ]),
-          empty: 'Keine Vorgänge, die länger als 30 Tage offen sind.',
-        },
-        {
-          title: 'Häufigste Melder im Zeitraum',
-          head: ['Name', 'E-Mail', 'Meldungen'],
-          body: r.topReporters.map((x) => [x.name, x.email, String(x.count)]),
-          empty: 'Keine Meldungen im Zeitraum.',
-        },
-      ],
+      tables,
     });
     const url = URL.createObjectURL(blob);
-    download(url, `patchwork-auswertung-${fileRange.value}.pdf`);
+    const name = s === 'all' ? 'auswertung' : `auswertung-${slug(noun.value)}`;
+    download(url, `patchwork-${name}-${fileRange.value}.pdf`);
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   } catch (err) {
     toast.error(err);
@@ -233,12 +186,29 @@ async function exportPdf() {
     exporting.value = false;
   }
 }
+
+function overdueText(dueDate: string): string {
+  const days = daysSince(dueDate);
+  return `${formatDay(dueDate)} (${days === 1 ? 'seit 1 Tag' : `seit ${days} Tagen`})`;
+}
 </script>
 
 <template>
   <div class="page stack">
     <div class="page-head">
       <h1>Auswertungen</h1>
+      <div class="segmented" role="group" aria-label="Ansicht">
+        <button
+          v-for="s in SCOPES"
+          :key="s.value"
+          type="button"
+          :class="{ active: scope === s.value }"
+          :aria-pressed="scope === s.value"
+          @click="scope = s.value"
+        >
+          {{ s.label }}
+        </button>
+      </div>
       <div class="spacer" />
       <select v-model="periodKey" class="select period" aria-label="Zeitraum">
         <option v-for="(label, key) in PERIOD_LABELS" :key="key" :value="key">{{ label }}</option>
@@ -260,87 +230,106 @@ async function exportPdf() {
 
     <div v-if="report" class="stack" :class="{ loading }">
       <div class="facts">
-        <div class="card fact">
-          <span class="fact-value">{{ report.totals.created }}</span>
-          <span class="muted">Neue Vorgänge</span>
-        </div>
-        <div class="card fact">
-          <span class="fact-value">{{ report.totals.closed }}</span>
-          <span class="muted">Abgeschlossen</span>
-        </div>
-        <div class="card fact">
-          <span class="fact-value">{{ report.totals.openNow }}</span>
-          <span class="muted">Aktuell offen</span>
-        </div>
-        <div class="card fact">
-          <span class="fact-value">{{ duration(report.resolution.medianHours) }}</span>
-          <span class="muted">Typische Dauer bis «Gelöst»</span>
-          <span v-if="report.resolution.count" class="faint small">
-            Median aus {{ report.resolution.count }} Störungen, Durchschnitt {{ duration(report.resolution.averageHours) }}
-          </span>
+        <div v-for="f in factList" :key="f.label" class="card fact">
+          <span class="fact-value">{{ f.value }}</span>
+          <span class="muted">{{ f.label }}</span>
+          <span v-if="f.hint" class="faint small">{{ f.hint }}</span>
         </div>
       </div>
 
-      <section v-if="flowSpec" class="card card-body">
+      <section v-if="flow" class="card card-body">
         <div class="row section-head">
-          <h2>{{ flowSpec.title }}</h2>
+          <h2>{{ flow.title }}</h2>
           <span class="spacer" />
-          <button class="btn btn-sm" type="button" @click="exportChart(flowSpec, 320)">Als Bild</button>
+          <button class="btn btn-sm" type="button" @click="exportChart(flow, 320)">Als Bild</button>
         </div>
-        <ReportChart :spec="flowSpec" :height="320" />
+        <ReportChart :spec="flow" :height="320" />
       </section>
 
       <div class="two">
-        <section v-if="statusSpec" class="card card-body">
-          <div class="row section-head">
-            <h2>{{ statusSpec.title }}</h2>
-            <span class="spacer" />
-            <button class="btn btn-sm" type="button" @click="exportChart(statusSpec, barChartHeight(statusSpec.labels.length))">
-              Als Bild
-            </button>
-          </div>
-          <ReportChart v-if="statusSpec.labels.length" :spec="statusSpec" :height="barChartHeight(statusSpec.labels.length)" />
-          <div v-else class="faint">Keine offenen Vorgänge.</div>
-        </section>
-        <section v-if="assigneeSpec" class="card card-body">
-          <div class="row section-head">
-            <h2>{{ assigneeSpec.title }}</h2>
-            <span class="spacer" />
-            <button class="btn btn-sm" type="button" @click="exportChart(assigneeSpec, barChartHeight(assigneeSpec.labels.length))">
-              Als Bild
-            </button>
-          </div>
-          <ReportChart v-if="assigneeSpec.labels.length" :spec="assigneeSpec" :height="barChartHeight(assigneeSpec.labels.length)" />
-          <div v-else class="faint">Keine offenen Vorgänge.</div>
+        <section v-for="spec in [status, assignee]" :key="spec?.title" class="card card-body">
+          <template v-if="spec">
+            <div class="row section-head">
+              <h2>{{ spec.title }}</h2>
+              <span class="spacer" />
+              <button class="btn btn-sm" type="button" @click="exportChart(spec, barChartHeight(spec.labels.length))">Als Bild</button>
+            </div>
+            <ReportChart v-if="spec.labels.length" :spec="spec" :height="barChartHeight(spec.labels.length)" />
+            <div v-else class="faint">Keine offenen {{ noun }}.</div>
+          </template>
         </section>
       </div>
 
       <div class="two">
-        <section class="card card-body">
-          <h2>Offene Vorgänge nach Priorität</h2>
+        <section v-if="priorities" class="card card-body">
+          <h2>Offene {{ noun }} nach Priorität</h2>
           <table class="table">
+            <thead v-if="priorities.head.length > 2">
+              <tr>
+                <th v-for="(h, i) in priorities.head" :key="h" :class="{ num: i > 0 }">{{ i === 0 ? '' : h }}</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr v-for="p in priorities" :key="p.priority">
-                <td>{{ PRIORITY_LABELS[p.priority] }}</td>
-                <td class="num">{{ p.count }}</td>
+              <tr v-for="row in priorities.rows" :key="row[0]">
+                <td v-for="(cell, i) in row" :key="i" :class="{ num: i > 0 }">{{ cell }}</td>
               </tr>
             </tbody>
           </table>
         </section>
-        <section v-if="channelSpec" class="card card-body">
+        <section v-if="channel" class="card card-body">
           <div class="row section-head">
-            <h2>{{ channelSpec.title }}</h2>
+            <h2>{{ channel.title }}</h2>
             <span class="spacer" />
-            <button class="btn btn-sm" type="button" @click="exportChart(channelSpec, barChartHeight(channelSpec.labels.length))">
-              Als Bild
-            </button>
+            <button class="btn btn-sm" type="button" @click="exportChart(channel, barChartHeight(channel.labels.length))">Als Bild</button>
           </div>
-          <ReportChart v-if="channelSpec.labels.length" :spec="channelSpec" :height="barChartHeight(channelSpec.labels.length)" />
+          <ReportChart v-if="channel.labels.length" :spec="channel" :height="barChartHeight(channel.labels.length)" />
           <div v-else class="faint">Keine Meldungen im Zeitraum.</div>
         </section>
       </div>
 
+      <section v-if="loadedScope === 'task'" class="card card-body">
+        <h2>Überfällige Aufgaben <span class="faint small">offen, Fälligkeit vorbei, {{ report.overdue.total }} insgesamt</span></h2>
+        <table v-if="report.overdue.items.length" class="table">
+          <thead>
+            <tr>
+              <th>Nummer</th>
+              <th>Titel</th>
+              <th>Status</th>
+              <th>Zuständig</th>
+              <th>Fällig</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="i in report.overdue.items" :key="i.number">
+              <td>
+                <ItemLink :number="i.number" type="task" class="mono">{{ itemRef(i.number) }}</ItemLink>
+              </td>
+              <td class="title-cell">{{ i.title }}</td>
+              <td>{{ i.status }}</td>
+              <td>{{ i.assignee ?? '–' }}</td>
+              <td class="overdue">{{ overdueText(i.dueDate) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="faint">Keine überfälligen Aufgaben.</div>
+      </section>
+
       <div class="two">
+        <section v-if="loadedScope === 'incident' && resolution" class="card card-body">
+          <h2>Dauer bis «Gelöst» je Priorität <span class="faint small">im Zeitraum gelöst</span></h2>
+          <table class="table">
+            <thead>
+              <tr>
+                <th v-for="(h, i) in resolution.head" :key="h" :class="{ num: i > 0 }">{{ i === 0 ? '' : h }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in resolution.rows" :key="row[0]">
+                <td v-for="(cell, i) in row" :key="i" :class="{ num: i > 0 }">{{ cell }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
         <section class="card card-body">
           <h2>Häufigste Melder im Zeitraum</h2>
           <table v-if="report.topReporters.length" class="table">
@@ -358,7 +347,7 @@ async function exportPdf() {
       </div>
 
       <section class="card card-body">
-        <h2>Älteste offene Vorgänge <span class="faint small">über 30 Tage offen, {{ report.oldest.total }} insgesamt</span></h2>
+        <h2>Älteste offene {{ noun }} <span class="faint small">{{ oldestHint(report, loadedScope) }}</span></h2>
         <table v-if="report.oldest.items.length" class="table">
           <thead>
             <tr>
@@ -377,11 +366,11 @@ async function exportPdf() {
               <td class="title-cell">{{ i.title }}</td>
               <td>{{ i.status ?? 'Eingang' }}</td>
               <td>{{ i.assignee ?? '–' }}</td>
-              <td>{{ formatDate(i.createdAt) }} <span class="faint small">({{ ageDays(i.createdAt) }} Tage)</span></td>
+              <td>{{ formatDate(i.createdAt) }} <span class="faint small">({{ daysSince(i.createdAt) }} Tage)</span></td>
             </tr>
           </tbody>
         </table>
-        <div v-else class="faint">Keine Vorgänge, die länger als 30 Tage offen sind.</div>
+        <div v-else class="faint">Keine {{ noun }}, die länger als 30 Tage offen sind.</div>
       </section>
     </div>
   </div>
@@ -393,6 +382,9 @@ async function exportPdf() {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+.page-head h1 {
+  margin-right: 8px;
 }
 .period {
   width: auto;
@@ -409,7 +401,7 @@ async function exportPdf() {
 }
 .facts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
 }
 .fact {
@@ -458,5 +450,8 @@ h2 {
 }
 .title-cell {
   overflow-wrap: anywhere;
+}
+.overdue {
+  color: var(--danger);
 }
 </style>

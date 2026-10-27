@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import AppLogo from '../../components/AppLogo.vue';
 import ImpersonationBanner from '../../components/ImpersonationBanner.vue';
 import TestModeBanner from '../../components/TestModeBanner.vue';
 import { useStickyTop } from '../../composables';
@@ -28,8 +29,7 @@ async function logout() {
     <TestModeBanner />
     <header class="portal-header">
       <RouterLink to="/portal" class="brand">
-        <img v-if="session.logoUrl" :src="session.logoUrl" alt="" class="logo" />
-        <span>{{ session.appName }}</span>
+        <AppLogo compact />
       </RouterLink>
       <nav class="nav">
         <RouterLink to="/portal" class="nav-link" exact-active-class="active">Meine Vorgänge</RouterLink>
@@ -70,17 +70,7 @@ async function logout() {
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  font-size: 16px;
-  color: var(--text);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.logo {
-  height: 28px;
-  max-width: 120px;
-  object-fit: contain;
+  flex-shrink: 0;
 }
 .nav {
   display: flex;
@@ -108,8 +98,7 @@ async function logout() {
   padding: 24px 16px 48px;
 }
 @media (max-width: 640px) {
-  .user,
-  .brand span {
+  .user {
     display: none;
   }
   .portal-header {

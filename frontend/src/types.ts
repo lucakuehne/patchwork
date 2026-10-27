@@ -684,21 +684,54 @@ export interface Snippet {
   body: string;
 }
 
+/** Ansicht der Auswertungen: nur Störungen, nur Aufgaben oder alle Vorgänge (mit Eingang) */
+export type ReportScope = ItemType | 'all';
+
+/** Typische Dauer: Anzahl, Median und Durchschnitt in Stunden */
+export interface DurationStats {
+  count: number;
+  medianHours: number | null;
+  averageHours: number | null;
+}
+
 export interface Report {
-  totals: { created: number; closed: number; openNow: number };
-  flow: { start: string; created: { incident: number; task: number; inbox: number }; closed: { incident: number; task: number } }[];
+  /** Name des Start-Status der Aufgaben (Standard «Backlog») */
+  backlogLabel: string | null;
+  totals: {
+    created: number;
+    /** Im Zeitraum abgeschlossen, davon «rejected» im Ablehnen-Status */
+    closed: number;
+    rejected: number;
+    /** Jetzt offen; bei Aufgaben ohne Backlog (Start-Status), das zählt unter «backlog» */
+    openNow: number;
+    backlog: number;
+    reopened: number;
+    discarded: number;
+  };
+  /** «closed» ohne «rejected» */
+  flow: {
+    start: string;
+    created: { incident: number; task: number; inbox: number };
+    closed: { incident: number; task: number };
+    rejected: { incident: number; task: number };
+  }[];
   open: {
     inbox: number;
     byStatus: { type: ItemType; label: string; closed: boolean; count: number }[];
-    byPriority: { priority: Priority; count: number }[];
-    byAssignee: { name: string | null; count: number }[];
+    /** type null = Eingang */
+    byPriority: { priority: Priority; type: ItemType | null; count: number }[];
+    byAssignee: { id: string | null; name: string | null; type: ItemType | null; count: number }[];
   };
   oldest: {
     total: number;
     items: { number: number; title: string; type: ItemType | null; status: string | null; assignee: string | null; createdAt: string }[];
   };
-  resolution: { count: number; medianHours: number | null; averageHours: number | null };
+  overdue: { total: number; items: { number: number; title: string; status: string; assignee: string | null; dueDate: string }[] };
+  resolution: DurationStats & { byPriority: (DurationStats & { priority: Priority })[] };
+  firstReply: DurationStats;
+  cycleTime: DurationStats;
+  triage: DurationStats;
   topReporters: { name: string; email: string; count: number }[];
-  /** Neue Vorgänge im Zeitraum nach Meldeweg; label null = ohne Angabe */
-  byChannel: { label: string | null; icon: ChannelIcon | null; count: number }[];
+  /** Neue Vorgänge im Zeitraum nach Meldeweg; label null = ohne Angabe, type null = Eingang */
+  byChannel: { label: string | null; icon: ChannelIcon | null; type: ItemType | null; count: number }[];
 }

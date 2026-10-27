@@ -311,6 +311,53 @@ await step('verwaltung', async () => {
   await page.keyboard.press('Escape');
 });
 
+await step('logo', async () => {
+  // Ohne eigenes Logo: Patchwork-Logo (Signet und Schriftzug), unabhängig vom eingestellten Namen
+  const loaded = (selector) => page.locator(selector).evaluate((img) => img.complete && img.naturalWidth > 0);
+  await page.goto(`${BASE}/eingang`);
+  await page.locator('.header .brand [role="img"][aria-label="Patchwork"]').waitFor();
+  if (!(await loaded('.header .brand img[src="/logo.svg"]'))) throw new Error('Logo nicht geladen');
+  await page.locator('header.header').screenshot({ path: `${OUT}/67-logo-kopfzeile.png` });
+  console.log('Bild 67-logo-kopfzeile');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.locator('header.header').screenshot({ path: `${OUT}/68-logo-dunkel.png` });
+  console.log('Bild 68-logo-dunkel');
+  await page.emulateMedia({ colorScheme: 'light' });
+  // Schmaler Bildschirm: nur das Signet
+  await page.setViewportSize({ width: 500, height: 900 });
+  if (await page.locator('.header .brand img[src="/logo.svg"]').isVisible()) throw new Error('Schmal: Schriftzug noch sichtbar');
+  if (!(await page.locator('.header .brand img[src="/favicon.svg"]').isVisible())) throw new Error('Schmal: Signet fehlt');
+  await page.locator('header.header').screenshot({ path: `${OUT}/69-logo-schmal.png` });
+  console.log('Bild 69-logo-schmal');
+  await page.setViewportSize({ width: 1400, height: 950 });
+  // Eigenes Logo ersetzt Signet und Schriftzug
+  const status = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 240;
+    canvas.height = 60;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0f766e';
+    ctx.fillRect(0, 0, 240, 60);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.fillText('Firma AG', 40, 40);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const form = new FormData();
+    form.append('file', new File([blob], 'logo.png', { type: 'image/png' }));
+    return (await fetch('/api/settings/logo', { method: 'POST', headers: { 'x-patchwork': '1' }, body: form })).status;
+  });
+  if (status !== 204) throw new Error(`Logo hochladen: HTTP ${status}`);
+  await page.reload();
+  await page.locator('.header .brand img.custom[alt]').waitFor();
+  if (await page.locator('.header .brand img[src="/logo.svg"]').count()) throw new Error('Eigenes Logo: Patchwork-Logo noch da');
+  if (!(await loaded('.header .brand img.custom'))) throw new Error('Eigenes Logo nicht geladen');
+  await page.locator('header.header').screenshot({ path: `${OUT}/70-eigenes-logo.png` });
+  console.log('Bild 70-eigenes-logo');
+  await api('DELETE', '/settings/logo');
+  await page.reload();
+  await page.locator('.header .brand img[src="/logo.svg"]').waitFor();
+});
+
 await step('status', async () => {
   await page.goto(`${BASE}/admin/status`);
   await page.locator('.vue-flow__node').first().waitFor();
@@ -834,6 +881,22 @@ await step('auswertung', async () => {
   await page.locator('canvas').first().waitFor();
   await page.waitForTimeout(1200);
   await shot('14-auswertung', true);
+  // Ansichten: Kennzahlen und Karten je Störungen und Aufgaben, Wahl bleibt nach dem Neuladen
+  const view = async (label, facts, card) => {
+    await page.locator('.page-head .segmented').getByRole('button', { name: label, exact: true }).click();
+    await page.locator('.fact').filter({ hasText: facts }).first().waitFor();
+    await page.locator('h2').filter({ hasText: card }).first().waitFor();
+    await page.waitForTimeout(1200);
+  };
+  await view('Störungen', 'Erste Antwort', 'Dauer bis «Gelöst» je Priorität');
+  if (await page.locator('h2').filter({ hasText: 'Überfällige Aufgaben' }).count()) throw new Error('Störungen: Karte der Aufgaben sichtbar');
+  await shot('72-auswertung-stoerungen', true);
+  await view('Aufgaben', 'Durchlaufzeit', 'Überfällige Aufgaben');
+  if (!(await page.locator('h2').filter({ hasText: 'nach Zuständigem (ohne «Backlog»)' }).count())) throw new Error('Aufgaben: Zuständige ohne Backlog fehlt');
+  await shot('73-auswertung-aufgaben', true);
+  await page.reload();
+  await page.locator('.fact').filter({ hasText: 'Durchlaufzeit' }).first().waitFor();
+  await view('Alle', 'Zeit bis zur Zuordnung', 'Neue und abgeschlossene Vorgänge');
 });
 
 await step('willkommen', async () => {
@@ -904,9 +967,13 @@ await step('bereiche', async () => {
 await step('portal', async () => {
   const anna = (await api('GET', '/admin/users')).data.find((u) => u.email.startsWith('anna-'));
   await api('POST', '/auth/logout');
+  await page.goto(`${BASE}/login`);
+  await page.locator('h1.brand img[src="/logo.svg"]').waitFor();
+  await shot('71-anmeldung');
   await login(anna.email, 'anna-passwort-1');
   await page.goto(`${BASE}/portal/v/1`);
   await page.locator('.timeline').waitFor();
+  if (!(await page.locator('.portal-header .brand img[src="/logo.svg"]').isVisible())) throw new Error('Portal: Logo fehlt');
   await shot('15-portal', true);
 });
 

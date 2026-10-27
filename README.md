@@ -1,4 +1,4 @@
-# Patchwork
+# <img src="frontend/public/logo.svg" alt="Patchwork" height="48">
 
 Störungen und Aufgaben an einem Ort, als Ersatz für Wekan und HelpSpot.
 Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/Entscheidungen.md](docs/Entscheidungen.md).
@@ -6,7 +6,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 ## Funktionsumfang (MVP)
 
 - **Ein Vorgang, zwei Typen:** Störung oder Aufgabe, Typwechsel mit einem Klick. Verlauf, Kommentare und Anhänge bleiben erhalten.
-- **Tabs:** Eingang (Mails ohne Typ, mit «+ Neu» für einen Vorgang beliebigen Typs), Störungen (offene als Liste oder Board; Ansicht «Gelöst»), Aufgaben (offene als Board mit Drag & Drop oder Liste; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge und hat den Filter «Nur meine».
+- **Tabs:** Eingang (Mails ohne Typ, mit «+ Neu» für einen Vorgang beliebigen Typs), Störungen (offene als Liste oder Board; Ansicht «Gelöst»), Aufgaben (offene als Board mit Drag & Drop oder Liste; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge (bei Aufgaben ohne die im Backlog, d.h. im Start-Status der Aufgaben) und hat den Filter «Nur meine».
 - **Liste oder Board** für offene Störungen (Standard Liste, dringend zuerst) und offene Aufgaben (Standard Board), Umschalter in der Kopfzeile, pro Benutzer gespeichert. Das Board der Störungen zeigt dazu die gelösten der letzten 14 Tage, Karten nach Priorität und Alter, Ziehen wechselt den Status. Die Liste der Aufgaben ist nach Status sortiert, dann wie im Board.
 - **Vorgang als Seite oder Fenster:** Unter «Einstellungen» im Benutzermenü wählt man je Bereich (Eingang, Störungen, Aufgaben), ob ein Vorgang in einem grossen Fenster über der Liste (Standard) oder als Seite öffnet (`?vorgang=123`, «Zurück» schliesst es, «Als Seite öffnen» wechselt, die Seite dahinter scrollt nicht mit). Ctrl+Klick öffnet einen neuen Tab, Links aus Mails immer die Seite.
 - **Filter und Sortierung** in Eingang, Störungen (offen und gelöst), bei den offenen Aufgaben und unter Erledigt/Abgelehnt: nach Priorität, Zuständig (auch «niemand»), Status (wo es mehrere gibt) und Meldeweg; in den Listen zusätzlich Sortieren per Klick auf den Spaltenkopf (aufsteigend, absteigend, zurück). Die Auswahl bleibt pro Ansicht im Browser gespeichert.
@@ -50,7 +50,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 - **Zeitgesteuerte Regeln:** «seit N Tagen in …» mit Auswahl offener Status oder «Wartet auf den Melder», z.B. Eskalation per Priorität und Zuständigem oder beim Warten auf den Melder eine Erinnerung und das automatische Schliessen.
 - **Textbausteine** (Verwaltung → Textbausteine) im WYSIWYG-Editor mit Platzhaltern wie `{{Melder Vorname}}`, `{{Zuständig Nachname}}` oder `{{Bearbeiter Vorname}}`, die sich per Knopf einfügen lassen, im Antwortfeld über «Textbaustein» einfügbar.
 - **Vor- und Nachname** je Benutzer für die Platzhalter: AD-Konten aus `givenName` und `sn`, sonst aus dem Namen geschätzt («Muster, Anna», «anna.muster»), unter Verwaltung → Benutzer korrigierbar.
-- **Auswertungen** (nur Admin, in der Hauptnavigation): neue und abgeschlossene Vorgänge im Verlauf, offene nach Status, Priorität und Zuständigem, älteste offene Vorgänge, Dauer bis «Gelöst», häufigste Melder. Zeitraum wählbar, Export als CSV, Diagramme als Bild und der ganze Bericht als PDF.
+- **Auswertungen** (nur Admin, in der Hauptnavigation), umschaltbar zwischen Störungen, Aufgaben und Alle (Wahl im Browser gemerkt): neue und abgeschlossene Vorgänge im Verlauf, offene nach Status, Priorität und Zuständigem, Meldeweg, häufigste Melder, älteste offene Vorgänge. Dazu je Ansicht: bei Störungen wiedereröffnete, Dauer bis «Gelöst» (auch je Priorität) und erste Antwort; bei Aufgaben Erledigt und Abgelehnt getrennt, Backlog, überfällige Aufgaben und Durchlaufzeit ab dem Backlog; bei Alle verworfene und die Zeit bis zur Zuordnung aus dem Eingang. Zeitraum wählbar, Export als CSV, Diagramme als Bild und der ganze Bericht als PDF, jeweils für die gewählte Ansicht.
 
 ## Technik
 
@@ -238,6 +238,10 @@ Für eine PostgreSQL auf dem Docker-Host (Dev-Betrieb) lautet die Adresse z.B.
 | `MAIL_POLLING` | Mail-Abruf ein/aus | `true` |
 
 Mailserver, Name und Logo werden in der Oberfläche unter **Verwaltung** eingerichtet, nicht im Code.
+Ohne eigenes Logo zeigen Kopfzeile, Portal und Anmeldeseite das Patchwork-Logo (`frontend/public/logo.svg`, Signet und
+Schriftzug, auf schmalen Bildschirmen nur das Signet), der Browser-Tab das Signet (`frontend/public/favicon.svg`). Ein
+eigenes Logo ersetzt beides in der Oberfläche. Der Name erscheint im Browser-Tab, in Auswertungen und als Absender von
+Mails, wenn das Postfach keinen Namen hat.
 
 ### HTTPS
 

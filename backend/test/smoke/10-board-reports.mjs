@@ -133,4 +133,79 @@ await step('Auswertungen: Kennzahlen pro Zeitraum, CSV, nur für Admin', async (
   await loginAs('ada@test.local', 'geheim-geheim');
 });
 
+await step('Auswertungen je Ansicht (Störungen, Aufgaben, Alle), Zähler «Aufgaben» ohne Backlog', async () => {
+  const from = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const to = new Date(Date.now() + 3600 * 1000).toISOString();
+  const query = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&tz=Europe%2FZurich&bucket=day`;
+  const report = (scope) => api('GET', `/admin/reports?${query}&scope=${scope}`);
+  const sum = (rows, pick) => rows.reduce((total, x) => total + pick(x), 0);
+  const reporterId = (await detail(itemNo)).reporter.id;
+
+  // Zähler: Eine neue Aufgabe kommt ins Backlog (Start-Status) und zählt erst, wenn sie es verlässt
+  const counted = (await api('GET', '/items/counts')).tasks;
+  const tasksBefore = await report('task');
+  const n = await createItem({ type: 'task', title: `Auswertung Aufgabe ${RUN}`, reporterId });
+  assert.equal((await detail(n)).status.id, status('task', 'backlog').id);
+  assert.equal((await api('GET', '/items/counts')).tasks, counted, 'Backlog zählt nicht');
+  assert.equal((await report('task')).totals.backlog, tasksBefore.totals.backlog + 1);
+  // Fälligkeit gestern: überfällig, bis die Aufgabe erledigt ist; Durchlaufzeit ab dem Verlassen des Backlogs
+  const yesterday = new Date(Date.now() - 86_400_000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Zurich' });
+  await api('PATCH', `/items/${n}`, { dueDate: yesterday });
+  await api('POST', `/items/${n}/move`, { statusId: status('task', 'in_progress').id });
+  assert.equal((await api('GET', '/items/counts')).tasks, counted + 1);
+  let tasks = await report('task');
+  assert.ok(tasks.overdue.items.some((i) => i.number === n && i.dueDate === yesterday), JSON.stringify(tasks.overdue));
+  await api('POST', `/items/${n}/move`, { statusId: status('task', 'done').id });
+  tasks = await report('task');
+  assert.equal(tasks.cycleTime.count, tasksBefore.cycleTime.count + 1);
+  assert.ok(!tasks.overdue.items.some((i) => i.number === n), 'erledigt: nicht mehr überfällig');
+  // Neue Statuswechsel halten auch die IDs fest (für Auswertungen nach dem Umbenennen)
+  const change = (await detail(n)).entries.filter((e) => e.kind === 'status').at(-1);
+  assert.deepEqual([change.meta.fromId, change.meta.toId], [status('task', 'in_progress').id, status('task', 'done').id]);
+  // Ansicht Aufgaben: nur Aufgaben; offen ohne Backlog, Zuständige ohne Backlog, abgelehnte getrennt
+  assert.equal(tasks.backlogLabel, 'Backlog');
+  assert.ok(tasks.open.byStatus.every((s) => s.type === 'task'));
+  assert.equal(tasks.totals.openNow + tasks.totals.backlog, sum(tasks.open.byStatus, (s) => s.count));
+  assert.equal(sum(tasks.open.byAssignee, (a) => a.count), tasks.totals.openNow, 'Zuständige ohne Backlog');
+  assert.ok(tasks.totals.rejected >= 1 && tasks.totals.rejected <= tasks.totals.closed);
+  assert.equal(tasks.totals.created, sum(tasks.flow, (f) => f.created.task));
+
+  // Störungen: erste Antwort, wiedereröffnet, Dauer bis «Gelöst» je Priorität
+  const incidentsBefore = await report('incident');
+  const highBefore = incidentsBefore.resolution.byPriority.find((p) => p.priority === 'high')?.count ?? 0;
+  const s = await createItem({ type: 'incident', title: `Auswertung Störung ${RUN}`, priority: 'high', reporterId });
+  const f = new FormData();
+  f.append('kind', 'reply');
+  f.append('body', `Wir schauen es an ${RUN}`);
+  await api('POST', `/items/${s}/entries`, f);
+  let incidents = await report('incident');
+  assert.equal(incidents.firstReply.count, incidentsBefore.firstReply.count + 1);
+  await api('POST', `/items/${s}/move`, { statusId: status('incident', 'resolved').id });
+  await api('POST', `/items/${s}/move`, { statusId: status('incident', 'in_progress').id });
+  incidents = await report('incident');
+  assert.equal(incidents.totals.reopened, incidentsBefore.totals.reopened + 1);
+  await api('POST', `/items/${s}/move`, { statusId: status('incident', 'resolved').id });
+  incidents = await report('incident');
+  assert.equal(incidents.resolution.byPriority.find((p) => p.priority === 'high').count, highBefore + 1);
+  assert.ok(incidents.open.byStatus.every((x) => x.type === 'incident'));
+  assert.ok(incidents.byChannel.every((c) => c.type === 'incident'));
+  assert.ok(incidents.open.byPriority.every((p) => p.type === 'incident'));
+  assert.equal(incidents.open.inbox, 0);
+  assert.equal(sum(incidents.flow, (x) => x.created.task + x.created.inbox), 0);
+
+  // Alle: mit Eingang, Zuordnung aus dem Eingang (z.B. Schritt «Mail-Eingang»), verworfene (Schritt «Benutzer»)
+  const all = await report('all');
+  assert.equal(all.totals.openNow, sum(all.open.byStatus, (x) => x.count) + all.open.inbox);
+  assert.ok(all.triage.count >= 1 && all.triage.medianHours >= 0, JSON.stringify(all.triage));
+  assert.ok(all.totals.discarded >= 1);
+  assert.ok(all.byChannel.some((c) => c.type === 'incident') && all.byChannel.some((c) => c.type === 'task'));
+
+  // CSV nur mit den Vorgängen der Ansicht
+  const res = await fetch(`${BASE}/admin/reports/items.csv?${query}&scope=task`, { headers: { cookie } });
+  assert.match(res.headers.get('content-disposition'), /filename="patchwork-aufgaben-\d{4}-\d{2}-\d{2}-bis-/);
+  const rows = (await res.text()).trim().split('\r\n').slice(1);
+  assert.ok(rows.length >= 1 && rows.every((r) => r.split(';')[1] === 'Aufgabe'), rows.slice(0, 3).join('\n'));
+  await api('GET', `/admin/reports?${query}&scope=eingang`, undefined, { expect: [400] });
+});
+
 Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });

@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, errorMessage } from '../api';
+import AppLogo from '../components/AppLogo.vue';
 import { useSession } from '../stores/session';
 import type { User } from '../types';
 
@@ -48,6 +49,7 @@ async function submit() {
 <template>
   <div class="auth-page">
     <form class="card auth-card" @submit.prevent="submit">
+      <div class="brand"><AppLogo size="large" /></div>
       <div>
         <h1>Willkommen bei Patchwork</h1>
         <p class="muted">Lege den Namen der Anwendung und das erste Admin-Konto fest. Danach richtest du die Postfächer ein.</p>
@@ -99,5 +101,10 @@ async function submit() {
 }
 .auth-card p {
   margin: 6px 0 0;
+}
+.brand {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 10px;
 }
 </style>

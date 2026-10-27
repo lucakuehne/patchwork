@@ -8,7 +8,7 @@ import { replaceImages } from './inline-images';
 import { NotificationsService } from '../mail/notifications.service';
 import { areaOf, type Area } from '../settings/areas';
 import { StatusesService } from '../statuses/statuses.service';
-import { ItemsService, TYPE_LABELS } from './items.service';
+import { ItemsService, statusMeta, TYPE_LABELS } from './items.service';
 
 /** Art einer Verknüpfung aus Sicht des aktuellen Vorgangs. */
 export const LINK_ROLES = ['relates', 'fixes', 'fixedBy', 'duplicateOf', 'hasDuplicate'] as const;
@@ -230,8 +230,7 @@ export class LinksService {
         })
         .where(eq(items.id, duplicate.id));
       await this.items.addEntry(tx, duplicate.id, actorId, 'status', '', {
-        from: current?.label ?? null,
-        to: target.label,
+        ...statusMeta(current, target),
         duplicateOf: original.number,
         merged,
       });

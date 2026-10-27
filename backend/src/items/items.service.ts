@@ -16,6 +16,7 @@ import {
   outgoingMails,
   participants,
   statuses,
+  statusTargets,
   uploads,
   users,
   type Attachment,
@@ -68,6 +69,14 @@ export interface UploadedFile {
 
 export const PRIORITY_LABELS: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
 export const TYPE_LABELS: Record<ItemType, string> = { incident: 'Störung', task: 'Aufgabe' };
+
+/**
+ * Angaben eines Statuswechsels im Verlauf: Namen für die Anzeige, IDs für Auswertungen (bleiben nach dem Umbenennen
+ * eindeutig; Einträge vor dem 27.10.2026 haben nur die Namen).
+ */
+export function statusMeta(from: Pick<Status, 'id' | 'label'> | undefined | null, to: Pick<Status, 'id' | 'label'>) {
+  return { from: from?.label ?? null, to: to.label, fromId: from?.id ?? null, toId: to.id };
+}
 
 /** Admin, der die Zeit einer Notiz zuletzt angepasst hat */
 const timeChanger = alias(users, 'time_changer');
@@ -147,13 +156,17 @@ export class ItemsService {
     return { items: rows.map((r) => this.toSummary(r)), total };
   }
 
-  /** Anzahl offener Vorgänge je Tab (Status nicht abgeschlossen); Bereiche ausserhalb von «areas» zählen 0. */
+  /**
+   * Anzahl offener Vorgänge je Tab (Status nicht abgeschlossen), Aufgaben ohne die im Start-Status (Backlog);
+   * Bereiche ausserhalb von «areas» zählen 0.
+   */
   async counts(areas: Area[] | null = null) {
+    const taskStart = sql`exists (select 1 from ${statusTargets} where ${statusTargets.statusId} = ${items.statusId} and ${statusTargets.type} = 'task' and ${statusTargets.target} = 'start')`;
     const [row] = await this.db
       .select({
         inbox: sql<number>`count(*) filter (where ${items.type} is null and not ${items.discarded})::int`,
         incidents: sql<number>`count(*) filter (where ${items.type} = 'incident' and not ${statuses.closed})::int`,
-        tasks: sql<number>`count(*) filter (where ${items.type} = 'task' and not ${statuses.closed})::int`,
+        tasks: sql<number>`count(*) filter (where ${items.type} = 'task' and not ${statuses.closed} and not ${taskStart})::int`,
       })
       .from(items)
       .leftJoin(statuses, eq(statuses.id, items.statusId));
@@ -600,7 +613,7 @@ export class ItemsService {
       const [updated] = await tx.update(items).set(changes).where(eq(items.id, item.id)).returning();
 
       if (target.id !== item.statusId) {
-        await this.addEntry(tx, item.id, actor.id, 'status', '', { from: current?.label ?? null, to: target.label });
+        await this.addEntry(tx, item.id, actor.id, 'status', '', statusMeta(current, target));
         if (completing) {
           pending.push(() => this.notifications.done(updated!, actor.id, target.label));
           pending.push(...(await this.onFixingItemCompleted(tx, updated!, actor)));
@@ -660,8 +673,7 @@ export class ItemsService {
         .where(eq(items.id, item.id))
         .returning();
       const entry = await this.addEntry(tx, item.id, actor.id, 'status', reason, {
-        from: current?.label ?? null,
-        to: target.label,
+        ...statusMeta(current, target),
         rejected: true,
         notified: notify,
       });
@@ -886,7 +898,7 @@ export class ItemsService {
         updatedAt: new Date(),
       })
       .where(eq(items.id, item.id));
-    await this.addEntry(tx, item.id, null, 'status', '', { from: current.label, to: target.label, reason: 'reply', via });
+    await this.addEntry(tx, item.id, null, 'status', '', { ...statusMeta(current, target), reason: 'reply', via });
     return target;
   }
 

@@ -66,14 +66,17 @@ async function removeLogo() {
       <div class="field">
         <label for="app-name">Name der Anwendung</label>
         <input id="app-name" v-model="appName" class="input" maxlength="100" />
-        <span class="hint">Erscheint in der Kopfzeile, auf der Anmeldeseite und in Mails.</span>
+        <span class="hint">
+          Erscheint im Browser-Tab, in Auswertungen und als Absender von Mails, wenn das Postfach keinen Namen hat. Kopfzeile
+          und Anmeldeseite zeigen das Logo.
+        </span>
       </div>
       <div><button class="btn btn-primary" type="button" :disabled="saving" @click="save">Speichern</button></div>
     </div>
     <div class="card card-body stack">
       <h2>Logo</h2>
       <div v-if="session.logoUrl" class="logo-preview"><img :src="session.logoUrl" alt="Logo" /></div>
-      <span v-else class="faint">Kein Logo hinterlegt.</span>
+      <span v-else class="faint">Kein eigenes Logo hinterlegt, es erscheint das Patchwork-Logo.</span>
       <div class="row">
         <label class="btn">
           Logo hochladen …
@@ -81,7 +84,9 @@ async function removeLogo() {
         </label>
         <button v-if="session.logoUrl" class="btn btn-danger" type="button" @click="removeLogo">Entfernen</button>
       </div>
-      <span class="hint faint">PNG, JPEG, WebP, GIF oder SVG, höchstens 2 MB.</span>
+      <span class="hint faint">
+        Ersetzt das Patchwork-Logo in Kopfzeile, Portal und Anmeldeseite. PNG, JPEG, WebP, GIF oder SVG, höchstens 2 MB.
+      </span>
     </div>
     <PortalSettingsCard />
     <p class="faint small">Den Testbetrieb stellt man unter <RouterLink to="/admin/ausgehende-mails">Ausgehende Mails</RouterLink> ein.</p>

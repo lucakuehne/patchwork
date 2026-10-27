@@ -20,12 +20,14 @@ const periodSchema = z
     to: z.iso.datetime({ offset: true }).transform((s) => new Date(s)),
     tz: z.string().max(64).refine(isTimeZone, 'Unbekannte Zeitzone').default('Europe/Zurich'),
     bucket: z.enum(['day', 'week', 'month']).default('week'),
+    scope: z.enum(['incident', 'task', 'all']).default('all'),
   })
   .refine((p) => p.from < p.to, 'Der Zeitraum ist leer')
   .refine((p) => p.to.getTime() - p.from.getTime() <= 6 * 366 * 24 * 3600 * 1000, 'Der Zeitraum ist zu lang');
 
 type PeriodQuery = z.infer<typeof periodSchema>;
-const toPeriod = (q: PeriodQuery): ReportPeriod => ({ from: q.from, to: q.to, timeZone: q.tz, bucket: q.bucket });
+const toPeriod = (q: PeriodQuery): ReportPeriod => ({ from: q.from, to: q.to, timeZone: q.tz, bucket: q.bucket, scope: q.scope });
+const FILE_NAMES = { incident: 'stoerungen', task: 'aufgaben', all: 'vorgaenge' } as const;
 
 @AdminOnly()
 @Controller('admin/reports')
@@ -43,7 +45,7 @@ export class ReportsController {
     // «to» ist exklusiv: im Dateinamen der letzte enthaltene Tag
     const last = new Date(query.to.getTime() - 1);
     if (Number.isNaN(last.getTime())) throw new BadRequestException('Ungültiger Zeitraum');
-    const filename = `patchwork-vorgaenge-${day(query.from)}-bis-${day(last)}.csv`;
+    const filename = `patchwork-${FILE_NAMES[query.scope]}-${day(query.from)}-bis-${day(last)}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(await this.reports.csv(toPeriod(query)));

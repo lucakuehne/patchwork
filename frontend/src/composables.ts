@@ -2,6 +2,7 @@ import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { EMPTY_FILTERS, type ListFilterValues, type ListSort } from './list-filters';
 import { modalNumber } from './open-item';
+import type { ReportScope } from './types';
 
 /**
  * Höhe des oben klebenden Blocks (Hinweisbalken und Kopfzeile) als CSS-Variable «--sticky-top», damit klebende
@@ -85,6 +86,11 @@ export function useListFilters(key: string): Ref<ListFilterValues> {
   const stored = useStored<ListFilterValues>(`patchwork.filter.${key}`, { ...EMPTY_FILTERS }, (v) => typeof v === 'object' && v !== null);
   stored.value = { ...EMPTY_FILTERS, ...stored.value };
   return stored;
+}
+
+/** Ansicht der Auswertungen (Störungen, Aufgaben, Alle), im Browser gemerkt; zuerst «Alle». */
+export function useReportScope(): Ref<ReportScope> {
+  return useStored<ReportScope>('patchwork.reports.scope', 'all', (v) => v === 'incident' || v === 'task' || v === 'all');
 }
 
 /** Sortierung einer Liste per Spaltenkopf, pro Ansicht im Browser gemerkt; null = Reihenfolge der Ansicht. */

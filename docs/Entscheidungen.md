@@ -174,7 +174,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 ### Auswertungen
 
 - Nur für Admin, in der Hauptnavigation neben Eingang, Störungen und Aufgaben (seit 18.10.2026, vorher im Benutzermenü).
-- Inhalt: neue und abgeschlossene Vorgänge im Verlauf (Störung/Aufgabe getrennt, als Diagramm), offene Vorgänge nach Status, Priorität und Zuständigem, die ältesten offenen Vorgänge, typische Dauer bis «Gelöst» bei Störungen (reine Statistik, keine SLA), die 10 häufigsten Melder. Kein Vergleich «wer hat wie viel erledigt».
+- Inhalt: neue und abgeschlossene Vorgänge im Verlauf (Störung/Aufgabe getrennt, als Diagramm), offene Vorgänge nach Status, Priorität und Zuständigem, die ältesten offenen Vorgänge, typische Dauer bis «Gelöst» bei Störungen (reine Statistik, keine SLA), die 10 häufigsten Melder. Kein Vergleich «wer hat wie viel erledigt». Seit 27.10.2026 aufgeteilt nach Störungen, Aufgaben und Alle, siehe Abschnitt «Auswertungen nach Störungen, Aufgaben und Alle».
 - Zeitraum: diese Woche, letzte Woche, dieser Monat, letzter Monat, dieses Quartal, letztes Quartal, dieses Jahr, letztes Jahr oder frei.
 - Export: CSV (eine Zeile pro Vorgang), jedes Diagramm als Bild, der ganze Bericht als PDF.
 
@@ -250,6 +250,57 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Migration 0030: Aufgaben, Ziele, Pfeile und zeitgesteuerte Regeln von «Offen» gehen auf das Backlog (fehlt es, auf den ersten übrigen offenen Status ausser dem Wartet-Status), dann wird «Offen» gelöscht. Bestehende Regeln mit «Typ: Aufgabe» erhalten den Start-Status der Aufgaben.
   - Bereiche: Einstellung `areas` (`{ it: [...] }`). Der AuthGuard prüft jede Route mit `:number`; Anhänge, Notizen und Checklisten (über ihre ID), Listen, Zähler, Suche, Verknüpfungen und aus anderen Vorgängen kopierte Bilder prüfen selbst. Mails an die IT laufen über eine Stelle, die ohne Zugriff nichts versendet; Beteiligte ohne Zugriff fallen aus dem CC.
   - Gesperrte Vorgänge antworten mit 403 «Kein Zugriff auf den Bereich …», die Oberfläche zeigt «PW-… ist für Sie gesperrt».
+
+## Auswertungen nach Störungen, Aufgaben und Alle; Zähler der Aufgaben (bestätigt am 27.10.2026)
+
+- **Umschalter** «Störungen | Aufgaben | Alle» oben neben dem Zeitraum, die letzte Wahl merkt sich der Browser, zuerst
+  «Alle». PDF und CSV enthalten nur die gewählte Ansicht.
+- **Karten je Ansicht:**
+
+  | Karte | Störungen | Aufgaben | Alle |
+  |---|---|---|---|
+  | Neue Vorgänge | ✓ | ✓ | ✓ mit Eingang |
+  | Abgeschlossen | «Gelöst» | «Erledigt» und «Abgelehnt» getrennt | ✓ |
+  | Aktuell offen | ✓ | ohne Backlog, dazu Kennzahl Backlog | ✓ mit Eingang |
+  | Typische Dauer bis «Gelöst» | ✓ | – (dafür Durchlaufzeit) | – |
+  | Neu und abgeschlossen im Verlauf | Neu und Gelöst | Neu, Erledigt und Abgelehnt | nach Typ |
+  | Offen nach Status | ✓ | ✓ mit Backlog | ✓ mit Eingang |
+  | Offen nach Zuständigem | ✓ | ohne Backlog | nach Typ gestapelt |
+  | Offen nach Priorität | ✓ | ✓ | je Typ und gesamt |
+  | Neu nach Meldeweg | ✓ | ✓ | nach Typ gestapelt |
+  | Häufigste Melder | ✓ | ✓ | ✓ |
+  | Älteste offene (über 30 Tage) | ✓ | ohne Backlog | ✓ mit Eingang |
+
+- **Neue Karten:** Störungen: «Erste Antwort» (typische Zeit bis zur ersten öffentlichen Antwort aus Patchwork),
+  «Dauer bis «Gelöst» je Priorität», «Wiedereröffnet» (gelöste Störungen, die im Zeitraum wieder aufgingen). Aufgaben:
+  «Überfällig» (offene Aufgaben mit Fälligkeit vor heute, Kennzahl und Liste), «Durchlaufzeit» (vom Verlassen des
+  Backlogs bis «Erledigt»). Alle: «Verworfen» (im Zeitraum eingegangen und verworfen) und «Zeit bis zur Zuordnung» aus dem
+  Eingang.
+- **Zähler bei «Aufgaben»** in der Hauptnavigation ohne die Aufgaben im Backlog. Als Backlog gilt der Start-Status der
+  Aufgaben (Verwaltung → Status, «Neue Aufgabe erhält»), nicht der Name; Liste und Board zeigen das Backlog weiterhin.
+- Technisch:
+  - Erste Antwort: erste Antwort aus Patchwork (nicht per Mail oder Portal, nicht vom Melder selbst), gezählt, wenn sie
+    im Zeitraum liegt. Durchlaufzeit: Aufgaben, die im Zeitraum abgeschlossen wurden (ohne Ablehnen-Status), ab dem
+    ersten Wechsel aus dem Start-Status; war eine Aufgabe nie dort, ab der Zuordnung zur Aufgabe bzw. der Erfassung.
+    Zeit bis zur Zuordnung: erster Typwechsel aus dem Eingang durch eine Person (Regeln zählen nicht), im Zeitraum.
+  - Statuswechsel im Verlauf speichern ab jetzt neben den Namen auch die IDs (`fromId`, `toId`). Ältere Einträge ordnen
+    die Auswertungen über den Namen im Typ des Vorgangs zu; nach einem Umbenennen fehlen sie bei «Wiedereröffnet» und
+    «Durchlaufzeit». Statuswechsel durch Regeln stehen nur als Text im Verlauf und zählen dort nicht.
+
+## Logo und Signet (bestätigt am 27.10.2026)
+
+- **Signet:** das bisherige Symbol (blaues Quadrat mit vier Kacheln), als Favicon im Browser-Tab.
+- **Logo:** Signet und Schriftzug «Patchwork» in Akzentblau (Manrope ExtraBold), ein Bild, kein Text neben dem Signet.
+  Es erscheint überall dort, wo bisher der Name stand: Kopfzeile, Kopfzeile des Portals, Anmeldeseite und
+  Ersteinrichtung. Auf schmalen Bildschirmen zeigen die Kopfzeilen nur das Signet.
+- Das Logo zeigt immer «Patchwork», auch wenn unter Verwaltung → Allgemein ein anderer Name eingestellt ist. Der Name
+  erscheint im Browser-Tab, in Auswertungen und als Absender von Mails, wenn das Postfach keinen Namen hat.
+- Ein **eigenes Logo** (Verwaltung → Allgemein) ersetzt Signet und Schriftzug in der Oberfläche, ohne Namen daneben. Das
+  Favicon bleibt das Signet.
+- Das Logo steht auch oben im README.
+- Technisch: `frontend/public/logo.svg` mit dem Schriftzug als Pfade (unabhängig von installierten Schriften, Manrope
+  steht unter der SIL Open Font License), im dunklen Farbschema ist der Schriftzug heller (#6d8dff, wie der Akzent),
+  das Signet bleibt gleich. Komponente `AppLogo`.
 
 ## Zuletzt aktiv, Zeit interner Notizen anpassen (bestätigt am 27.10.2026)
 
