@@ -21,7 +21,7 @@ import { and, eq, or } from 'drizzle-orm';
 import type { Response } from 'express';
 import { simpleParser } from 'mailparser';
 import { z } from 'zod';
-import { CurrentUser } from '../auth/auth.decorators';
+import { AdminOnly, CurrentUser } from '../auth/auth.decorators';
 import { appConfig } from '../config';
 import { emailSchema, nullableUuid, ZodPipe } from '../common/zod.pipe';
 import { InjectDb, type Db } from '../db/db.module';
@@ -117,6 +117,7 @@ const commentSchema = z.object({
 });
 
 const noteEditSchema = z.object({ body: z.string().max(100000).transform(normalizeNewlines) });
+const noteTimeSchema = z.object({ at: z.iso.datetime({ offset: true, error: 'Ungültige Zeit' }) });
 
 const participantSchema = z.object({ email: emailSchema, name: z.string().trim().max(200).optional() });
 
@@ -250,6 +251,20 @@ export class ItemsController {
     const [entry] = await this.db.select({ itemId: entries.itemId }).from(entries).where(eq(entries.id, id)).limit(1);
     if (entry) await this.areas.assertItem(user, entry.itemId);
     await this.items.editNote(user, id, body.body);
+  }
+
+  /** Zeit einer internen Notiz anpassen, nur Admins (Entscheid vom 27.10.2026) */
+  @Patch('entries/:id/time')
+  @AdminOnly()
+  @HttpCode(204)
+  async setNoteTime(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(noteTimeSchema)) body: z.infer<typeof noteTimeSchema>,
+    @CurrentUser() user: User,
+  ) {
+    const [entry] = await this.db.select({ itemId: entries.itemId }).from(entries).where(eq(entries.id, id)).limit(1);
+    if (entry) await this.areas.assertItem(user, entry.itemId);
+    await this.items.setNoteTime(user, id, new Date(body.at));
   }
 
   @Post('items/:number/participants')

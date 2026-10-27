@@ -69,6 +69,7 @@ export interface AdminUser extends User {
   active: boolean;
   hasPassword: boolean;
   lastLoginAt: string | null;
+  lastActiveAt: string | null;
   createdAt: string;
 }
 
@@ -284,6 +285,8 @@ export interface Entry {
   createdAt: string;
   /** Eigene interne Notizen lassen sich kurz nach dem Erfassen bearbeiten */
   editedAt: string | null;
+  /** Zeit einer internen Notiz von einem Admin angepasst: ursprüngliche Zeit, wann und von wem */
+  timeChange: { originalAt: string; at: string; by: string | null } | null;
   author: User | null;
   originalMessageId: string | null;
   /** Versand einer öffentlichen Antwort, nur bei Abweichungen (sonst null = normal versendet) */

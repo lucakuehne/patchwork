@@ -18,6 +18,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 - **Willkommens-Mail** für IT-Mitarbeitende und Admins, nur von Hand: Knopf «Willkommens-Mail senden» im Dialog des Benutzers; beim Anlegen oder einem Rollenwechsel auf IT bzw. Admin fragt Patchwork nach dem Speichern. Inhalt: Rolle, Link zu Patchwork, Benutzername und Art der Anmeldung (Windows-Konto bzw. lokales Passwort), nie ein Passwort. Vorlage «Willkommen» unter Verwaltung → E-Mail-Vorlagen; die Mail gehört zu keinem Vorgang (ohne `[PW-…]`).
 - **Bereiche je Rolle** (Verwaltung → Benutzer → «Bereiche der IT»): welche Bereiche (Eingang, Störungen, Aufgaben) die Rolle IT sieht, mindestens einen; Admins sehen alles. Ohne Zugriff fehlt der Bereich in Navigation, Zählern und Suche, seine Vorgänge sind gesperrt (auch per Link) und erscheinen in Verknüpfungen und im Verlauf nur mit der Nummer. Typen ohne Zugriff stehen beim Erfassen und Umklassieren nicht zur Wahl. IT-Mitarbeitende bleiben dort als Zuständige wählbar und erwähnbar, erhalten dazu aber keine Mails (auch nicht als Beteiligte).
 - **Als anderer Benutzer arbeiten** (nur Admins, Verwaltung → Benutzer → «Als dieser Benutzer arbeiten», für aktive IT- und Admin-Konten): Die Sitzung läuft mit den Rechten dieses Benutzers, z.B. um Antworten in seinem Namen zu testen; ein roter Balken oben führt zurück.
+- **Zuletzt aktiv** (Verwaltung → Benutzer): neben der letzten Anmeldung, wann jemand zuletzt in Patchwork oder im Portal etwas getan hat (auf die Minute; das automatische Nachladen eines offenen Tabs zählt nicht, «Als dieser Benutzer arbeiten» zählt beim Admin).
 - **Benutzer aus dem AD vorab anlegen** (Verwaltung → Benutzer → «+ Benutzer» → «Aus dem AD»), z.B. um Vorgänge zuzuweisen, bevor sich jemand zum ersten Mal anmeldet. Rolle «Aus AD-Gruppen» oder von Hand festgelegt (gilt dann auch bei der Anmeldung).
 - **Volltextsuche** über Titel, Beschreibung und Timeline (PostgreSQL).
 - **Meldeweg** jedes Vorgangs (E-Mail, Portal, Telefon, Persönlich, Teams/Chat, Intern für selbst bemerkte Dinge …), gepflegt unter Verwaltung → Meldewege mit Symbol. E-Mail und Portal setzt Patchwork selbst, beim internen Erfassen ist er Pflicht; je Typ lässt sich dort ein Meldeweg vorbelegen. In den Listen steht das Symbol, in den Auswertungen ein Diagramm nach Meldeweg.
@@ -41,7 +42,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 - **Erwähnen:** Mit «@» in Antworten und Notizen eine IT-Mitarbeiterin oder einen IT-Mitarbeiter erwähnen; die Person erhält die Mail «Erwähnt», der Melder sieht «@Vorname Nachname» als Text.
 - **Stummschalten** von Benachrichtigungen ist vorläufig ausgeblendet und wirkt nicht.
 - **Personensuche** für Melder und Beteiligte nach Name, Benutzername und E-Mail, auch im AD.
-- Eigene **interne Notizen** lassen sich 5 Minuten lang bearbeiten. Mehrere Änderungen kurz hintereinander erscheinen als eine Zeile in der Timeline.
+- Eigene **interne Notizen** lassen sich 5 Minuten lang bearbeiten. Admins können Datum und Uhrzeit jeder internen Notiz anpassen («Zeit anpassen», nicht in die Zukunft); die Notiz rückt an die neue Stelle und zeigt «Zeit angepasst» mit der ursprünglichen Zeit. Mehrere Änderungen kurz hintereinander erscheinen als eine Zeile in der Timeline.
 
 ## Etappe 3
 

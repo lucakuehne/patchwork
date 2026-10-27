@@ -58,6 +58,8 @@ export const users = pgTable('users', {
   active: boolean('active').notNull().default(true),
   createdAt: createdAt(),
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  /** Zuletzt aktiv: Anfragen mit Sitzung ausser automatischem Nachladen, auf die Minute genau (SessionService.touch) */
+  lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
   /** Einstellungen des Benutzers (Board oder Liste, Vorgang als Seite oder Fenster), siehe users/preferences.ts */
   preferences: jsonb('preferences').$type<StoredPreferences>().notNull().default({}),
 });
@@ -271,6 +273,13 @@ export const entries = pgTable(
       .default(sql`clock_timestamp()`),
     /** Eigene interne Notizen lassen sich kurz nach dem Erfassen korrigieren */
     editedAt: timestamp('edited_at', { withTimezone: true }),
+    /**
+     * Zeit einer internen Notiz von einem Admin angepasst («created_at» ist dann die neue Zeit): ursprüngliche Zeit
+     * (bleibt bei weiteren Anpassungen), wann und von wem zuletzt angepasst
+     */
+    originalCreatedAt: timestamp('original_created_at', { withTimezone: true }),
+    timeChangedAt: timestamp('time_changed_at', { withTimezone: true }),
+    timeChangedById: uuid('time_changed_by_id').references(() => users.id, { onDelete: 'set null' }),
     search: tsvector('search').generatedAlwaysAs(
       (): SQL => sql`to_tsvector('german'::regconfig, coalesce(${entries.body}, ''))`,
     ),

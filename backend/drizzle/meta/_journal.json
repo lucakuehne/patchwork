@@ -239,6 +239,20 @@
       "when": 1793080074642,
       "tag": "0033_user_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793087975815,
+      "tag": "0034_user_last_active",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793090985714,
+      "tag": "0035_note_time_change",
+      "breakpoints": true
     }
   ]
 }

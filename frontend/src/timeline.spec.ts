@@ -13,6 +13,7 @@ const entry = (minute: number, patch: Partial<Entry> = {}): Entry => ({
   meta: { field: 'priority', from: 'Normal', to: 'Hoch' },
   createdAt: new Date(Date.UTC(2026, 9, 15, 10, minute)).toISOString(),
   editedAt: null,
+  timeChange: null,
   author: ada,
   originalMessageId: null,
   delivery: null,

@@ -22,6 +22,13 @@ export const formatDateTime = (iso: string | null | undefined) => (iso ? dateTim
 /** Datum ohne Uhrzeit (JJJJ-MM-TT, z.B. Fälligkeit) als TT.MM.JJJJ, ohne Umweg über Zeitzonen */
 export const formatDay = (value: string) => value.split('-').reverse().join('.');
 
+/** Zeitpunkt als Wert für <input type="datetime-local"> in Ortszeit (JJJJ-MM-TTTHH:MM) */
+export function toLocalInput(value: string | Date): string {
+  const d = new Date(value);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Heutiges Datum (lokal) als JJJJ-MM-TT */
 export function today(now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');

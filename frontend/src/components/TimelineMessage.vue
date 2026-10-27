@@ -5,18 +5,24 @@ import { formatDateTime, itemRef } from '../format';
 import { renderMailHtml, renderMarkdown } from '../markdown';
 import { deliveryMark } from '../outgoing';
 import { useSession } from '../stores/session';
+import { useToast } from '../stores/toast';
 import { NOTE_EDIT_MINUTES } from '../timeline';
 import type { Entry } from '../types';
 import AttachmentList from './AttachmentList.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
+import NoteTimeDialog from './NoteTimeDialog.vue';
 import OriginalMailDialog from './OriginalMailDialog.vue';
 import SentMailDialog from './SentMailDialog.vue';
 import TimelineHead from './TimelineHead.vue';
 
-/** Öffentliche Antwort oder interne Notiz in der Timeline. Eigene Notizen lassen sich kurz nach dem Erfassen bearbeiten. */
+/**
+ * Öffentliche Antwort oder interne Notiz in der Timeline. Eigene Notizen lassen sich kurz nach dem Erfassen bearbeiten,
+ * Admins können die Zeit interner Notizen anpassen.
+ */
 const props = defineProps<{ entry: Entry; itemNumber: number }>();
 const emit = defineEmits<{ changed: [] }>();
 const session = useSession();
+const toast = useToast();
 
 const meta = computed(() => (props.entry.meta ?? {}) as Record<string, unknown>);
 const author = computed(() => props.entry.author?.name ?? 'System');
@@ -50,7 +56,10 @@ const label = computed(() => {
 const ownNote = computed(
   () => props.entry.kind === 'note' && !meta.value.source && !!session.user && props.entry.author?.id === session.user.id,
 );
-const editDeadline = computed(() => new Date(props.entry.createdAt).getTime() + NOTE_EDIT_MINUTES * 60_000);
+// Hat ein Admin die Zeit angepasst, zählt die Frist ab der ursprünglichen Zeit (wie im Backend)
+const editDeadline = computed(
+  () => new Date(props.entry.timeChange?.originalAt ?? props.entry.createdAt).getTime() + NOTE_EDIT_MINUTES * 60_000,
+);
 const canEdit = ref(false);
 let timer: number | undefined;
 watch(
@@ -72,6 +81,21 @@ const uploading = ref(false);
 const error = ref('');
 const showOriginal = ref(false);
 const showSent = ref(false);
+
+// Zeit einer internen Notiz: Admins können sie jederzeit anpassen (alle Autoren, auch per Mail eingegangene)
+const canChangeTime = computed(() => props.entry.kind === 'note' && session.isAdmin);
+const showTime = ref(false);
+const timeChangeTitle = computed(() => {
+  const change = props.entry.timeChange;
+  if (!change) return '';
+  const by = change.by ? ` von ${change.by}` : '';
+  return `Ursprünglich ${formatDateTime(change.originalAt)}; angepasst${by} am ${formatDateTime(change.at)}`;
+});
+function onTimeSaved() {
+  showTime.value = false;
+  toast.success('Zeit der Notiz angepasst');
+  emit('changed');
+}
 
 function startEdit() {
   draft.value = props.entry.body;
@@ -123,6 +147,7 @@ async function save() {
         >
           Bearbeiten
         </button>
+        <button v-if="canChangeTime && !editing" class="link-btn small" type="button" @click="showTime = true">Zeit anpassen</button>
         <button v-if="entry.originalMessageId" class="link-btn small" type="button" @click="showOriginal = true">
           Originalmail
         </button>
@@ -130,6 +155,7 @@ async function save() {
       </template>
       <template #after-time>
         <span v-if="entry.editedAt" class="faint small" :title="`Bearbeitet am ${formatDateTime(entry.editedAt)}`">· bearbeitet</span>
+        <span v-if="entry.timeChange" class="faint small time-changed" :title="timeChangeTitle">· Zeit angepasst</span>
       </template>
     </TimelineHead>
     <div v-if="editing" class="stack">
@@ -158,6 +184,7 @@ async function save() {
       :status="entry.delivery?.status ?? 'sent'"
       @close="showSent = false"
     />
+    <NoteTimeDialog v-if="showTime" :entry="entry" @close="showTime = false" @saved="onTimeSaved" />
   </div>
 </template>
 

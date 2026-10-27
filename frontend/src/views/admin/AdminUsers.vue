@@ -334,6 +334,7 @@ async function removePassword() {
             <th>Rolle</th>
             <th>Anmeldung</th>
             <th>Letzte Anmeldung</th>
+            <th title="Letzte Aktion in Patchwork oder im Portal (ohne automatisches Nachladen)">Zuletzt aktiv</th>
             <th />
           </tr>
         </thead>
@@ -351,6 +352,7 @@ async function removePassword() {
               <span v-else class="faint">ohne Login</span>
             </td>
             <td class="muted">{{ formatDateTime(u.lastLoginAt) }}</td>
+            <td class="muted">{{ formatDateTime(u.lastActiveAt) }}</td>
             <td><button class="btn btn-sm btn-ghost" type="button">Bearbeiten</button></td>
           </tr>
         </tbody>

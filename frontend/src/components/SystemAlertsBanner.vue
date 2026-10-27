@@ -15,10 +15,11 @@ const session = useSession();
 const route = useRoute();
 const alerts = ref<SystemAlerts | null>(null);
 
-async function load() {
+/** «background»: regelmässiges Nachladen, zählt nicht als Aktivität */
+async function load(background = false) {
   if (!session.isAdmin) return;
   try {
-    alerts.value = await api.get<SystemAlerts>('/admin/alerts');
+    alerts.value = await api.get<SystemAlerts>('/admin/alerts', { background });
   } catch {
     // z.B. offline oder abgemeldet; der nächste Versuch zeigt es wieder
   }
@@ -27,7 +28,7 @@ async function load() {
 let timer: number | undefined;
 onMounted(() => {
   void load();
-  timer = window.setInterval(() => void load(), 60_000);
+  timer = window.setInterval(() => void load(true), 60_000);
 });
 onBeforeUnmount(() => window.clearInterval(timer));
 watch(() => route.fullPath, () => void load());

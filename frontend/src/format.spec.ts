@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dueState, formatDay, plainPreview, today } from './format';
+import { dueState, formatDay, plainPreview, toLocalInput, today } from './format';
 
 describe('Vorschau der Beschreibung', () => {
   it('ohne Formatierung, Links mit Text, Erwähnungen und Bilder lesbar', () => {
@@ -23,6 +23,14 @@ describe('Fälligkeit', () => {
 
   it('heutiges Datum lokal', () => {
     expect(today(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05');
+  });
+
+  it('Zeitpunkt für ein Feld mit Datum und Uhrzeit, lokal und auf die Minute', () => {
+    const at = new Date(2026, 9, 7, 8, 5, 42);
+    expect(toLocalInput(at)).toBe('2026-10-07T08:05');
+    expect(toLocalInput(at.toISOString())).toBe('2026-10-07T08:05');
+    // Zurück in einen Zeitpunkt: wieder dieselbe Ortszeit
+    expect(new Date(toLocalInput(at)).getHours()).toBe(8);
   });
 
   it('überfällig, heute, später; abgeschlossen ohne Farbe', () => {

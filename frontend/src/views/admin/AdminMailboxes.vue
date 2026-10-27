@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api, errorMessage } from '../../api';
 import { copyText } from '../../clipboard';
 import ModalDialog from '../../components/ModalDialog.vue';
-import { formatDateTime } from '../../format';
+import { formatDateTime, toLocalInput } from '../../format';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
 import type { MailFolder, Mailbox } from '../../types';
@@ -55,13 +55,6 @@ interface Draft {
 const draft = ref<Draft | null>(null);
 const error = ref('');
 const saving = ref(false);
-
-/** Zeitpunkt als Wert für <input type="datetime-local"> in Ortszeit */
-function toLocalInput(value: string | Date): string {
-  const d = new Date(value);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 async function load() {
   try {

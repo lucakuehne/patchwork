@@ -36,6 +36,7 @@ export interface AdminUser extends PublicUser {
   active: boolean;
   hasPassword: boolean;
   lastLoginAt: Date | null;
+  lastActiveAt: Date | null;
   createdAt: Date;
 }
 
@@ -55,6 +56,7 @@ export const toAdminUser = (u: User): AdminUser => ({
   active: u.active,
   hasPassword: !!u.passwordHash,
   lastLoginAt: u.lastLoginAt,
+  lastActiveAt: u.lastActiveAt,
   createdAt: u.createdAt,
 });
 

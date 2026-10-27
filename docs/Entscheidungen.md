@@ -251,6 +251,25 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Bereiche: Einstellung `areas` (`{ it: [...] }`). Der AuthGuard prüft jede Route mit `:number`; Anhänge, Notizen und Checklisten (über ihre ID), Listen, Zähler, Suche, Verknüpfungen und aus anderen Vorgängen kopierte Bilder prüfen selbst. Mails an die IT laufen über eine Stelle, die ohne Zugriff nichts versendet; Beteiligte ohne Zugriff fallen aus dem CC.
   - Gesperrte Vorgänge antworten mit 403 «Kein Zugriff auf den Bereich …», die Oberfläche zeigt «PW-… ist für Sie gesperrt».
 
+## Zuletzt aktiv, Zeit interner Notizen anpassen (bestätigt am 27.10.2026)
+
+- **Zuletzt aktiv:** Unter Verwaltung → Benutzer steht neben «Letzte Anmeldung» die Spalte «Zuletzt aktiv» (Datum und
+  Uhrzeit), für alle Benutzer, auch Melder im Portal. Als Aktivität zählen echte Aktionen (Seite oder Vorgang öffnen,
+  speichern, antworten …), nicht das automatische Nachladen eines offenen Tabs. Arbeitet ein Admin «als dieser
+  Benutzer», ist der Admin aktiv, nicht der Benutzer.
+  - Technisch: Spalte `users.last_active_at`, gesetzt bei der Anmeldung und bei Anfragen mit Sitzung, höchstens einmal
+    pro Minute geschrieben. Automatisches Nachladen (Zähler alle 30 s, Hinweisbalken, Nachladen während des Versands)
+    sendet den Header `X-Patchwork-Background` und zählt nicht. Migration 0034 übernimmt für bestehende Konten die letzte
+    Anmeldung.
+- **Zeit interner Notizen anpassen:** Admins können bei allen internen Notizen (alle Autoren, auch per Mail
+  eingegangene) jederzeit Datum und Uhrzeit ändern, «Zeit anpassen» an der Notiz. Erlaubt ist jede Zeit bis jetzt, auch
+  vor der Erfassung des Vorgangs, nicht in der Zukunft. Die Notiz rückt im Verlauf an die neue Stelle und zeigt
+  «Zeit angepasst»; beim Darüberfahren die ursprüngliche Zeit und welcher Admin sie wann angepasst hat. Öffentliche
+  Antworten nie (sie sind als Mail verschickt).
+  - Technisch: `entries.created_at` ist die neue Zeit; `original_created_at` (bleibt bei weiteren Anpassungen),
+    `time_changed_at` und `time_changed_by_id` halten die Anpassung fest (Migration 0035). Die 5 Minuten zum Bearbeiten
+    eigener Notizen zählen ab der ursprünglichen Zeit.
+
 ## Board oder Liste, Vorgang als Seite oder Fenster (bestätigt am 27.10.2026)
 
 - **Board oder Liste:** Offene Störungen und offene Aufgaben lassen sich jeweils als Board (Kanban) oder als Liste

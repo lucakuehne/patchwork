@@ -150,6 +150,39 @@ await step('mails-im-verlauf', async () => {
   await shot('33-verlauf-mit-mails', true);
 });
 
+await step('notiz-zeit', async () => {
+  // Admin setzt eine interne Notiz auf gestern 09:30; sie zeigt «Zeit angepasst» mit der ursprünglichen Zeit
+  await page.goto(`${BASE}/v/1`);
+  await page.locator('.timeline').waitFor();
+  await page.getByRole('button', { name: 'Intern', exact: true }).click();
+  await page.locator('.composer .ProseMirror').click();
+  await page.keyboard.type('Telefonat von gestern nachgetragen');
+  await page.getByRole('button', { name: 'Notiz speichern' }).click();
+  const note = page.locator('.timeline .message.note', { hasText: 'Telefonat von gestern nachgetragen' });
+  await note.waitFor();
+  await note.getByRole('button', { name: 'Zeit anpassen' }).click();
+  const input = page.locator('#note-time');
+  await input.waitFor();
+  const yesterday = await page.evaluate(() => {
+    const d = new Date(Date.now() - 86_400_000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:30`;
+  });
+  await input.fill(yesterday);
+  await page.locator('.dialog').screenshot({ path: `${OUT}/65-notiz-zeit-dialog.png` });
+  console.log('Bild 65-notiz-zeit-dialog');
+  await page.locator('.dialog').getByRole('button', { name: 'Speichern', exact: true }).click();
+  await page.locator('.toast', { hasText: 'Zeit der Notiz angepasst' }).waitFor();
+  const marker = note.locator('.time-changed');
+  await marker.waitFor();
+  const title = (await marker.getAttribute('title')) ?? '';
+  if (!title.startsWith('Ursprünglich') || !title.includes('Ada Admin')) throw new Error(`Hinweis «Zeit angepasst»: ${title}`);
+  const time = (await note.locator('.time').first().innerText()).trim();
+  if (!time.endsWith('09:30')) throw new Error(`Zeit der Notiz nach dem Anpassen: ${time}`);
+  await note.screenshot({ path: `${OUT}/66-notiz-zeit-angepasst.png` });
+  console.log('Bild 66-notiz-zeit-angepasst');
+});
+
 await step('vorschau', async () => {
   // Anhänge der Antwort «Mit Anhängen …» aus dem Smoke-Test öffnen sich im Fenster statt als Download
   await page.goto(`${BASE}/v/1`);
@@ -481,6 +514,14 @@ await step('textbaustein', async () => {
 
 await step('benutzer-namen', async () => {
   await page.goto(`${BASE}/admin/benutzer`);
+  // Spalte «Zuletzt aktiv» neben der letzten Anmeldung; Ada ist gerade aktiv
+  await page.locator('th', { hasText: 'Zuletzt aktiv' }).waitFor();
+  const adaRow = page.locator('tbody tr', { hasText: 'ada@test.local' });
+  const cells = await adaRow.locator('td').allInnerTexts();
+  const headers = await page.locator('thead th').allInnerTexts();
+  const active = cells[headers.findIndex((h) => h.trim() === 'Zuletzt aktiv')]?.trim();
+  if (!active || active === '–') throw new Error(`«Zuletzt aktiv» bei Ada leer: ${active}`);
+  await shot('64-benutzer-zuletzt-aktiv');
   await page.getByRole('button', { name: '+ Benutzer' }).click();
   await page.locator('#u-name').fill('Muster, Anna');
   await page.waitForTimeout(200);

@@ -37,7 +37,7 @@ async function logout() {
 
 let timer: number | undefined;
 onMounted(() => {
-  timer = window.setInterval(() => void session.refreshCounts().catch(() => undefined), 30000);
+  timer = window.setInterval(() => void session.refreshCounts(true).catch(() => undefined), 30000);
 });
 onBeforeUnmount(() => window.clearInterval(timer));
 watch(

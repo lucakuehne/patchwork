@@ -171,8 +171,9 @@ export const useSession = defineStore('session', () => {
   /** Meldeweg nach ID, z.B. für Listen (dort steht nur die ID) */
   const channelById = (id: string | null | undefined) => (id ? channels.value.find((c) => c.id === id) : undefined);
 
-  async function refreshCounts() {
-    counts.value = await api.get<Counts>('/items/counts');
+  /** «background»: regelmässiges Nachladen ohne Zutun des Benutzers */
+  async function refreshCounts(background = false) {
+    counts.value = await api.get<Counts>('/items/counts', { background });
   }
 
   async function loadStatuses() {

@@ -9,6 +9,8 @@ import { sessions, users, type User } from '../db/schema';
 export const SESSION_COOKIE = 'pw_session';
 const SESSION_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** «Zuletzt aktiv» höchstens einmal pro Minute schreiben, nicht bei jeder Anfrage */
+const ACTIVE_RESOLUTION_MS = 60 * 1000;
 
 @Injectable()
 export class SessionService {
@@ -18,8 +20,15 @@ export class SessionService {
     const token = randomToken();
     const expiresAt = new Date(Date.now() + SESSION_DAYS * DAY_MS);
     await this.db.insert(sessions).values({ id: sha256(token), userId, expiresAt });
-    await this.db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
+    const now = new Date();
+    await this.db.update(users).set({ lastLoginAt: now, lastActiveAt: now }).where(eq(users.id, userId));
     this.setCookie(res, token, expiresAt);
+  }
+
+  /** Aktivität eines Benutzers festhalten (Entscheid vom 27.10.2026), auf die Minute genau */
+  async touch(user: User): Promise<void> {
+    if (user.lastActiveAt && Date.now() - user.lastActiveAt.getTime() < ACTIVE_RESOLUTION_MS) return;
+    await this.db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id));
   }
 
   /**

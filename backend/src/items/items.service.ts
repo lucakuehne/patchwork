@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, isNotNull, max, ne, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import {
   attachments,
@@ -38,7 +39,7 @@ import { toPublicUser, UsersService } from '../users/users.service';
 import { duplicateRedirect } from './duplicates';
 import { imageRefs, replaceImages, TEXT_IMAGE_TYPES } from './inline-images';
 import { mentionedIds } from './mentions';
-import { noteEditRefusal } from './note-rules';
+import { noteEditRefusal, noteTimeRefusal } from './note-rules';
 import { annotateReferences, referencedNumbers } from './references';
 import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
 import type { RuleRun } from '../rules/rules.service';
@@ -67,6 +68,9 @@ export interface UploadedFile {
 
 export const PRIORITY_LABELS: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
 export const TYPE_LABELS: Record<ItemType, string> = { incident: 'Störung', task: 'Aufgabe' };
+
+/** Admin, der die Zeit einer Notiz zuletzt angepasst hat */
+const timeChanger = alias(users, 'time_changer');
 
 /** Multer liefert Dateinamen als latin1. Umlaute wiederherstellen, wenn der Name gültiges UTF-8 ist. */
 export function decodeFilename(name: string): string {
@@ -187,9 +191,10 @@ export class ItemsService {
         .where(eq(participants.itemId, item.id))
         .orderBy(asc(users.name)),
       this.db
-        .select({ entry: entries, author: users })
+        .select({ entry: entries, author: users, changer: { name: timeChanger.name } })
         .from(entries)
         .leftJoin(users, eq(users.id, entries.authorId))
+        .leftJoin(timeChanger, eq(timeChanger.id, entries.timeChangedById))
         .where(eq(entries.itemId, item.id))
         .orderBy(asc(entries.createdAt)),
       this.db.select().from(attachments).where(eq(attachments.itemId, item.id)).orderBy(asc(attachments.createdAt)),
@@ -287,7 +292,7 @@ export class ItemsService {
       originalMessageId: originalOfItem,
       participants: participantRows.map((r) => toPublicUser(r.user)),
       attachments: attachmentRows.filter((a) => !a.entryId).map(toAttachment),
-      entries: entryRows.map(({ entry, author }) => ({
+      entries: entryRows.map(({ entry, author, changer }) => ({
         id: entry.id,
         kind: entry.kind,
         body: entry.body,
@@ -295,6 +300,12 @@ export class ItemsService {
         meta: annotateReferences(entry.meta, refs.hidden, refs.types),
         createdAt: entry.createdAt,
         editedAt: entry.editedAt,
+        /** Zeit von einem Admin angepasst: ursprüngliche Zeit, wann und von wem */
+        timeChange: entry.timeChangedAt && {
+          originalAt: entry.originalCreatedAt,
+          at: entry.timeChangedAt,
+          by: changer?.name ?? null,
+        },
         author: author && toPublicUser(author),
         originalMessageId: originalByEntry.get(entry.id) ?? null,
         delivery: deliveryByEntry.get(entry.id) ?? null,
@@ -727,6 +738,26 @@ export class ItemsService {
       if (added.length) pending.push(() => this.notifications.mentioned(updated!, actor, added, 'note', text));
     });
     await this.flush(pending);
+  }
+
+  /**
+   * Zeit einer internen Notiz anpassen (nur Admins, siehe noteTimeRefusal). Die ursprüngliche Zeit bleibt auch bei
+   * weiteren Anpassungen erhalten; die Notiz rückt im Verlauf an ihre neue Stelle.
+   */
+  async setNoteTime(actor: User, entryId: string, at: Date): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [entry] = await tx.select().from(entries).where(eq(entries.id, entryId)).for('update').limit(1);
+      if (!entry) throw new NotFoundException('Eintrag nicht gefunden');
+      const refusal = noteTimeRefusal(entry, at, new Date());
+      if (refusal) throw new BadRequestException(refusal);
+      if (entry.createdAt.getTime() === at.getTime()) return;
+      const now = new Date();
+      await tx
+        .update(entries)
+        .set({ createdAt: at, originalCreatedAt: entry.originalCreatedAt ?? entry.createdAt, timeChangedAt: now, timeChangedById: actor.id })
+        .where(eq(entries.id, entry.id));
+      await tx.update(items).set({ updatedAt: now }).where(eq(items.id, entry.itemId));
+    });
   }
 
   async addParticipant(actor: User, number: number, email: string, name?: string): Promise<void> {

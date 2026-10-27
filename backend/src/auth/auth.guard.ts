@@ -38,6 +38,9 @@ export class AuthGuard implements CanActivate {
         req.user = found.user;
         req.sessionId = found.sessionId;
         req.impersonator = found.impersonator ?? undefined;
+        // «Zuletzt aktiv»: nicht beim automatischen Nachladen eines offenen Tabs (Header von der Oberfläche); arbeitet
+        // ein Admin als dieser Benutzer, ist der Admin aktiv, nicht der Benutzer
+        if (req.header('x-patchwork-background') !== '1') await this.sessions.touch(found.impersonator ?? found.user);
       }
     }
 

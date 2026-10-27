@@ -68,7 +68,7 @@ async function load(background = false) {
   window.clearTimeout(followTimer);
   if (!background) followUps = 0;
   try {
-    const loaded = await api.get<ItemDetail>(`/items/${number}`);
+    const loaded = await api.get<ItemDetail>(`/items/${number}`, { background });
     if (unmounted || seq !== loadSeq) return;
     item.value = loaded;
     notFound.value = false;

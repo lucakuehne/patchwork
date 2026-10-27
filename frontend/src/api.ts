@@ -22,8 +22,14 @@ export function setUnauthorizedHandler(handler: () => void) {
   onUnauthorized = handler;
 }
 
-async function request<T>(method: string, path: string, body?: Body): Promise<T> {
+/** «background»: automatisches Nachladen (z.B. Zähler eines offenen Tabs), zählt nicht als Aktivität des Benutzers */
+interface RequestOptions {
+  background?: boolean;
+}
+
+async function request<T>(method: string, path: string, body?: Body, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { 'X-Patchwork': '1' };
+  if (options.background) headers['X-Patchwork-Background'] = '1';
   let payload: BodyInit | undefined;
   if (body instanceof FormData) payload = body;
   else if (body !== undefined) {
@@ -60,7 +66,7 @@ function safeJson(text: string): unknown {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
+  get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, undefined, options),
   post: <T>(path: string, body?: Body) => request<T>('POST', path, body ?? {}),
   put: <T>(path: string, body?: Body) => request<T>('PUT', path, body ?? {}),
   patch: <T>(path: string, body?: Body) => request<T>('PATCH', path, body ?? {}),

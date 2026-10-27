@@ -1,5 +1,5 @@
-// Smoke-Test, Bereich «Einstellungen, Board der Störungen, Liste der Aufgaben, Vorgang im Fenster» (läuft über test/smoke.mjs)
-import { api, assert, createItem, detail, IVAN, loginAs, RUN, state, status, step } from './lib.mjs';
+// Smoke-Test, Bereich «Einstellungen, Board der Störungen, Liste der Aufgaben, Vorgang im Fenster, zuletzt aktiv» (läuft über test/smoke.mjs)
+import { api, assert, BASE, cookie, createItem, detail, IVAN, loginAs, RUN, setSessionCookie, state, status, step } from './lib.mjs';
 
 let { statuses } = state;
 
@@ -103,6 +103,58 @@ await step('Typ verwiesener Vorgänge (Fenster oder Seite): Verlauf und Mail-Pro
   const incoming = (await api('GET', '/admin/incoming-mails')).filter((m) => m.item);
   assert.ok(incoming.length > 0);
   assert.ok(incoming.every((m) => 'type' in m.item));
+});
+
+await step('Zuletzt aktiv: Anmeldung und Aktionen, nicht automatisches Nachladen, bei «Als Benutzer» der Admin', async () => {
+  await loginAs('ada@test.local', 'geheim-geheim');
+  const lea = await api('POST', '/admin/users', { name: `Lea Aktiv ${RUN}`, email: `lea-${RUN}@test.local`, role: 'it', password: 'lea-passwort-1' });
+  assert.deepEqual([lea.lastLoginAt, lea.lastActiveAt], [null, null], 'noch nie angemeldet');
+  const adaCookie = cookie;
+  setSessionCookie('');
+  await api('POST', '/auth/login', { username: `lea-${RUN}@test.local`, password: 'lea-passwort-1' });
+  const leaCookie = cookie;
+  setSessionCookie(adaCookie);
+  const leaRow = async () => (await api('GET', '/admin/users')).find((u) => u.id === lea.id);
+  const loggedIn = await leaRow();
+  assert.ok(loggedIn.lastActiveAt, 'Anmeldung zählt als Aktivität');
+  assert.equal(loggedIn.lastActiveAt, loggedIn.lastLoginAt);
+
+  if (!process.env.SMOKE_DATABASE_URL) {
+    process.stdout.write('(Zeitreise übersprungen, SMOKE_DATABASE_URL fehlt) ');
+    return;
+  }
+  const { default: pg } = await import('pg');
+  const db = new pg.Client({ connectionString: process.env.SMOKE_DATABASE_URL });
+  await db.connect();
+  const HOUR_AGO = `now() - interval '1 hour'`;
+  const activeAt = async (id) => (await db.query('select last_active_at from users where id = $1', [id])).rows[0].last_active_at;
+  const asLea = (headers = {}) => fetch(`${BASE}/items/counts`, { headers: { cookie: leaCookie, ...headers } });
+  try {
+    await db.query(`update users set last_active_at = ${HOUR_AGO} where id = $1`, [lea.id]);
+    const before = await activeAt(lea.id);
+    // Automatisches Nachladen eines offenen Tabs zählt nicht
+    assert.equal((await asLea({ 'x-patchwork-background': '1' })).status, 200);
+    assert.equal((await activeAt(lea.id)).getTime(), before.getTime(), 'Nachladen zählt nicht');
+    // Eine Aktion zählt, höchstens einmal pro Minute geschrieben
+    assert.equal((await asLea()).status, 200);
+    const now = await activeAt(lea.id);
+    assert.ok(Date.now() - now.getTime() < 60_000, 'Aktion zählt');
+    await asLea();
+    assert.equal((await activeAt(lea.id)).getTime(), now.getTime(), 'innerhalb einer Minute nicht erneut geschrieben');
+    assert.equal(new Date((await leaRow()).lastActiveAt).getTime(), now.getTime(), 'in der Benutzerliste');
+
+    // «Als Benutzer arbeiten»: der Admin ist aktiv, nicht der Benutzer
+    const ada = (await api('GET', '/auth/me')).user;
+    await api('POST', `/admin/users/${lea.id}/impersonate`);
+    await db.query(`update users set last_active_at = ${HOUR_AGO} where id = any($1)`, [[lea.id, ada.id]]);
+    const leaBefore = await activeAt(lea.id);
+    await api('GET', '/items/counts');
+    assert.equal((await activeAt(lea.id)).getTime(), leaBefore.getTime(), 'Lea war nicht selbst aktiv');
+    assert.ok(Date.now() - (await activeAt(ada.id)).getTime() < 60_000, 'Ada war aktiv');
+    await api('POST', '/auth/impersonation/end');
+  } finally {
+    await db.end();
+  }
 });
 
 Object.assign(state, { statuses });
