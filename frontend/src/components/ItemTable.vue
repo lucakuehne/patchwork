@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useRouter } from 'vue-router';
+
 import { formatAge, formatDate, itemRef, TYPE_LABELS } from '../format';
 import { nextSort, type ListSort, type SortField } from '../list-filters';
+import { itemHref, opensInBrowser, useOpenItem } from '../open-item';
 import { useSession } from '../stores/session';
 import type { ItemSummary } from '../types';
 import ChannelIcon from './ChannelIcon.vue';
@@ -31,9 +32,13 @@ function sortBy(field: SortField) {
   if (sortable.value) emit('update:sort', nextSort(props.sort ?? null, field));
 }
 
-const router = useRouter();
 const session = useSession();
-const open = (item: ItemSummary) => router.push({ name: 'item', params: { number: item.number } });
+const openItem = useOpenItem();
+// Klick öffnet je nach Einstellung als Seite oder Fenster; Ctrl+Klick bzw. mittlere Taste in einem neuen Tab
+function open(item: ItemSummary, event: MouseEvent) {
+  if (opensInBrowser(event)) window.open(itemHref(item.number), '_blank');
+  else openItem(item.number, item.type);
+}
 // In der Liste nur das Symbol, die Bezeichnung beim Darüberfahren
 const channelProps = (item: ItemSummary) => {
   const channel = session.channelById(item.channelId)!;
@@ -60,7 +65,7 @@ const channelProps = (item: ItemSummary) => {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="item in props.items" :key="item.id" class="clickable" @click="open(item)">
+        <tr v-for="item in props.items" :key="item.id" class="clickable" @click="open(item, $event)" @auxclick.middle.prevent="open(item, $event)">
           <td class="mono nowrap muted">{{ itemRef(item.number) }}</td>
           <td class="title-cell">
             {{ item.title }}

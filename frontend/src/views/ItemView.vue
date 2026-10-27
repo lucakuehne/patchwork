@@ -21,7 +21,8 @@ import { useToast } from '../stores/toast';
 import { groupTimeline, type TimelineBlock } from '../timeline';
 import type { ItemDetail, ItemType, PersonPick, Priority, User } from '../types';
 
-const props = defineProps<{ number: number }>();
+/** «embedded»: im Fenster über einer Ansicht (Einstellung «Fenster»), ohne Seitenrand */
+const props = defineProps<{ number: number; embedded?: boolean }>();
 const session = useSession();
 const toast = useToast();
 
@@ -49,9 +50,12 @@ function followSending() {
   followUps++;
   followTimer = window.setTimeout(() => void load(true), FOLLOW_MS);
 }
+// Nach dem Schliessen (v.a. des Fensters) wieder der Titel der Ansicht darunter
+const previousTitle = document.title;
 onBeforeUnmount(() => {
   unmounted = true;
   window.clearTimeout(followTimer);
+  document.title = previousTitle;
 });
 
 /** Laufnummer der Anfragen: Nur die Antwort der neuesten zählt (auch nach dem Wechsel zu einem anderen Vorgang). */
@@ -183,7 +187,7 @@ function onRejected() {
 </script>
 
 <template>
-  <div class="page">
+  <div :class="embedded ? 'embedded' : 'page'">
     <div v-if="notFound" class="empty">Vorgang {{ itemRef(number) }} wurde nicht gefunden.</div>
     <div v-else-if="forbidden" class="empty">{{ itemRef(number) }} ist für dich gesperrt: {{ forbidden }}.</div>
 
@@ -481,6 +485,10 @@ function onRejected() {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+/* Im Fenster scrollt der Hintergrund des Fensters, die Kopfzeile liegt nicht darüber */
+.embedded .side {
+  top: 16px;
 }
 .type-switch button {
   flex: 1;

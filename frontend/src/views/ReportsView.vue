@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { api } from '../api';
+import ItemLink from '../components/ItemLink.vue';
 import ReportChart from '../components/ReportChart.vue';
 import { barChartHeight, chartImage, type ChartSpec } from '../charts';
 import { formatDate, itemRef, PRIORITY_LABELS, TYPE_LABELS } from '../format';
@@ -371,7 +372,7 @@ async function exportPdf() {
           <tbody>
             <tr v-for="i in report.oldest.items" :key="i.number">
               <td>
-                <RouterLink :to="`/v/${i.number}`" class="mono">{{ itemRef(i.number) }}</RouterLink>
+                <ItemLink :number="i.number" :type="i.type" class="mono">{{ itemRef(i.number) }}</ItemLink>
               </td>
               <td class="title-cell">{{ i.title }}</td>
               <td>{{ i.status ?? 'Eingang' }}</td>

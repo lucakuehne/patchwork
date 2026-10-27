@@ -4,6 +4,7 @@ import { formatDateTime } from '../format';
 import { renderMarkdown } from '../markdown';
 import { asListItem, automaticStatusText, eventPart, type EventPart } from '../timeline';
 import type { Entry } from '../types';
+import ItemLink from './ItemLink.vue';
 import TimelineHead from './TimelineHead.vue';
 
 /**
@@ -44,7 +45,9 @@ const times = computed(() =>
     <ul class="changes">
       <li v-for="(part, i) in parts" :key="i">
         {{ asListItem(part.text)
-        }}<RouterLink v-if="part.link?.to" class="other" :to="part.link.to">{{ part.link.text }}</RouterLink
+        }}<ItemLink v-if="part.link && !part.link.hidden" class="other" :number="part.link.number" :type="part.link.type">{{
+          part.link.text
+        }}</ItemLink
         ><span v-else-if="part.link" class="other" title="Kein Zugriff auf diesen Bereich">{{ part.link.text }}</span>
       </li>
     </ul>

@@ -4,7 +4,7 @@
 #
 # Die Testskripte erwarten Patchwork, GreenMail und die Verzeichnisdienste unter «localhost» mit festen Ports.
 # Deshalb teilen sich Patchwork und «runner» das Netz des Dienstes «net», der diese Ports weiterleitet.
-# «runner» holt die Testskripte aus dem Repo (Stand TEST_REF) und erzeugt die Test-Zertifikate in /testfiles/tls.
+# «runner» holt den Ordner backend/test aus dem Repo (Stand TEST_REF) und erzeugt die Test-Zertifikate in /testfiles/tls.
 #
 # Ablauf, jeweils im genannten Container ausführen:
 #   runner:   node test/smoke.mjs http://localhost:8080
@@ -132,17 +132,19 @@ services:
     command:
       - |
         set -e
-        mkdir -p /app/test /testfiles/tls
+        mkdir -p /app/test /testfiles/tls /tmp/repo
+        # Ganzer Ordner backend/test (mit den Bereichen des Smoke-Tests unter smoke/) aus dem Archiv des Repos
         node --input-type=module <<'EOF'
-        const { writeFile, copyFile } = await import('node:fs/promises');
-        for (const file of ['smoke.mjs', 'ldap-smoke.mjs', 'ad-smoke.mjs', 'ldap-seed.ldif']) {
-          const url = 'https://raw.githubusercontent.com/lucakuehne/patchwork/' + process.env.TEST_REF + '/backend/test/' + file;
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(url + ' -> ' + res.status);
-          await writeFile('/app/test/' + file, await res.text());
-        }
-        await copyFile('/app/test/ldap-seed.ldif', '/testfiles/ldap-seed.ldif');
+        const { writeFile } = await import('node:fs/promises');
+        const url = 'https://codeload.github.com/lucakuehne/patchwork/tar.gz/' + process.env.TEST_REF;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(url + ' -> ' + res.status);
+        await writeFile('/tmp/repo.tar.gz', Buffer.from(await res.arrayBuffer()));
         EOF
+        tar -xzf /tmp/repo.tar.gz -C /tmp/repo
+        cp -r /tmp/repo/*/backend/test/. /app/test/
+        rm -rf /tmp/repo /tmp/repo.tar.gz
+        cp /app/test/ldap-seed.ldif /testfiles/ldap-seed.ldif
         apk add --no-cache openssl >/dev/null
         cd /testfiles/tls
         openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.pem -days 30 -subj "/CN=Patchwork Test CA" \

@@ -29,6 +29,19 @@ export function referencedNumbers(metas: Meta[]): number[] {
   return [...found];
 }
 
+/**
+ * Meta eines Eintrags mit dem Typ des Vorgangs, auf den er verweist («refType», null = Eingang), damit die Oberfläche ihn
+ * je nach Einstellung als Seite oder Fenster öffnet; gesperrte Vorgänge zusätzlich ohne Titel (hideReferences).
+ */
+export function annotateReferences(meta: Meta, hidden: ReadonlySet<number>, types: ReadonlyMap<number, string | null>): Meta {
+  const masked = hideReferences(meta, hidden);
+  if (!masked) return masked;
+  const field = REFERENCE_FIELDS.find((f) => numberIn(masked, f.number) !== null);
+  const number = field ? numberIn(masked, field.number) : null;
+  if (number === null || !types.has(number) || masked.refHidden) return masked;
+  return { ...masked, refType: types.get(number) };
+}
+
 /** Meta eines Eintrags ohne Titel gesperrter Vorgänge, mit «refHidden» */
 export function hideReferences(meta: Meta, hidden: ReadonlySet<number>): Meta {
   if (!meta || hidden.size === 0) return meta;

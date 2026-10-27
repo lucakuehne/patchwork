@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../api';
+import ItemLink from '../../components/ItemLink.vue';
 import MailAttachmentList from '../../components/MailAttachmentList.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import SimulateMailDialog from '../../components/SimulateMailDialog.vue';
@@ -142,7 +143,7 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
             <td>{{ recipients(m) }}</td>
             <td>{{ m.subject }}</td>
             <td class="nowrap">
-              <RouterLink v-if="m.item" :to="`/v/${m.item.number}`" :title="m.item.title" @click.stop>{{ itemRef(m.item.number) }}</RouterLink>
+              <ItemLink v-if="m.item" :number="m.item.number" :type="m.item.type" :title="m.item.title" @click.stop>{{ itemRef(m.item.number) }}</ItemLink>
               <span v-else class="faint">–</span>
             </td>
             <td><span class="badge">{{ kind(m) }}</span></td>
@@ -181,7 +182,7 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
         <template v-if="open.item">
           <dt>Vorgang</dt>
           <dd>
-            <RouterLink :to="`/v/${open.item.number}`">{{ itemRef(open.item.number) }} {{ open.item.title }}</RouterLink>
+            <ItemLink :number="open.item.number" :type="open.item.type">{{ itemRef(open.item.number) }} {{ open.item.title }}</ItemLink>
           </dd>
         </template>
       </dl>

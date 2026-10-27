@@ -15,7 +15,9 @@ export const VIEWS = [
   'inbox',
   'incidents',
   'incidents-closed',
+  'incidents-board',
   'board',
+  'tasks',
   'tasks-done',
   'tasks-rejected',
   'search',
@@ -105,6 +107,15 @@ export function searchCondition(query: string): SQL | undefined {
 }
 
 /** Filter und Sortierung je Ansicht. */
+/** Board eines Typs: alle Status ausser dem Ablehnen-Status, abgeschlossene nur mit den Vorgängen der letzten Tage */
+function boardCondition(type: 'incident' | 'task'): SQL | undefined {
+  return and(
+    eq(items.type, type),
+    not(inTarget('reject')),
+    or(OPEN, and(CLOSED, gte(items.closedAt, sql`now() - ${sql.raw(`interval '${BOARD_CLOSED_DAYS} days'`)}`))),
+  );
+}
+
 export function viewQuery(view: View): { where: SQL | undefined; orderBy: SQL[] } {
   switch (view) {
     case 'inbox':
@@ -126,15 +137,20 @@ export function viewQuery(view: View): { where: SQL | undefined; orderBy: SQL[] 
     case 'board':
       // Spalten sind die Status ausser dem Ablehnen-Status; abgeschlossene nur mit den letzten Tagen
       return {
-        where: and(
-          eq(items.type, 'task'),
-          not(inTarget('reject')),
-          or(
-            OPEN,
-            and(CLOSED, gte(items.closedAt, sql`now() - ${sql.raw(`interval '${BOARD_CLOSED_DAYS} days'`)}`)),
-          ),
-        ),
+        where: boardCondition('task'),
         orderBy: [asc(items.boardPosition), asc(items.createdAt)],
+      };
+    case 'incidents-board':
+      // Wie das Board der Aufgaben, Karten aber «dringend zuerst» wie die Liste (keine Reihenfolge von Hand)
+      return {
+        where: boardCondition('incident'),
+        orderBy: [asc(items.priority), asc(items.createdAt)],
+      };
+    case 'tasks':
+      // Offene Aufgaben als Liste: in der Reihenfolge der Spalten, innerhalb eines Status wie auf dem Board
+      return {
+        where: and(eq(items.type, 'task'), OPEN),
+        orderBy: [asc(statuses.position), asc(items.boardPosition), asc(items.createdAt)],
       };
     case 'tasks-done':
       return {
@@ -189,3 +205,8 @@ export function sortOrder(field: SortField, dir: 'asc' | 'desc'): SQL[] {
   };
   return [key[field], desc(items.number)];
 }
+
+/** Boards: Reihenfolge der Ansicht (von Hand bzw. «dringend zuerst»), keine Sortierung per Spaltenkopf */
+export const BOARD_VIEWS: readonly View[] = ['board', 'incidents-board'];
+/** Ganz geladen (Board, offene Listen, Eingang); abgeschlossene Listen und Suche seitenweise */
+export const UNPAGED_VIEWS: readonly View[] = ['inbox', 'incidents', 'incidents-board', 'board', 'tasks'];

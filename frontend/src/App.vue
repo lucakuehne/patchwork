@@ -5,6 +5,7 @@ import { useStickyTop } from './composables';
 import AppHeader from './components/AppHeader.vue';
 import CertificateBanner from './components/CertificateBanner.vue';
 import ConfirmHost from './components/ConfirmHost.vue';
+import ItemModal from './components/ItemModal.vue';
 import ImpersonationBanner from './components/ImpersonationBanner.vue';
 import SystemAlertsBanner from './components/SystemAlertsBanner.vue';
 import TestModeBanner from './components/TestModeBanner.vue';
@@ -36,6 +37,8 @@ session.watchOtherTabs();
     <RouterView />
   </main>
   <ToastHost />
+  <!-- Vorgang im Fenster (Einstellung «Fenster»), über ?vorgang=123 -->
+  <ItemModal v-if="showHeader" />
   <ConfirmHost />
 </template>
 

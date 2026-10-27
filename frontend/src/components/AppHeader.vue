@@ -94,6 +94,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
           <div>{{ session.user?.name }}</div>
           <div class="faint">{{ session.user?.email }}</div>
         </div>
+        <RouterLink to="/einstellungen" class="menu-item">Einstellungen</RouterLink>
         <RouterLink v-if="session.isAdmin" to="/admin" class="menu-item">Verwaltung</RouterLink>
         <button class="menu-item" type="button" @click="logout">Abmelden</button>
       </div>

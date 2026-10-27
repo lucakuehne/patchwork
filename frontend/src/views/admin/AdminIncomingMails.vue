@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../api';
+import ItemLink from '../../components/ItemLink.vue';
 import MailAttachmentList from '../../components/MailAttachmentList.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import SimulateMailDialog from '../../components/SimulateMailDialog.vue';
@@ -181,9 +182,9 @@ const sender = (m: IncomingMail) => (m.fromName ? `${m.fromName} <${m.fromAddres
             <td>{{ sender(m) }}</td>
             <td>{{ m.subject }}</td>
             <td class="nowrap">
-              <RouterLink v-if="m.item" :to="`/v/${m.item.number}`" :title="m.item.title" @click.stop>
+              <ItemLink v-if="m.item" :number="m.item.number" :type="m.item.type" :title="m.item.title" @click.stop>
                 {{ itemRef(m.item.number) }}
-              </RouterLink>
+              </ItemLink>
               <span v-else class="faint">–</span>
             </td>
           </tr>
@@ -225,7 +226,7 @@ const sender = (m: IncomingMail) => (m.fromName ? `${m.fromName} <${m.fromAddres
         <template v-if="open.item">
           <dt>Vorgang</dt>
           <dd>
-            <RouterLink :to="`/v/${open.item.number}`">{{ itemRef(open.item.number) }} {{ open.item.title }}</RouterLink>
+            <ItemLink :number="open.item.number" :type="open.item.type">{{ itemRef(open.item.number) }} {{ open.item.title }}</ItemLink>
           </dd>
         </template>
       </dl>

@@ -4,12 +4,13 @@ import { api, errorMessage } from '../api';
 import { useDebounced } from '../composables';
 import { itemRef, TYPE_LABELS } from '../format';
 import { useToast } from '../stores/toast';
-import type { ItemLink, ItemSummary, LinkRole } from '../types';
+import type { ItemLink as Link, ItemSummary, LinkRole } from '../types';
+import ItemLink from './ItemLink.vue';
 import ModalDialog from './ModalDialog.vue';
 import StatusBadge from './StatusBadge.vue';
 
 /** Verknüpfungen eines Vorgangs (Seitenleiste). */
-const props = defineProps<{ number: number; links: ItemLink[] }>();
+const props = defineProps<{ number: number; links: Link[] }>();
 const emit = defineEmits<{ changed: [] }>();
 const toast = useToast();
 
@@ -72,7 +73,7 @@ async function link(other: ItemSummary) {
   }
 }
 
-async function unlink(l: ItemLink) {
+async function unlink(l: Link) {
   try {
     await api.delete(`/items/${props.number}/links/${l.id}`);
     emit('changed');
@@ -96,9 +97,9 @@ async function unlink(l: ItemLink) {
         <span v-if="l.other.hidden" class="other-title faint" title="Kein Zugriff auf diesen Bereich">
           <span class="mono">{{ itemRef(l.other.number) }}</span>
         </span>
-        <RouterLink v-else :to="`/v/${l.other.number}`" class="other-title" :title="l.other.title">
+        <ItemLink v-else :number="l.other.number" :type="l.other.type" class="other-title" :title="l.other.title">
           <span class="mono">{{ itemRef(l.other.number) }}</span> {{ l.other.title }}
-        </RouterLink>
+        </ItemLink>
         <StatusBadge v-if="l.other.status" :status="{ id: '', ...l.other.status }" />
       </div>
       <button class="icon-btn" type="button" aria-label="Verknüpfung entfernen" @click="unlink(l)">✕</button>

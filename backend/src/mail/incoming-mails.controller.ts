@@ -176,7 +176,7 @@ export class IncomingMailsController {
     const rows = await this.db
       .select({
         mail: incomingMails,
-        item: { number: items.number, title: items.title },
+        item: { number: items.number, title: items.title, type: items.type },
         mailbox: { id: mailboxes.id, name: mailboxes.name, address: mailboxes.address },
         simulatedBy: users.name,
       })

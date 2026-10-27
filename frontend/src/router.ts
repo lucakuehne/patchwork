@@ -24,7 +24,7 @@ export const router = createRouter({
       props: { closed: true },
       meta: { area: 'incident' },
     },
-    { path: '/aufgaben', name: 'board', component: () => import('./views/BoardView.vue'), meta: { area: 'task' } },
+    { path: '/aufgaben', name: 'tasks', component: () => import('./views/TasksView.vue'), meta: { area: 'task' } },
     {
       path: '/aufgaben/erledigt',
       name: 'tasks-done',
@@ -41,6 +41,7 @@ export const router = createRouter({
       meta: { area: 'task' },
     },
     { path: '/suche', name: 'search', component: () => import('./views/SearchView.vue') },
+    { path: '/einstellungen', name: 'settings', component: () => import('./views/SettingsView.vue') },
     {
       path: '/v/:number(\\d+)',
       name: 'item',

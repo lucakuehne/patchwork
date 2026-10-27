@@ -188,6 +188,26 @@ describe('groupTimeline', () => {
     expect(asListItem('den Meldeweg «Telefon» eingetragen')).toBe('Meldeweg «Telefon» eingetragen');
   });
 
+  it('Verweis auf einen anderen Vorgang mit seinem Typ, gesperrte ohne Titel', () => {
+    const link = (meta: Record<string, unknown>) => eventPart(entry(1, { kind: 'change', meta })).link;
+    expect(link({ role: 'relates', otherNumber: 12, otherTitle: 'Drucker', refType: 'task' })).toEqual({
+      number: 12,
+      type: 'task',
+      hidden: false,
+      text: 'PW-12 «Drucker»',
+    });
+    expect(link({ role: 'relates', otherNumber: 12, otherTitle: 'Drucker', refType: null })?.type).toBeNull();
+    expect(link({ role: 'relates', otherNumber: 12, otherTitle: 'Drucker' })?.type).toBeUndefined();
+    expect(link({ role: 'relates', otherNumber: 12, refHidden: true })).toEqual({
+      number: 12,
+      type: undefined,
+      hidden: true,
+      text: 'PW-12',
+    });
+    const duplicate = eventPart(entry(1, { kind: 'status', meta: { from: 'Neu', to: 'Duplikat', duplicateOf: 5, refType: 'incident' } }));
+    expect(duplicate.link).toEqual({ number: 5, type: 'incident', hidden: false, text: 'Original PW-5' });
+  });
+
   it('Listenpunkte in der Karte ohne Artikel und gross geschrieben', () => {
     expect(asListItem('die Priorität von «Normal» auf «Hoch» geändert')).toBe('Priorität von «Normal» auf «Hoch» geändert');
     expect(asListItem('den Status von «Neu» auf «In Arbeit» geändert')).toBe('Status von «Neu» auf «In Arbeit» geändert');

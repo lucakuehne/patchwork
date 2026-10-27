@@ -12,6 +12,7 @@ import { LdapService, type LdapIdentity, type PersonNames } from '../auth/ldap.s
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import { users, type User, type UserRole } from '../db/schema';
 import { SettingsService } from '../settings/settings.service';
+import type { StoredPreferences } from './preferences';
 import { splitName } from './user-names';
 import { directoryConflict } from './user-roles';
 
@@ -202,6 +203,11 @@ export class UsersService implements OnApplicationBootstrap {
 
   listAll(): Promise<User[]> {
     return this.db.select().from(users).orderBy(asc(users.name));
+  }
+
+  /** Eigene Einstellungen speichern (Board oder Liste, Vorgang als Seite oder Fenster) */
+  async setPreferences(id: string, preferences: StoredPreferences): Promise<void> {
+    await this.db.update(users).set({ preferences }).where(eq(users.id, id));
   }
 
   async countActiveAdmins(tx: Tx = this.db, excludeId?: string): Promise<number> {

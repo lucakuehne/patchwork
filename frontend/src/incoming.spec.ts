@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { incomingResultText } from './incoming';
 
-const item = { number: 12, title: 'VPN' };
+const item = { number: 12, title: 'VPN', type: 'incident' as const };
 
 describe('incomingResultText', () => {
   it('nennt den Vorgang', () => {

@@ -1,5 +1,7 @@
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { EMPTY_FILTERS, type ListFilterValues, type ListSort } from './list-filters';
+import { modalNumber } from './open-item';
 
 /**
  * Höhe des oben klebenden Blocks (Hinweisbalken und Kopfzeile) als CSS-Variable «--sticky-top», damit klebende
@@ -91,6 +93,17 @@ export function useListSort(key: string): Ref<ListSort | null> {
     `patchwork.sort.${key}`,
     null,
     (v) => v === null || (typeof v === 'object' && typeof (v as ListSort).field === 'string'),
+  );
+}
+
+/** Nach dem Schliessen eines Vorgangs im Fenster neu laden (Status, Zuständig usw. können sich geändert haben). */
+export function useReloadAfterItemModal(reload: () => unknown) {
+  const route = useRoute();
+  watch(
+    () => modalNumber(route.query),
+    (now, before) => {
+      if (before !== null && now === null) void reload();
+    },
   );
 }
 

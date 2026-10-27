@@ -1,34 +1,47 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import { api } from '../api';
+import ItemBoard from '../components/ItemBoard.vue';
 import ItemTable from '../components/ItemTable.vue';
+import LayoutToggle from '../components/LayoutToggle.vue';
 import ListFilters from '../components/ListFilters.vue';
 import MineToggle from '../components/MineToggle.vue';
 import PagedList from '../components/PagedList.vue';
-import { useListFilters, useListSort, useMineFilter } from '../composables';
+import { useListFilters, useListSort, useMineFilter, useReloadAfterItemModal } from '../composables';
 import { listParams } from '../list-filters';
+import { useOpenItem } from '../open-item';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import type { ItemSummary } from '../types';
 
 const NewItemDialog = defineAsyncComponent(() => import('../components/NewItemDialog.vue'));
 
+/**
+ * Störungen: offene als Liste (Standard) oder Board, pro Benutzer gespeichert; gelöste immer als Liste. Das Board zeigt
+ * dazu die gelösten der letzten 14 Tage, nach Priorität und Alter.
+ */
 const props = defineProps<{ closed: boolean }>();
 const session = useSession();
 const toast = useToast();
-const router = useRouter();
-const newOpen = ref(false);
+const openItem = useOpenItem();
+const asBoard = computed(() => !props.closed && session.preferences.layout.incidents === 'board');
 
+const newOpen = ref(false);
+/** Status aus dem «+» einer Spalte des Boards; sonst keiner (Start-Status) */
+const newStatusId = ref<string | undefined>();
+function createIn(statusId?: string) {
+  newStatusId.value = statusId;
+  newOpen.value = true;
+}
 function onCreated(number: number) {
   newOpen.value = false;
-  void router.push({ name: 'item', params: { number } });
+  openItem(number, 'incident');
 }
 const mine = useMineFilter('incidents');
 const items = ref<ItemSummary[]>([]);
 const loading = ref(true);
 
-// Filter und Sortierung je Ansicht (offen, gelöst) gemerkt; Status zur Wahl nur die der Ansicht
+// Filter und Sortierung je Ansicht (offen, gelöst) gemerkt; Status zur Wahl nur die der Ansicht, im Board keiner
 const openFilters = useListFilters('incidents');
 const openSort = useListSort('incidents');
 const closedFilters = useListFilters('incidents-closed');
@@ -37,10 +50,12 @@ const filters = computed({
   get: () => (props.closed ? closedFilters.value : openFilters.value),
   set: (value) => (props.closed ? (closedFilters.value = value) : (openFilters.value = value)),
 });
-const statuses = computed(() => session.statusesOf('incident').filter((s) => s.closed === props.closed));
+const statuses = computed(() =>
+  asBoard.value ? undefined : session.statusesOf('incident').filter((s) => s.closed === props.closed),
+);
 
 async function load() {
-  if (props.closed) return;
+  if (props.closed || asBoard.value) return;
   try {
     const params = new URLSearchParams({
       view: 'incidents',
@@ -54,22 +69,26 @@ async function load() {
     loading.value = false;
   }
 }
-watch([mine, () => props.closed, () => JSON.stringify(openFilters.value), () => JSON.stringify(openSort.value)], load, {
-  immediate: true,
-});
+watch(
+  [mine, () => props.closed, asBoard, () => JSON.stringify(openFilters.value), () => JSON.stringify(openSort.value)],
+  load,
+  { immediate: true },
+);
+useReloadAfterItemModal(load);
 </script>
 
 <template>
-  <div class="page">
+  <div class="page" :class="{ 'board-page': asBoard }">
     <div class="page-head">
       <h1>Störungen</h1>
       <div class="segmented">
         <RouterLink to="/stoerungen">Offen</RouterLink>
         <RouterLink to="/stoerungen/geloest">Gelöst</RouterLink>
       </div>
+      <LayoutToggle v-if="!closed" kind="incidents" />
       <div class="spacer" />
       <MineToggle v-model="mine" />
-      <button class="btn" type="button" @click="newOpen = true">+ Störung</button>
+      <button class="btn" type="button" @click="createIn()">+ Störung</button>
     </div>
     <ListFilters v-model="filters" :mine="mine" :statuses="statuses" />
     <PagedList
@@ -82,8 +101,21 @@ watch([mine, () => props.closed, () => JSON.stringify(openFilters.value), () => 
       show-closed
       empty-text="Keine gelösten Störungen"
     />
+    <ItemBoard v-else-if="asBoard" type="incident" :mine="mine" :filters="openFilters" @create="createIn" />
     <ItemTable v-else-if="!loading" v-model:sort="openSort" :items="items" show-status empty-text="Keine offenen Störungen" />
   </div>
 
-  <NewItemDialog v-if="newOpen" fixed-type="incident" @close="newOpen = false" @created="onCreated" />
+  <NewItemDialog
+    v-if="newOpen"
+    fixed-type="incident"
+    :initial-status-id="newStatusId"
+    @close="newOpen = false"
+    @created="onCreated"
+  />
 </template>
+
+<style scoped>
+.board-page {
+  max-width: none;
+}
+</style>

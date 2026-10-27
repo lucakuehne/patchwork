@@ -39,12 +39,13 @@ import { duplicateRedirect } from './duplicates';
 import { imageRefs, replaceImages, TEXT_IMAGE_TYPES } from './inline-images';
 import { mentionedIds } from './mentions';
 import { noteEditRefusal } from './note-rules';
-import { hideReferences, referencedNumbers } from './references';
+import { annotateReferences, referencedNumbers } from './references';
 import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
 import type { RuleRun } from '../rules/rules.service';
 import { areaCondition, AreasService, type Area } from '../settings/areas';
 import {
   assigneeUser,
+  BOARD_VIEWS,
   filterCondition,
   reporterUser,
   searchCondition,
@@ -54,6 +55,7 @@ import {
   type ListFilters,
   type SortField,
   type View,
+  UNPAGED_VIEWS,
 } from './item-views';
 
 export interface UploadedFile {
@@ -106,7 +108,7 @@ export class ItemsService {
     },
   ) {
     const query = viewQuery(view);
-    const orderBy = opts.sort && view !== 'board' ? sortOrder(opts.sort.field, opts.sort.dir) : query.orderBy;
+    const orderBy = opts.sort && !BOARD_VIEWS.includes(view) ? sortOrder(opts.sort.field, opts.sort.dir) : query.orderBy;
     const search = searchCondition(opts.q);
     if (view === 'search' && !search) return { items: [], total: 0 };
     const condition = and(
@@ -117,7 +119,8 @@ export class ItemsService {
       opts.filters ? filterCondition(opts.filters) : undefined,
     );
 
-    const paged = view !== 'board' && view !== 'incidents' && view !== 'inbox';
+
+    const paged = !UNPAGED_VIEWS.includes(view);
     const base = this.db
       .select(summaryColumns)
       .from(items)
@@ -255,7 +258,7 @@ export class ItemsService {
     });
     const originalByEntry = new Map(mailRows.filter((m) => m.entryId).map((m) => [m.entryId!, m.messageId]));
     const originalOfItem = item.source === 'mail' ? (mailRows.find((m) => !m.entryId)?.messageId ?? null) : null;
-    const hidden = await this.hiddenReferences(viewer, entryRows.map((r) => r.entry.meta));
+    const refs = await this.references(viewer, entryRows.map((r) => r.entry.meta));
 
     return {
       id: item.id,
@@ -289,7 +292,7 @@ export class ItemsService {
         kind: entry.kind,
         body: entry.body,
         bodyHtml: entry.bodyHtml,
-        meta: hideReferences(entry.meta, hidden),
+        meta: annotateReferences(entry.meta, refs.hidden, refs.types),
         createdAt: entry.createdAt,
         editedAt: entry.editedAt,
         author: author && toPublicUser(author),
@@ -313,13 +316,21 @@ export class ItemsService {
     };
   }
 
-  /** Nummern der Vorgänge, auf die der Verlauf verweist und die der Betrachter nicht sehen darf (Bereiche je Rolle) */
-  private async hiddenReferences(viewer: User, metas: Entry['meta'][]): Promise<Set<number>> {
+  /**
+   * Vorgänge, auf die der Verlauf verweist: ihr Typ (für «Seite oder Fenster») und welche der Betrachter nicht sehen
+   * darf (Bereiche je Rolle).
+   */
+  private async references(viewer: User, metas: Entry['meta'][]): Promise<{ hidden: Set<number>; types: Map<number, ItemType | null> }> {
     const numbers = referencedNumbers(metas);
-    const limit = numbers.length > 0 ? await this.areas.limit(viewer) : null;
-    if (!limit) return new Set();
-    const rows = await this.db.select({ number: items.number, type: items.type }).from(items).where(inArray(items.number, numbers));
-    return new Set(rows.filter((r) => !limit.includes(r.type ?? 'inbox')).map((r) => r.number));
+    if (numbers.length === 0) return { hidden: new Set(), types: new Map() };
+    const [limit, rows] = await Promise.all([
+      this.areas.limit(viewer),
+      this.db.select({ number: items.number, type: items.type }).from(items).where(inArray(items.number, numbers)),
+    ]);
+    return {
+      hidden: new Set(limit ? rows.filter((r) => !limit.includes(r.type ?? 'inbox')).map((r) => r.number) : []),
+      types: new Map(rows.map((r) => [r.number, r.type])),
+    };
   }
 
   /** Namen der Benutzer zu Mail-Adressen (für die Empfänger im Verlauf). */

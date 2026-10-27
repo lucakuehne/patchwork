@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -17,13 +18,14 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { AdminOnly, type AuthedRequest } from '../auth/auth.decorators';
+import { AdminOnly, CurrentUser, type AuthedRequest } from '../auth/auth.decorators';
 import { LdapService, type DirectoryPerson, type LdapIdentity } from '../auth/ldap.service';
 import { SessionService } from '../auth/session.service';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
-import type { UserRole } from '../db/schema';
+import type { User, UserRole } from '../db/schema';
 import { WelcomeMailService } from '../mail/welcome-mail.service';
 import { SettingsService } from '../settings/settings.service';
+import { mergePreferences, preferencesPatchSchema, withDefaults } from './preferences';
 import { toAdminUser, toPublicUser, UsersService } from './users.service';
 
 const roleSchema = z.enum(['admin', 'it', 'standard']);
@@ -87,6 +89,22 @@ export class UsersController {
     private readonly ldap: LdapService,
     private readonly welcomeMail: WelcomeMailService,
   ) {}
+
+  /** Eigene Einstellungen: offene Störungen/Aufgaben als Board oder Liste, Vorgänge als Seite oder Fenster öffnen */
+  @Get('me/preferences')
+  preferences(@CurrentUser() user: User) {
+    return withDefaults(user.preferences);
+  }
+
+  @Put('me/preferences')
+  async updatePreferences(
+    @Body(new ZodPipe(preferencesPatchSchema)) body: z.infer<typeof preferencesPatchSchema>,
+    @CurrentUser() user: User,
+  ) {
+    const stored = mergePreferences(user.preferences, body);
+    await this.users.setPreferences(user.id, stored);
+    return withDefaults(stored);
+  }
 
   /** Admin- und IT-Benutzer, z.B. für «Zuständig». */
   @Get('users/staff')

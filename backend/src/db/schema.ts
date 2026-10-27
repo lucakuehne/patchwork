@@ -19,6 +19,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import type { RuleActions, RuleGroup, RuleSchedule, RuleTrigger } from '../rules/rule-types';
+import type { StoredPreferences } from '../users/preferences';
 
 const tsvector = customType<{ data: string }>({
   dataType: () => 'tsvector',
@@ -57,6 +58,8 @@ export const users = pgTable('users', {
   active: boolean('active').notNull().default(true),
   createdAt: createdAt(),
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  /** Einstellungen des Benutzers (Board oder Liste, Vorgang als Seite oder Fenster), siehe users/preferences.ts */
+  preferences: jsonb('preferences').$type<StoredPreferences>().notNull().default({}),
 });
 
 export const sessions = pgTable(

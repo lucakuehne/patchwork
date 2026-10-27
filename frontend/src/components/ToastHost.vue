@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '../stores/toast';
+import ItemLink from './ItemLink.vue';
 
 const toast = useToast();
 </script>
@@ -8,7 +9,11 @@ const toast = useToast();
   <div class="toasts" aria-live="polite">
     <div v-for="t in toast.toasts" :key="t.id" class="toast" :class="t.kind" @click="toast.dismiss(t.id)">
       {{ t.text }}
-      <RouterLink v-if="t.link" class="toast-link" :to="t.link.to" @click="toast.dismiss(t.id)">{{ t.link.text }}</RouterLink>
+      <!-- Link auf einen Vorgang öffnet ihn nach Einstellung als Seite oder Fenster -->
+      <ItemLink v-if="t.link?.item" class="toast-link" :number="t.link.item.number" :type="t.link.item.type">
+        {{ t.link.text }}
+      </ItemLink>
+      <RouterLink v-else-if="t.link" class="toast-link" :to="t.link.to" @click="toast.dismiss(t.id)">{{ t.link.text }}</RouterLink>
     </div>
   </div>
 </template>

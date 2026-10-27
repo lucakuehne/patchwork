@@ -3,7 +3,24 @@ export type ItemType = 'incident' | 'task';
 /** Bereiche der Oberfläche (Bereiche je Rolle): Eingang (ohne Typ), Störungen, Aufgaben */
 export type Area = 'inbox' | ItemType;
 export type Priority = 'high' | 'normal' | 'low';
-export type View = 'inbox' | 'incidents' | 'incidents-closed' | 'board' | 'tasks-done' | 'tasks-rejected' | 'search';
+export type View =
+  | 'inbox'
+  | 'incidents'
+  | 'incidents-closed'
+  | 'incidents-board'
+  | 'board'
+  | 'tasks'
+  | 'tasks-done'
+  | 'tasks-rejected'
+  | 'search';
+
+/** Einstellungen des Benutzers: offene Störungen/Aufgaben als Board oder Liste, Vorgänge als Seite oder Fenster */
+export type ListLayout = 'list' | 'board';
+export type OpenMode = 'page' | 'modal';
+export interface Preferences {
+  layout: { incidents: ListLayout; tasks: ListLayout };
+  open: { inbox: OpenMode; incident: OpenMode; task: OpenMode };
+}
 
 export interface User {
   id: string;
@@ -495,7 +512,7 @@ export interface OutgoingMail {
   /** Fehlgeschlagen, aber von einem Admin als erledigt markiert */
   dismissedAt: string | null;
   /** null = Mail ohne Vorgang (Willkommens-Mail) */
-  item: { number: number; title: string } | null;
+  item: { number: number; title: string; type: ItemType | null } | null;
 }
 
 export interface OutgoingMailDetail extends OutgoingMail {
@@ -557,7 +574,7 @@ export interface IncomingMail {
   simulated: boolean;
   /** Name des Admins, der die Mail simuliert hat */
   simulatedBy: string | null;
-  item: { number: number; title: string } | null;
+  item: { number: number; title: string; type: ItemType | null } | null;
 }
 
 export interface IncomingMailDetail extends IncomingMail {

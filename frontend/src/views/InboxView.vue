@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { defineAsyncComponent, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import { api } from '../api';
 import ItemTable from '../components/ItemTable.vue';
 import ListFilters from '../components/ListFilters.vue';
 import MineToggle from '../components/MineToggle.vue';
 import TypeChangeDialog from '../components/TypeChangeDialog.vue';
-import { useListFilters, useListSort, useMineFilter } from '../composables';
+import { useListFilters, useListSort, useMineFilter, useReloadAfterItemModal } from '../composables';
 import { listParams } from '../list-filters';
 import { itemRef } from '../format';
+import { useOpenItem } from '../open-item';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import type { ItemSummary, ItemType } from '../types';
@@ -18,7 +18,7 @@ const NewItemDialog = defineAsyncComponent(() => import('../components/NewItemDi
 
 const session = useSession();
 const toast = useToast();
-const router = useRouter();
+const openItem = useOpenItem();
 const mine = useMineFilter('inbox');
 const items = ref<ItemSummary[]>([]);
 const loading = ref(true);
@@ -29,12 +29,12 @@ const newOpen = ref(false);
 function onCreated(number: number, type: ItemType) {
   newOpen.value = false;
   if (type === 'task') {
-    toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/v/${number}` });
+    toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/v/${number}`, item: { number, type } });
     void session.refreshCounts();
     return;
   }
   toast.success('Vorgang erfasst');
-  void router.push({ name: 'item', params: { number } });
+  openItem(number, type);
 }
 
 // Filter (ohne Status, Vorgänge im Eingang haben keinen) und Sortierung, pro Ansicht gemerkt
@@ -52,6 +52,7 @@ async function load() {
   }
 }
 watch([mine, () => JSON.stringify(filters.value), () => JSON.stringify(sort.value)], load, { immediate: true });
+useReloadAfterItemModal(load);
 
 // Zur Aufgabe fragt ein Dialog nach dem Status (ohne Vorauswahl); eine Störung erhält den Start-Status
 const taskFor = ref<ItemSummary | null>(null);

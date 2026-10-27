@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { api } from '../api';
-import { useDebounced } from '../composables';
+import { useDebounced, useReloadAfterItemModal } from '../composables';
 import { useToast } from '../stores/toast';
 import { EMPTY_FILTERS, listParams, type ListFilterValues, type ListSort } from '../list-filters';
 import type { ItemSummary, View } from '../types';
@@ -61,6 +61,7 @@ watch(
   },
   { immediate: true },
 );
+useReloadAfterItemModal(load);
 watch(
   () => props.initialQuery,
   (q) => (query.value = q ?? ''),

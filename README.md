@@ -6,8 +6,10 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 ## Funktionsumfang (MVP)
 
 - **Ein Vorgang, zwei Typen:** Störung oder Aufgabe, Typwechsel mit einem Klick. Verlauf, Kommentare und Anhänge bleiben erhalten.
-- **Tabs:** Eingang (Mails ohne Typ, mit «+ Neu» für einen Vorgang beliebigen Typs), Störungen (Liste, dringend zuerst; Ansicht «Gelöst»), Aufgaben (Board mit Drag & Drop; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge und hat den Filter «Nur meine».
-- **Filter und Sortierung** in Eingang, Störungen (offen und gelöst), auf dem Aufgaben-Board und unter Erledigt/Abgelehnt: nach Priorität, Zuständig (auch «niemand»), Status (wo es mehrere gibt) und Meldeweg; in den Listen zusätzlich Sortieren per Klick auf den Spaltenkopf (aufsteigend, absteigend, zurück). Die Auswahl bleibt pro Ansicht im Browser gespeichert.
+- **Tabs:** Eingang (Mails ohne Typ, mit «+ Neu» für einen Vorgang beliebigen Typs), Störungen (offene als Liste oder Board; Ansicht «Gelöst»), Aufgaben (offene als Board mit Drag & Drop oder Liste; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge und hat den Filter «Nur meine».
+- **Liste oder Board** für offene Störungen (Standard Liste, dringend zuerst) und offene Aufgaben (Standard Board), Umschalter in der Kopfzeile, pro Benutzer gespeichert. Das Board der Störungen zeigt dazu die gelösten der letzten 14 Tage, Karten nach Priorität und Alter, Ziehen wechselt den Status. Die Liste der Aufgaben ist nach Status sortiert, dann wie im Board.
+- **Vorgang als Seite oder Fenster:** Unter «Einstellungen» im Benutzermenü wählt man je Bereich (Eingang, Störungen, Aufgaben), ob ein Vorgang als Seite oder in einem grossen Fenster über der Liste öffnet (`?vorgang=123`, «Zurück» schliesst es, «Als Seite öffnen» wechselt). Ctrl+Klick öffnet einen neuen Tab, Links aus Mails immer die Seite.
+- **Filter und Sortierung** in Eingang, Störungen (offen und gelöst), bei den offenen Aufgaben und unter Erledigt/Abgelehnt: nach Priorität, Zuständig (auch «niemand»), Status (wo es mehrere gibt) und Meldeweg; in den Listen zusätzlich Sortieren per Klick auf den Spaltenkopf (aufsteigend, absteigend, zurück). Die Auswahl bleibt pro Ansicht im Browser gespeichert.
 - **Hinweise bei Störungen** für Admins als Balken oben: Mail-Abruf eines Postfachs seit 60 Minuten gestört, fehlgeschlagene ausgehende Mails (bis «Erneut senden» oder «Als erledigt markieren»), weniger als 10 % freier Platz auf dem Datenträger der Ablage.
 - **Anrede:** Patchwork, Portal und alle Mails sprechen per du an; gegenüber Meldern heisst ein Vorgang «Meldung».
 - **Status pro Typ** in der Verwaltung bearbeitbar: flache Liste (Reihenfolge = Board-Spalten), Farbe und Häkchen «abgeschlossen». Den Status neuer Vorgänge legt man im Ablaufdiagramm fest, indem man den Startpfeil auf einen offenen Status zieht. Pro Typ legen «Automatische Wechsel» fest, wohin eine Antwort des Melders führt, wohin automatisch geschlossen und abgelehnt wird und welcher Status auf den Melder wartet. Ein Ablaufdiagramm legt auf Wunsch fest, welche Wechsel von Hand erlaubt sind (Pfeile in den Ablehnen-Status steuern «Ablehnen») und zeigt die Ziele als Marken. Beim Typwechsel fragt ein Dialog nach dem neuen Status: Wird ein Vorgang zur Aufgabe (auch aus dem Eingang), wählt man den Status immer selbst (ohne Vorauswahl, ohne Ablehnen-Status); zur Störung ist er nach der Rolle des bisherigen Status vorgeschlagen.
@@ -297,7 +299,7 @@ backend/
   src/db/          Schema und Migrationen (drizzle/)
   test/smoke.mjs   End-to-End-Test (Bereiche in test/smoke/), dazu LDAP- und AD-Tests
 frontend/
-  src/views/       Seiten (Eingang, Störungen, Board, Detail, Verwaltung)
+  src/views/       Seiten (Eingang, Störungen, Aufgaben, Detail, Einstellungen, Verwaltung)
   src/components/  Bausteine (Tabelle, Timeline, Dialoge)
 deploy/            Portainer-Stacks für Produktion und Tests
 ops/               Betriebsskripte (Build, Tests und Rollout auf dem Docker-Server)

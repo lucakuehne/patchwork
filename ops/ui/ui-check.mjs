@@ -568,7 +568,7 @@ await step('aufgaben-neu', async () => {
   const created = page.locator('.toast', { hasText: 'erstellt' });
   await created.waitFor();
   if (!page.url().endsWith('/aufgaben')) throw new Error(`Nach dem Erstellen auf ${page.url()} statt auf dem Board`);
-  await page.locator('.task', { hasText: 'Neue Aufgabe aus der Spalte' }).waitFor();
+  await page.locator('.board-card', { hasText: 'Neue Aufgabe aus der Spalte' }).waitFor();
   await page.screenshot({ path: `${OUT}/40-erstellt-meldung.png` });
   console.log('Bild 40-erstellt-meldung');
   await created.getByRole('link', { name: 'Öffnen' }).click();
@@ -611,7 +611,7 @@ await step('aufgaben-neu', async () => {
 
   // Board-Karte: Fortschrittsbalken mit Zahl und überfällige Fälligkeit
   await page.goto(`${BASE}/aufgaben`);
-  const card = page.locator('.task', { hasText: 'Neue Aufgabe aus der Spalte' });
+  const card = page.locator('.board-card', { hasText: 'Neue Aufgabe aus der Spalte' });
   await card.waitFor();
   if ((await card.locator('.checklist-progress .count').innerText()).trim() !== '1/2') throw new Error('Fortschritt nicht «1/2»');
   // Der Balken füllt die Breite der Karte
@@ -624,13 +624,104 @@ await step('aufgaben-neu', async () => {
   await card.screenshot({ path: `${OUT}/38-karte.png` });
   console.log('Bild 38-karte');
   // Beschreibung: Symbol mit Vorschau als Text (Aufgabe aus dem Smoke-Test)
-  const described = page.locator('.task', { hasText: 'Erwähnen' }).first();
+  const described = page.locator('.board-card', { hasText: 'Erwähnen' }).first();
   const preview = await described.locator('.meta-icon[aria-label="Hat eine Beschreibung"]').getAttribute('title');
   if (preview !== 'Ablauf Zuerst sichern') throw new Error(`Vorschau der Beschreibung: ${preview}`);
   await described.screenshot({ path: `${OUT}/42-karte-beschreibung.png` });
   console.log('Bild 42-karte-beschreibung');
   await shot('39-board-farben');
   await api('PUT', '/channels/defaults', { incident: null, task: null });
+});
+
+await step('liste-board', async () => {
+  // Offene Störungen: Liste (Standard) oder Board, pro Benutzer auf dem Server gespeichert
+  await page.goto(`${BASE}/stoerungen`);
+  await page.locator('table.table').waitFor();
+  const toggle = page.getByRole('group', { name: 'Ansicht', exact: true });
+  await toggle.getByRole('button', { name: 'Board' }).click();
+  await page.locator('.column').first().waitFor();
+  await page.locator('.column', { hasText: 'letzte 14 Tage' }).first().waitFor();
+  if (await page.locator('.list-filters select[aria-label="Status"]').count()) throw new Error('Status-Filter im Board der Störungen');
+  await page.reload();
+  await page.locator('.column').first().waitFor();
+  if ((await api('GET', '/me/preferences')).data.layout.incidents !== 'board') throw new Error('Board der Störungen nicht gespeichert');
+  // Innerhalb einer Spalte nach Priorität: keine «Niedrig» vor einer «Hoch»
+  const prios = await page.locator('.column').first().locator('.board-card .card-top').allInnerTexts();
+  const rank = (t) => (t.includes('Hoch') ? 0 : t.includes('Niedrig') ? 2 : 1);
+  if (prios.some((t, i) => i > 0 && rank(t) < rank(prios[i - 1]))) throw new Error(`Störungen im Board nicht nach Priorität: ${prios.join(' | ')}`);
+  await shot('60-stoerungen-board');
+  await toggle.getByRole('button', { name: 'Liste' }).click();
+  await page.locator('table.table').waitFor();
+  // Gelöste: immer eine Liste, ohne Umschalter
+  await page.goto(`${BASE}/stoerungen/geloest`);
+  await page.locator('table.table').waitFor();
+  if (await page.getByRole('group', { name: 'Ansicht', exact: true }).count()) throw new Error('Umschalter bei den gelösten Störungen');
+
+  // Aufgaben: Board (Standard) oder Liste nach Status; Navigation «Offen | Erledigt | Abgelehnt»
+  await page.goto(`${BASE}/aufgaben`);
+  await page.locator('.column').first().waitFor();
+  const nav = await page.locator('.page-head .segmented').first().innerText();
+  if (!nav.startsWith('Offen')) throw new Error(`Navigation der Aufgaben: ${nav}`);
+  await toggle.getByRole('button', { name: 'Liste' }).click();
+  await page.locator('table.table').waitFor();
+  await page.locator('.list-filters select[aria-label="Status"]').waitFor();
+  await shot('61-aufgaben-liste');
+  await toggle.getByRole('button', { name: 'Board' }).click();
+  await page.locator('.column').first().waitFor();
+});
+
+await step('fenster', async () => {
+  // Einstellungen im Benutzermenü: Aufgaben im Fenster öffnen
+  await page.goto(`${BASE}/aufgaben`);
+  await page.locator('.user-btn').click();
+  await page.getByRole('link', { name: 'Einstellungen' }).click();
+  await page.waitForURL(/\/einstellungen$/);
+  await page.getByRole('heading', { name: 'Vorgang öffnen als' }).waitFor();
+  await page.getByRole('group', { name: 'Aufgaben', exact: true }).getByRole('button', { name: 'Fenster' }).click();
+  await page.locator('.toast', { hasText: 'Gespeichert' }).waitFor();
+  await shot('62-einstellungen');
+
+  // Klick auf eine Karte öffnet das Fenster über dem Board, die Adresse trägt den Vorgang
+  await page.goto(`${BASE}/aufgaben`);
+  const card = page.locator('.board-card').first();
+  await card.waitFor();
+  const ref = (await card.locator('.card-top .mono').innerText()).trim();
+  await card.click();
+  await page.waitForURL(/\/aufgaben\?vorgang=\d+$/);
+  const dialog = page.locator('.dialog.huge');
+  await dialog.locator('.timeline').waitFor();
+  if (!(await dialog.locator('.head h2').innerText()).includes(ref)) throw new Error('Fenster zeigt einen anderen Vorgang');
+  if (!(await page.locator('.column').count())) throw new Error('Board unter dem Fenster fehlt');
+  await shot('63-vorgang-fenster');
+  // «Zurück» im Browser schliesst das Fenster, das Board bleibt
+  await page.goBack();
+  await page.waitForURL((url) => url.pathname === '/aufgaben' && !url.search);
+  await dialog.waitFor({ state: 'detached' });
+  // Escape im Antwortfeld schliesst nicht (Entwurf), ausserhalb schon; ein Klick daneben auch nicht
+  await card.click();
+  await dialog.locator('.composer .ProseMirror').click();
+  await page.keyboard.type('Entwurf');
+  await page.keyboard.press('Escape');
+  await page.mouse.click(5, 300);
+  await page.waitForTimeout(300);
+  if (!(await dialog.count())) throw new Error('Fenster durch Escape im Antwortfeld oder Klick daneben geschlossen');
+  await dialog.locator('.head h2').click();
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  // Neuladen öffnet es wieder; «Als Seite öffnen» wechselt zur Seite
+  await card.click();
+  await page.waitForURL(/vorgang=/);
+  await page.reload();
+  await dialog.locator('.timeline').waitFor();
+  await dialog.getByRole('link', { name: 'Als Seite öffnen' }).click();
+  await page.waitForURL(/\/v\/\d+$/);
+  await page.locator('.timeline').waitFor();
+  if (await page.locator('.dialog.huge').count()) throw new Error('Fenster nach «Als Seite öffnen» noch offen');
+  // Die Einstellung gilt je Typ: Störungen öffnen weiterhin als Seite
+  await page.goto(`${BASE}/stoerungen`);
+  await page.locator('table.table tbody tr').first().click();
+  await page.waitForURL(/\/v\/\d+$/);
+  await api('PUT', '/me/preferences', { open: { task: 'page' } });
 });
 
 await step('simulieren', async () => {

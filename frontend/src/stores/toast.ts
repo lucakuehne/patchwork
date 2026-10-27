@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { errorMessage } from '../api';
+import type { ItemType } from '../types';
 
 export interface Toast {
   id: number;
   kind: 'success' | 'error';
   text: string;
   /** Link in der Meldung, z.B. «Öffnen» zum neu erstellten Vorgang */
-  link?: { text: string; to: string };
+  link?: { text: string; to: string; item?: { number: number; type: ItemType | null } };
 }
 
 export const useToast = defineStore('toast', () => {

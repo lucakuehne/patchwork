@@ -1,5 +1,5 @@
 import { itemRef } from './format';
-import type { Entry, ItemMail } from './types';
+import type { Entry, ItemMail, ItemType } from './types';
 
 /** Änderungen derselben Person, die höchstens so weit auseinanderliegen, erscheinen als eine Zeile. */
 export const GROUP_GAP_MS = 2 * 60_000;
@@ -15,8 +15,11 @@ export type TimelineBlock =
 export interface EventPart {
   /** Satzteil ohne «hat», z.B. «den Status von «Neu» auf «In Arbeit» geändert» */
   text: string;
-  /** «to» null: Vorgang ausserhalb der eigenen Bereiche, nur die Nummer ohne Link */
-  link: { to: string | null; text: string } | null;
+  /**
+   * Verweis auf einen anderen Vorgang. «type»: sein Typ für «als Seite oder Fenster öffnen» (undefined = unbekannt);
+   * «hidden»: ausserhalb der eigenen Bereiche, nur die Nummer ohne Link.
+   */
+  link: { number: number; type?: ItemType | null; hidden: boolean; text: string } | null;
 }
 
 const isMessage = (e: Entry) => e.kind === 'reply' || e.kind === 'note';
@@ -168,16 +171,21 @@ function groupEntries(newestFirst: Entry[]): TimelineBlock[] {
 
 const q = (v: unknown) => (v === null || v === undefined || v === '' ? '–' : `«${String(v)}»`);
 
+/** Typ des verwiesenen Vorgangs laut Server («refType», null = Eingang); fehlt er, ist er unbekannt */
+const refType = (value: unknown): ItemType | null | undefined =>
+  value === null || value === 'incident' || value === 'task' ? value : undefined;
+
 /** Verweis auf einen anderen Vorgang (Verknüpfungen, Duplikat); gesperrte («refHidden») nur mit Nummer, ohne Link */
 function otherLink(e: Entry): EventPart['link'] {
   const m = e.meta ?? {};
   const hidden = m.refHidden === true;
+  const type = refType(m.refType);
   if (typeof m.otherNumber === 'number') {
-    if (hidden) return { to: null, text: itemRef(m.otherNumber) };
-    return { to: `/v/${m.otherNumber}`, text: `${itemRef(m.otherNumber)} «${String(m.otherTitle ?? '')}»` };
+    const text = hidden ? itemRef(m.otherNumber) : `${itemRef(m.otherNumber)} «${String(m.otherTitle ?? '')}»`;
+    return { number: m.otherNumber, type, hidden, text };
   }
   if (e.kind === 'status' && typeof m.duplicateOf === 'number') {
-    return { to: hidden ? null : `/v/${m.duplicateOf}`, text: `Original ${itemRef(m.duplicateOf)}` };
+    return { number: m.duplicateOf, type, hidden, text: `Original ${itemRef(m.duplicateOf)}` };
   }
   return null;
 }

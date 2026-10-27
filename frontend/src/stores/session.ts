@@ -9,6 +9,7 @@ import type {
   Counts,
   ItemType,
   MailboxOption,
+  Preferences,
   PublicInfo,
   Status,
   StatusFlow,
@@ -18,7 +19,7 @@ import type {
 } from '../types';
 
 /** Startseite je Bereich */
-export const AREA_ROUTES: Record<Area, string> = { inbox: 'inbox', incident: 'incidents', task: 'board' };
+export const AREA_ROUTES: Record<Area, string> = { inbox: 'inbox', incident: 'incidents', task: 'tasks' };
 
 export const useSession = defineStore('session', () => {
   const info = ref<PublicInfo | null>(null);
@@ -37,6 +38,13 @@ export const useSession = defineStore('session', () => {
   const mailboxes = ref<MailboxOption[]>([]);
   /** Bereiche des Benutzers (Admins alle, IT laut Verwaltung → Benutzer) */
   const areas = ref<Area[]>(['inbox', 'incident', 'task']);
+  /** Einstellungen des Benutzers (auf dem Server gespeichert): Board oder Liste, Vorgang als Seite oder Fenster */
+  const preferences = ref<Preferences>({
+    layout: { incidents: 'list', tasks: 'board' },
+    open: { inbox: 'page', incident: 'page', task: 'page' },
+  });
+  /** Wie ein Vorgang dieses Typs öffnet (null = Eingang) */
+  const openMode = (type: ItemType | null) => preferences.value.open[type ?? 'inbox'];
 
   const isAdmin = computed(() => user.value?.role === 'admin');
   /** Sieht der Benutzer den Bereich eines Typs (null = Eingang)? */
@@ -127,11 +135,30 @@ export const useSession = defineStore('session', () => {
 
   /** Stammdaten nach dem Login. */
   async function loadAppData() {
-    await Promise.all([refreshCounts(), loadStatuses(), loadChannels(), loadStaff(), loadMailboxes(), loadAreas()]);
+    await Promise.all([refreshCounts(), loadStatuses(), loadChannels(), loadStaff(), loadMailboxes(), loadAreas(), loadPreferences()]);
   }
 
   async function loadAreas() {
     areas.value = (await api.get<{ areas: Area[] }>('/areas')).areas;
+  }
+
+  async function loadPreferences() {
+    preferences.value = await api.get<Preferences>('/me/preferences');
+  }
+
+  /** Einstellung ändern: sofort wirksam, danach gespeichert (bei einem Fehler wieder der gespeicherte Stand) */
+  async function savePreferences(patch: { layout?: Partial<Preferences['layout']>; open?: Partial<Preferences['open']> }) {
+    const before = preferences.value;
+    preferences.value = {
+      layout: { ...before.layout, ...patch.layout },
+      open: { ...before.open, ...patch.open },
+    };
+    try {
+      preferences.value = await api.put<Preferences>('/me/preferences', patch);
+    } catch (err) {
+      preferences.value = before;
+      throw err;
+    }
   }
 
   async function loadChannels() {
@@ -209,6 +236,9 @@ export const useSession = defineStore('session', () => {
     canSee,
     homeRoute,
     loadAreas,
+    preferences,
+    openMode,
+    savePreferences,
     isAdmin,
     isStaff,
     appName,

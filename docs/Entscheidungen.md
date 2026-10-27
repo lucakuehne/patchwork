@@ -251,6 +251,32 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Bereiche: Einstellung `areas` (`{ it: [...] }`). Der AuthGuard prüft jede Route mit `:number`; Anhänge, Notizen und Checklisten (über ihre ID), Listen, Zähler, Suche, Verknüpfungen und aus anderen Vorgängen kopierte Bilder prüfen selbst. Mails an die IT laufen über eine Stelle, die ohne Zugriff nichts versendet; Beteiligte ohne Zugriff fallen aus dem CC.
   - Gesperrte Vorgänge antworten mit 403 «Kein Zugriff auf den Bereich …», die Oberfläche zeigt «PW-… ist für Sie gesperrt».
 
+## Board oder Liste, Vorgang als Seite oder Fenster (bestätigt am 27.10.2026)
+
+- **Board oder Liste:** Offene Störungen und offene Aufgaben lassen sich jeweils als Board (Kanban) oder als Liste
+  anzeigen, Umschalter in der Kopfzeile. Abgeschlossene (Gelöst, Erledigt, Abgelehnt) nur als Liste. Standard: Aufgaben als
+  Board, Störungen als Liste. Die Wahl gilt pro Benutzer (auf dem Server gespeichert, in jedem Browser).
+  - Board der Störungen wie das der Aufgaben: alle offenen Status, dazu die abgeschlossenen (ohne Ablehnen-Status) mit
+    den Störungen der letzten 14 Tage. Karten nach Priorität, dann Alter («dringend zuerst»); Drag & Drop wechselt nur den
+    Status, die Reihenfolge in der Spalte ergibt sich von selbst.
+  - Liste der offenen Aufgaben: nach Status (Reihenfolge der Spalten), innerhalb eines Status wie auf dem Board;
+    per Spaltenkopf umsortierbar wie jede Liste.
+- **Vorgang als Seite oder Fenster:** Unter «Einstellungen» im Benutzermenü wählt man je Bereich (Eingang, Störungen,
+  Aufgaben), ob ein Vorgang als Seite (wie bisher, im gleichen Tab) oder in einem grossen Fenster über der Liste öffnet.
+  Standard überall «Seite». Gespeichert pro Benutzer. Die Wahl gilt überall in Patchwork (Listen, Board, Suche,
+  Verknüpfungen, Verweise im Verlauf, «Öffnen» in Meldungen), jeweils nach dem Typ des Vorgangs; Links aus Mails öffnen
+  immer als Seite. Ctrl+Klick bzw. die mittlere Maustaste öffnen wie gewohnt einen neuen Browser-Tab.
+- Technisch (entschieden am 27.10.2026): Das Fenster steht in der Adresse (`?vorgang=123`), «Zurück» im Browser schliesst
+  es, Neuladen öffnet es wieder. Im Fenster gibt es «Als Seite öffnen». Ein Link auf einen anderen Vorgang öffnet diesen je
+  nach Wahl wieder im Fenster (ersetzt den Inhalt, «Zurück» führt zum vorherigen) oder als Seite. Nach dem Schliessen lädt
+  die Liste bzw. das Board neu. Einstellungen in der Spalte `users.preferences`. Die Navigation der Aufgaben heisst
+  «Offen | Erledigt | Abgelehnt» (bisher «Board | …»), passend zu den Störungen. Filter «Nur meine» und die Filterleiste
+  gelten für Board und Liste gemeinsam; den Status-Filter gibt es nur in der Liste (im Board sind es die Spalten).
+- Das Fenster schliessen ✕, Escape und «Zurück»; ein Klick neben das Fenster und Escape aus einem Eingabefeld (z.B. dem
+  Antwortfeld) schliessen es nicht, damit ein angefangener Entwurf nicht verloren geht (bestätigt am 27.10.2026).
+- Board der Störungen: «+» in einer offenen Spalte erfasst eine Störung in diesem Status (wie bei den Aufgaben); eine
+  neue Störung öffnet sich danach wie bisher, je nach Wahl als Seite oder im Fenster (bestätigt am 27.10.2026).
+
 ## Hinweise bei Störungen, Healthcheck, Betriebsskripte (bestätigt am 26.10.2026)
 
 - **Hinweise bei Störungen** nur für Admins, als Balken oben in Patchwork (wie der Hinweis zum Zertifikat) mit Link zur passenden Seite, ohne Mail:
