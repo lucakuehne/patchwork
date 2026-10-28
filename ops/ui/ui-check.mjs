@@ -728,6 +728,26 @@ await step('aufgaben-neu', async () => {
     const height = await card.locator(row).evaluate((el) => el.getBoundingClientRect().height);
     if (height > 28) throw new Error(`Karte: Zeile ${row} bricht um (${Math.round(height)} px)`);
   }
+  // Engster Fall: schmales Fenster (Spalten 260 px), Fälligkeit und «Niedrig»; Nummer und Datum bleiben auf einer Zeile
+  const cardNumber = Number((await card.locator('.card-top .number').innerText()).replace(/\D/g, ''));
+  await api('PATCH', `/items/${cardNumber}`, { priority: 'low' });
+  await page.setViewportSize({ width: 700, height: 950 });
+  await page.reload();
+  await card.locator('.card-top .prio-low').waitFor();
+  const columnWidth = await page.locator('.column').first().evaluate((el) => el.getBoundingClientRect().width);
+  if (columnWidth > 261) throw new Error(`Spalte im schmalen Fenster ${Math.round(columnWidth)} px statt 260 px`);
+  const top = await card.locator('.card-top').evaluate((el) => {
+    const rect = (sel) => el.querySelector(sel).getBoundingClientRect();
+    const [number, due, prio] = [rect('.number'), rect('.due'), rect('.prio')];
+    return { numberHeight: number.height, dueOffset: Math.abs(due.top + due.height / 2 - (number.top + number.height / 2)), overflow: prio.right - el.getBoundingClientRect().right };
+  });
+  if (top.numberHeight > 20 || top.dueOffset > 3 || top.overflow > 0.5) throw new Error(`Schmale Karte: Nummer und Datum nicht auf einer Zeile (${JSON.stringify(top)})`);
+  await card.screenshot({ path: `${OUT}/84-karte-schmal.png` });
+  console.log('Bild 84-karte-schmal');
+  await page.setViewportSize({ width: 1400, height: 950 });
+  await api('PATCH', `/items/${cardNumber}`, { priority: 'normal' });
+  await page.reload();
+  await card.waitFor();
   // Kommentare: die Notiz mit der Erwähnung
   const comments = card.locator('.card-foot .meta-icon[title$="Kommentar"], .card-foot .meta-icon[title$="Kommentare"]');
   if ((await comments.innerText()).trim() !== '1') throw new Error(`Kommentare auf der Karte: ${await comments.innerText()}`);

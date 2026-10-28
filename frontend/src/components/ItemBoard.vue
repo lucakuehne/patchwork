@@ -169,22 +169,23 @@ function open(item: ItemSummary, event: MouseEvent) {
           >
             <!-- Oben Nummer, Fälligkeit und Priorität; unten Melder, Beschreibung, Kommentare, Alter und Zuständig -->
             <div class="card-top">
-              <span class="mono faint">{{ itemRef(element.number) }}</span>
-              <span class="spacer" />
-              <span
-                v-if="element.dueDate"
-                class="badge due"
-                :class="`due-${dueState(element.dueDate, status.closed)}`"
-                :title="dueTitle(element.dueDate, status.closed)"
-              >
-                <svg class="due-icon" viewBox="0 0 16 16" aria-hidden="true">
-                  <rect x="2" y="3" width="12" height="11" rx="1.5" />
-                  <path d="M2 6.5h12M5.5 1.8v2.6M10.5 1.8v2.6" />
-                </svg>
-                {{ formatDay(element.dueDate) }}
+              <span class="mono faint number">{{ itemRef(element.number) }}</span>
+              <span class="top-right">
+                <span
+                  v-if="element.dueDate"
+                  class="badge due"
+                  :class="`due-${dueState(element.dueDate, status.closed)}`"
+                  :title="dueTitle(element.dueDate, status.closed)"
+                >
+                  <svg class="due-icon" viewBox="0 0 16 16" aria-hidden="true">
+                    <rect x="2" y="3" width="12" height="11" rx="1.5" />
+                    <path d="M2 6.5h12M5.5 1.8v2.6M10.5 1.8v2.6" />
+                  </svg>
+                  {{ formatDay(element.dueDate) }}
+                </span>
+                <span v-if="element.priority === 'high'" class="prio prio-high">Hoch</span>
+                <span v-else-if="element.priority === 'low'" class="prio prio-low">Niedrig</span>
               </span>
-              <span v-if="element.priority === 'high'" class="prio prio-high">Hoch</span>
-              <span v-else-if="element.priority === 'low'" class="prio prio-low">Niedrig</span>
             </div>
             <div class="card-title">{{ element.title }}</div>
             <!-- Fortschritt der Checklisten über die ganze Breite der Karte -->
@@ -321,10 +322,26 @@ function open(item: ItemSummary, event: MouseEvent) {
 .board-card.done .card-title {
   color: var(--text-muted);
 }
+/* Eine Zeile, auch in der schmalsten Spalte (260 px) mit vierstelliger Nummer, Fälligkeit und «Niedrig»; die Nummer
+   bricht sonst beim Bindestrich um */
 .card-top {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  font-size: 12px;
+}
+.number {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.top-right .prio {
   font-size: 12px;
 }
 .card-title {

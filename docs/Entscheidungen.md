@@ -236,7 +236,8 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Aufbau seit 28.10.2026 (gewünscht vom Benutzer, gilt für die Boards der Aufgaben und der Störungen): oben Nummer,
     Fälligkeit und Priorität; darunter Titel und Fortschritt der Checklisten; unten Melder, die Symbole für Beschreibung
     und Kommentare, Alter und Zuständig. Die eigene Zeile für Symbole und Fälligkeit entfällt, lange Namen des Melders
-    werden gekürzt.
+    werden gekürzt. Die obere Zeile bricht nie um, auch nicht in der schmalsten Spalte (260 px) mit Fälligkeit und
+    Priorität (Korrektur vom 28.10.2026: dort brach die Nummer beim Bindestrich um).
 - **Nach dem Erstellen einer Aufgabe** (bestätigt am 21.10.2026) bleibt man, wo man ist (z.B. auf dem Board, die Karte erscheint in ihrer Spalte), mit der Meldung «PW-123 erstellt» und «Öffnen». Gilt für alle neuen Aufgaben, auch über «+ Neu». Neue Störungen öffnen wie bisher.
 - **Erwähnen** (bestätigt am 21.10.2026): Mit «@» im Antwortfeld (öffentliche Antworten und interne Notizen, auch beim Bearbeiten einer Notiz) öffnet sich eine Auswahl der IT-Mitarbeitenden und Admins. Die Erwähnung erscheint in Patchwork hervorgehoben. Beim Melder (Mail und Portal) steht sie als gewöhnlicher Text «@Vorname Nachname». Die Erwähnten erhalten eine Mail «Erwähnt» mit dem Text und dem Link (Vorlage unter Verwaltung → Mail-Vorlagen, IT), nicht an sich selbst; beim Bearbeiten einer Notiz nur neu hinzugekommene Erwähnte.
 - **Stummschalten ausgeblendet** (bestätigt am 21.10.2026): Die Option «Benachrichtigungen für mich stummschalten» ist vorläufig ausgeblendet. Bestehende Stummschaltungen bleiben gespeichert, wirken aber nicht mehr: Alle erhalten wieder ihre Mails. Wird die Option später wieder eingeblendet, gelten sie wieder.
