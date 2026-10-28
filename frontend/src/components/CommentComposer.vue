@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { fillSnippet } from '../snippets';
 import { useSession } from '../stores/session';
+import { deliveryBlock, isBlockLive } from '../test-mode';
 import type { ItemDetail, Snippet } from '../types';
 import FilePicker from './FilePicker.vue';
 import KindIcon from './KindIcon.vue';
@@ -16,9 +17,12 @@ const emit = defineEmits<{ sent: [] }>();
 const defaultKind = (): 'reply' | 'note' => (props.item.type === 'task' ? 'note' : 'reply');
 const kind = ref<'reply' | 'note'>(defaultKind());
 const body = ref('');
+/** Nur Admins: im Namen dieser Person schreiben ('' = ich selbst, Entscheid vom 28.10.2026) */
+const asUserId = ref('');
 // Anderer Vorgang: wieder die Vorgabe; Typwechsel nur, solange noch nichts geschrieben ist
 watch([() => props.item.id, () => props.item.type], ([id], [oldId]) => {
   if (id !== oldId || !body.value.trim()) kind.value = defaultKind();
+  if (id !== oldId) asUserId.value = '';
 });
 const files = ref<File[]>([]);
 const sending = ref(false);
@@ -27,7 +31,13 @@ const error = ref('');
 const session = useSession();
 const editor = ref<InstanceType<typeof MarkdownEditor> | null>(null);
 
-/** Textbaustein mit ersetzten Platzhaltern an der Cursorposition einfügen; Bearbeiter = wer ihn einfügt */
+/** Zur Auswahl «Als»: aktive IT-Mitarbeitende und Admins ausser mir */
+const otherStaff = computed(() => session.staff.filter((u) => u.id !== props.currentUserId));
+/** Wer als Autor gilt: die gewählte Person oder ich */
+const author = computed(() => session.staff.find((u) => u.id === asUserId.value) ?? session.user);
+const authorId = computed(() => author.value?.id ?? props.currentUserId);
+
+/** Textbaustein mit ersetzten Platzhaltern an der Cursorposition einfügen; Bearbeiter = der Autor */
 function insertSnippet(snippet: Snippet) {
   editor.value?.insertMarkdown(
     fillSnippet(snippet.body, {
@@ -35,15 +45,22 @@ function insertSnippet(snippet: Snippet) {
       title: props.item.title,
       reporter: props.item.reporter,
       assignee: props.item.assignee,
-      editor: session.user,
+      editor: author.value,
     }),
   );
 }
 
 const recipients = computed(() => {
-  const to = props.item.reporter.id !== props.currentUserId ? [props.item.reporter] : [];
-  const cc = props.item.participants.filter((p) => p.id !== props.currentUserId && p.id !== props.item.reporter.id);
+  const to = props.item.reporter.id !== authorId.value ? [props.item.reporter] : [];
+  const cc = props.item.participants.filter((p) => p.id !== authorId.value && p.id !== props.item.reporter.id);
   return { to, cc };
+});
+
+/** Testbetrieb nach dem Block des Vorgangs: null = normal versendet */
+const testModeNote = computed(() => {
+  const circles = session.info?.delivery[deliveryBlock(props.item.type)];
+  if (!circles || isBlockLive(circles)) return null;
+  return circles.staff === 'none' && circles.others === 'none' ? 'wird nicht versendet' : 'geht nur an freigegebene Empfänger';
 });
 
 const canSend = computed(() => !sending.value && !uploading.value && (!!body.value.trim() || files.value.length > 0));
@@ -56,10 +73,12 @@ async function send() {
     const form = new FormData();
     form.append('kind', kind.value);
     form.append('body', body.value);
+    if (asUserId.value) form.append('asUserId', asUserId.value);
     for (const f of files.value) form.append('files', f, f.name);
     await api.post(`/items/${props.item.number}/entries`, form);
     body.value = '';
     files.value = [];
+    asUserId.value = '';
     emit('sent');
   } catch (err) {
     error.value = errorMessage(err);
@@ -88,15 +107,9 @@ async function send() {
             {{ recipients.to.length ? ', CC: ' : '' }}{{ recipients.cc.map((u) => u.name).join(', ') }}
           </template>
         </template>
+        <template v-else-if="asUserId">Kein Mail-Empfänger ({{ author?.name }} ist selbst Melder)</template>
         <template v-else>Kein Mail-Empfänger (du bist selbst Melder)</template>
-        <strong v-if="session.info?.testMode" class="test-mode">
-          · Testbetrieb:
-          {{
-            session.info.delivery.staff === 'none' && session.info.delivery.others === 'none'
-              ? 'wird nicht versendet'
-              : 'geht nur an freigegebene Empfänger'
-          }}
-        </strong>
+        <strong v-if="testModeNote" class="test-mode"> · Testbetrieb: {{ testModeNote }} </strong>
       </span>
       <span v-else class="faint small">Nur für die IT sichtbar, keine Mail</span>
     </div>
@@ -117,6 +130,13 @@ async function send() {
     <div class="row">
       <span class="faint small">Ctrl+Enter sendet</span>
       <div class="spacer" />
+      <label v-if="session.isAdmin && otherStaff.length" class="as-user small">
+        Als
+        <select v-model="asUserId" class="select" aria-label="Im Namen von">
+          <option value="">{{ session.user?.name }} (ich)</option>
+          <option v-for="u in otherStaff" :key="u.id" :value="u.id">{{ u.name }}</option>
+        </select>
+      </label>
       <button class="btn" :class="kind === 'reply' ? 'btn-primary' : 'btn-note'" type="button" :disabled="!canSend" @click="send">
         {{ kind === 'reply' ? 'Antwort senden' : 'Notiz speichern' }}
       </button>
@@ -158,6 +178,16 @@ async function send() {
 .test-mode {
   color: var(--warning);
   font-weight: 500;
+}
+.as-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+.as-user .select {
+  width: auto;
+  max-width: 220px;
 }
 .tools {
   display: flex;

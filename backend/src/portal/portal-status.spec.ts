@@ -3,8 +3,8 @@ import type { TargetsByType } from '../statuses/status-rules';
 import { portalStatus, RECEIVED } from './portal-status';
 
 const targets: TargetsByType = {
-  incident: { start: 'i-neu', reply: 'i-arbeit', close: 'i-geloest', waiting: 'i-wartet' },
-  task: { start: 't-backlog', reply: 't-arbeit', close: 't-erledigt', reject: 't-abgelehnt' },
+  incident: { start: 'i-new', reply: 'i-progress', close: 'i-resolved', waiting: 'i-waiting' },
+  task: { start: 't-backlog', reply: 't-progress', close: 't-done', reject: 't-rejected' },
 };
 
 describe('Status im Portal', () => {
@@ -15,13 +15,13 @@ describe('Status im Portal', () => {
   });
 
   it('zeigt den internen Statusnamen mit Farbe und «abgeschlossen»', () => {
-    expect(portalStatus({ id: 'i-arbeit', type: 'incident', label: 'In Arbeit', color: 'orange', closed: false }, targets)).toEqual({
+    expect(portalStatus({ id: 'i-progress', type: 'incident', label: 'In Arbeit', color: 'orange', closed: false }, targets)).toEqual({
       label: 'In Arbeit',
       color: 'orange',
       closed: false,
       waiting: false,
     });
-    expect(portalStatus({ id: 't-abgelehnt', type: 'task', label: 'Abgelehnt', color: 'red', closed: true }, targets)).toEqual({
+    expect(portalStatus({ id: 't-rejected', type: 'task', label: 'Abgelehnt', color: 'red', closed: true }, targets)).toEqual({
       label: 'Abgelehnt',
       color: 'red',
       closed: true,
@@ -30,10 +30,10 @@ describe('Status im Portal', () => {
   });
 
   it('hebt nur den Wartet-Status des eigenen Typs hervor', () => {
-    const wartet = { id: 'i-wartet', label: 'Wartet auf Melder', color: 'gray', closed: false };
-    expect(portalStatus({ ...wartet, type: 'incident' }, targets).waiting).toBe(true);
+    const waiting = { id: 'i-waiting', label: 'Wartet auf Melder', color: 'gray', closed: false };
+    expect(portalStatus({ ...waiting, type: 'incident' }, targets).waiting).toBe(true);
     // Aufgaben haben hier keinen Wartet-Status
-    expect(portalStatus({ ...wartet, type: 'task' }, targets).waiting).toBe(false);
+    expect(portalStatus({ ...waiting, type: 'task' }, targets).waiting).toBe(false);
   });
 
   it('ersetzt unbekannte Farben durch Grau', () => {

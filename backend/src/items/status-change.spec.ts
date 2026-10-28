@@ -88,16 +88,16 @@ describe('typeChangeStatus', () => {
   });
 
   it('den Ablehnen-Status des neuen Typs nur aus dem Ablehnen-Status', () => {
-    const withReject: TargetsByType = { ...targets, incident: { ...targets.incident, reject: 'incident:abgelehnt' } };
+    const withReject: TargetsByType = { ...targets, incident: { ...targets.incident, reject: 'incident:rejected' } };
     const withRejectStatus = [
       ...all,
-      { id: 'incident:abgelehnt', key: 'abgelehnt', label: 'Abgelehnt', type: 'incident' as const, closed: true, position: 4 },
+      { id: 'incident:rejected', key: 'rejected', label: 'Abgelehnt', type: 'incident' as const, closed: true, position: 4 },
     ];
-    expect(typeChangeStatus(withRejectStatus, withReject, byKey('task', 'rejected'), 'incident').id).toBe('incident:abgelehnt');
-    expect(typeChangeStatus(withRejectStatus, withReject, byKey('task', 'rejected'), 'incident', 'incident:abgelehnt').id).toBe(
-      'incident:abgelehnt',
+    expect(typeChangeStatus(withRejectStatus, withReject, byKey('task', 'rejected'), 'incident').id).toBe('incident:rejected');
+    expect(typeChangeStatus(withRejectStatus, withReject, byKey('task', 'rejected'), 'incident', 'incident:rejected').id).toBe(
+      'incident:rejected',
     );
-    expect(() => typeChangeStatus(withRejectStatus, withReject, byKey('task', 'done'), 'incident', 'incident:abgelehnt')).toThrow(
+    expect(() => typeChangeStatus(withRejectStatus, withReject, byKey('task', 'done'), 'incident', 'incident:rejected')).toThrow(
       /nur über «Ablehnen»/,
     );
     expect(() => typeChangeStatus(all, targets, byKey('incident', 'resolved'), 'task', 'task:rejected')).toThrow(/nur über «Ablehnen»/);
@@ -105,10 +105,10 @@ describe('typeChangeStatus', () => {
   });
 
   it('zur Aufgabe nie in den Ablehnen-Status, auch nicht aus dem Ablehnen-Status der Störung', () => {
-    const withReject: TargetsByType = { ...targets, incident: { ...targets.incident, reject: 'incident:abgelehnt' } };
+    const withReject: TargetsByType = { ...targets, incident: { ...targets.incident, reject: 'incident:rejected' } };
     const withRejectStatus = [
       ...all,
-      { id: 'incident:abgelehnt', key: 'abgelehnt', label: 'Abgelehnt', type: 'incident' as const, closed: true, position: 4 },
+      { id: 'incident:rejected', key: 'rejected', label: 'Abgelehnt', type: 'incident' as const, closed: true, position: 4 },
     ];
     const rejected = withRejectStatus.at(-1);
     expect(() => typeChangeStatus(withRejectStatus, withReject, rejected, 'task', 'task:rejected')).toThrow(/nur über «Ablehnen»/);

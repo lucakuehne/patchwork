@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -16,10 +16,11 @@ import {
   createItem,
   detail,
   entryStartingWith,
+  everyBlock,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +28,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,33 +45,33 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Mails abholen ab: nur Mails ab dem Startzeitpunkt, nach Vorverlegen ohne doppelte Vorgänge', async () => {
   const before = `Vor dem Start ${RUN}`;
   const after = `Nach dem Start ${RUN}`;
   const inInbox = async (title) => (await api('GET', '/items?view=inbox')).items.filter((i) => i.title === title).length;
-  await smtp.sendMail({ from: EXTERN, to: ARCHIV, subject: before, text: 'Schon älter.' });
+  await smtp.sendMail({ from: EXTERN, to: ARCHIVE, subject: before, text: 'Schon älter.' });
   await sleep(1500);
-  const mb = await api('POST', '/admin/mailboxes', archivMailbox());
-  const pollArchiv = () => api('POST', `/admin/mailboxes/${mb.id}/poll`);
-  await pollArchiv();
-  await smtp.sendMail({ from: EXTERN, to: ARCHIV, subject: after, text: 'Neu.' });
+  const mb = await api('POST', '/admin/mailboxes', archiveMailbox());
+  const pollArchive = () => api('POST', `/admin/mailboxes/${mb.id}/poll`);
+  await pollArchive();
+  await smtp.sendMail({ from: EXTERN, to: ARCHIVE, subject: after, text: 'Neu.' });
   await sleep(500);
-  await pollArchiv();
+  await pollArchive();
   assert.equal(await inInbox(before), 0, 'Mail vor dem Startzeitpunkt wird nicht übernommen');
   assert.equal(await inInbox(after), 1);
 
   // Startzeitpunkt vorverlegen: Die ältere Mail wird nachgeholt, die neuere nicht doppelt erfasst
-  await api('PUT', `/admin/mailboxes/${mb.id}`, archivMailbox(new Date(Date.now() - 10 * 60_000).toISOString()));
-  await pollArchiv();
+  await api('PUT', `/admin/mailboxes/${mb.id}`, archiveMailbox(new Date(Date.now() - 10 * 60_000).toISOString()));
+  await pollArchive();
   assert.equal(await inInbox(before), 1);
   assert.equal(await inInbox(after), 1);
   await api('DELETE', `/admin/mailboxes/${mb.id}`);
@@ -219,10 +220,12 @@ await step('Versandfehler: Vermerk im Verlauf, «Erneut senden» mit den korrigi
 });
 
 await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet worden wäre', async () => {
-  await api('PUT', '/settings/mail', { staff: 'none', others: 'none' });
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'none', others: 'none' }));
   const info = await api('GET', '/public/info');
   assert.equal(info.testMode, true);
-  assert.deepEqual(info.delivery, { staff: 'none', others: 'none' });
+  assert.deepEqual(info.delivery, everyBlock({ staff: 'none', others: 'none' }));
+  // Die alte Form ohne Blöcke gilt nicht mehr
+  await api('PUT', '/settings/mail', { staff: 'all', others: 'all' }, { expect: [400] });
   const text = `Antwort im Testbetrieb ${RUN}`;
   const form = new FormData();
   form.append('kind', 'reply');
@@ -254,9 +257,9 @@ await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet wo
   assert.match(await eml.text(), /^Message-ID: <pw\./im);
   assert.deepEqual(held.deliveredTo, []);
   const replyEntry = (await detail(itemNo)).entries.find((e) => e.body === text);
-  const vermerk = replyEntry.delivery;
-  assert.equal(vermerk.status, 'held', 'Vermerk in der Timeline');
-  assert.ok(vermerk.withheld.includes(ANNA));
+  const mark = replyEntry.delivery;
+  assert.equal(mark.status, 'held', 'Vermerk in der Timeline');
+  assert.ok(mark.withheld.includes(ANNA));
   // «Mail ansehen» bei der Antwort: die Mail, wie sie ohne Testbetrieb versendet würde, mit Anhang
   assert.equal(replyEntry.mailId, held.id);
   const sentView = await api('GET', `/items/${itemNo}/mails/${held.id}`);
@@ -274,15 +277,15 @@ await step('Testbetrieb: keine Mails, Liste und Vermerk zeigen, was versendet wo
 
   await loginAs(IVAN, 'geheim-geheim');
   await api('GET', '/admin/outgoing-mails', undefined, { expect: [403] });
-  await api('PUT', '/settings/mail', { staff: 'all', others: 'all' }, { expect: [403] });
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'all', others: 'all' }), { expect: [403] });
   await loginAs('ada@test.local', 'geheim-geheim');
 });
 
 await step('Testbetrieb teilweise: nur freigegebene Empfänger erhalten die Mail, ohne die übrigen im Kopf', async () => {
-  await api('PUT', '/settings/mail', { staff: 'all', others: 'selected', otherEmails: [CARLA.toUpperCase()] });
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'all', others: 'selected', otherEmails: [CARLA.toUpperCase()] }));
   const settings = await api('GET', '/settings/mail');
-  assert.deepEqual(settings.otherEmails, [CARLA], 'Adressen klein geschrieben');
-  assert.deepEqual((await api('GET', '/public/info')).delivery, { staff: 'all', others: 'selected' });
+  assert.deepEqual(settings.incident.otherEmails, [CARLA], 'Adressen klein geschrieben');
+  assert.deepEqual((await api('GET', '/public/info')).delivery, everyBlock({ staff: 'all', others: 'selected' }));
 
   const text = `Teilweise versendet ${RUN}`;
   const form = new FormData();
@@ -296,15 +299,74 @@ await step('Testbetrieb teilweise: nur freigegebene Empfänger erhalten die Mail
   const partial = (await api('GET', '/admin/outgoing-mails?status=partial')).find((m) => m.reply && m.deliveredTo.includes(CARLA));
   assert.ok(partial, 'Vollständige Mail in der Liste');
   assert.deepEqual(partial.to, [ANNA]);
-  const vermerk = (await detail(itemNo)).entries.find((e) => e.body === text).delivery;
-  assert.equal(vermerk.status, 'partial');
-  assert.deepEqual(vermerk.deliveredTo, [CARLA]);
-  assert.ok(vermerk.withheld.includes(ANNA));
+  const mark = (await detail(itemNo)).entries.find((e) => e.body === text).delivery;
+  assert.equal(mark.status, 'partial');
+  assert.deepEqual(mark.deliveredTo, [CARLA]);
+  assert.ok(mark.withheld.includes(ANNA));
   await sleep(1500);
   assert.ok(!(await inbox(ANNA)).some((m) => m.text.includes(text)), 'Melder hat die Mail nicht erhalten');
 
-  await api('PUT', '/settings/mail', { staff: 'all', others: 'all' });
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'all', others: 'all' }));
   assert.equal((await api('GET', '/public/info')).testMode, false);
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+await step('Testbetrieb je Typ: Störungen zurückgehalten, Aufgaben versendet, Eingang nach «Generell»', async () => {
+  const none = { staff: 'none', others: 'none' };
+  const live = { staff: 'all', others: 'all' };
+  await api('PUT', '/settings/mail', {
+    general: { ...none, staffEmails: [], otherEmails: [] },
+    incident: { staff: 'selected', others: 'none', staffEmails: ['ADA@test.local'], otherEmails: [] },
+    task: { ...live, staffEmails: [], otherEmails: [] },
+  });
+  const info = await api('GET', '/public/info');
+  assert.equal(info.testMode, true);
+  assert.deepEqual(info.delivery, { general: none, incident: { staff: 'selected', others: 'none' }, task: live });
+  assert.deepEqual((await api('GET', '/settings/mail')).incident.staffEmails, ['ada@test.local']);
+
+  const replyAndWait = async (n, text) => {
+    const f = new FormData();
+    f.append('kind', 'reply');
+    f.append('body', text);
+    await api('POST', `/items/${n}/entries`, f);
+    for (let i = 0; i < 30; i++) {
+      const mail = (await api('GET', '/admin/outgoing-mails')).find((m) => m.reply && m.item?.number === n && m.status !== 'queued');
+      if (mail) return mail;
+      await sleep(1000);
+    }
+    throw new Error(`Antwort auf PW-${n} nicht verarbeitet`);
+  };
+
+  // Störung: Anna ist nicht freigegeben
+  assert.equal((await detail(itemNo)).type, 'incident');
+  const incidentText = `Störung im Testbetrieb je Typ ${RUN}`;
+  const held = await replyAndWait(itemNo, incidentText);
+  assert.ok(['held', 'partial'].includes(held.status), `Störung: ${held.status}`);
+  assert.ok(!held.deliveredTo.includes(ANNA), 'Melderin der Störung bekommt nichts');
+
+  // Aufgabe mit derselben Melderin: «an alle»
+  const typedTask = await createItem({ type: 'task', title: `Aufgabe im Testbetrieb je Typ ${RUN}`, reporterId: anna.id });
+  const taskText = `Aufgabe im Testbetrieb je Typ ${RUN}`;
+  const sent = await replyAndWait(typedTask, taskText);
+  assert.equal(sent.status, 'sent');
+  await waitForMail(ANNA, (m) => m.text.includes(taskText), 'Antwort zur Aufgabe');
+
+  // Eingang (ohne Typ): Eingangsbestätigung nach «Generell», also nicht versendet
+  const subject = `Neu im Eingang je Typ ${RUN}`;
+  await sendMail({ from: BOB, to: MAILBOX, subject, text: 'Hallo' });
+  await poll();
+  let confirmation;
+  for (let i = 0; i < 30 && !confirmation; i++) {
+    confirmation = (await api('GET', '/admin/outgoing-mails')).find(
+      (m) => m.template === 'confirmation' && m.to.includes(BOB) && m.item?.title === subject && m.status !== 'queued',
+    );
+    if (!confirmation) await sleep(1000);
+  }
+  assert.ok(confirmation, 'Eingangsbestätigung im Protokoll');
+  assert.equal(confirmation.item.type, null);
+  assert.equal(confirmation.status, 'held', 'Eingang folgt «Generell»');
+
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'all', others: 'all' }));
+  assert.equal((await api('GET', '/public/info')).testMode, false);
+});
+
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

@@ -4,12 +4,12 @@ import type { ItemType } from './types';
 
 /**
  * Vorgang öffnen, je nach Einstellung des Benutzers für seinen Typ (Entscheid vom 27.10.2026): als Seite (wie bisher)
- * oder im grossen Fenster über der aktuellen Ansicht. Das Fenster steht in der Adresse (`?vorgang=123`), «Zurück» im
+ * oder im grossen Fenster über der aktuellen Ansicht. Das Fenster steht in der Adresse (`?item=123`), «Zurück» im
  * Browser schliesst es. Ist der Typ unbekannt (undefined), öffnet der Vorgang als Seite.
  */
-export const MODAL_QUERY = 'vorgang';
+export const MODAL_QUERY = 'item';
 
-export const itemHref = (number: number) => `/v/${number}`;
+export const itemHref = (number: number) => `/items/${number}`;
 
 /** Klick mit Ctrl/Cmd/Shift oder mit der mittleren Taste: wie gewohnt in einem neuen Tab bzw. Fenster des Browsers */
 export const opensInBrowser = (event?: MouseEvent) =>

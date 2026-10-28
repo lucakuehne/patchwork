@@ -5,9 +5,8 @@
 - Patchwork ersetzt Wekan bzw. Planka und HelpSpot: Vorgänge vom Typ Störung oder Aufgabe, Eingang, Mail rein und raus,
   Portal, LDAP/AD, Regeln, Textbausteine, Auswertungen, Betrieb mit Docker.
 - Stand 28.10.2026: MVP, Etappe 2 und Etappe 3 sind umgesetzt, getestet und in Produktion (zurzeit im Testbetrieb,
-  parallel zu HelpSpot). Seit 28.10.2026 führt das IT-Team seine Aufgaben in Patchwork. Wekan ist abgeschaltet, Planka
-  läuft noch parallel und wird abgeschaltet, wenn nach einem Tag alles gut läuft. Unteraufgaben/Projekte sind bewusst
-  zurückgestellt.
+  parallel zu HelpSpot). Seit 28.10.2026 führt das IT-Team seine Aufgaben in Patchwork; Wekan und Planka sind
+  abgeschaltet, die Aufgaben laufen nur noch in Patchwork. Unteraufgaben/Projekte sind bewusst zurückgestellt.
 - Massgebliche Dokumente:
   - `Grundkonzept.md`: ursprüngliches Konzept.
   - `docs/Entscheidungen.md`: alle mit dem Benutzer abgestimmten Entscheidungen inkl. Randfälle. Vor jeder
@@ -34,8 +33,11 @@
 
 ## Namen
 
-- Bezeichner, Datenbank, API, Migrationen und Dateinamen englisch; Kommentare, Oberfläche, Commits und Dokumente
-  deutsch. Bestehende Migrationen behalten ihren (teils deutschen) Namen.
+- Bezeichner, Datenbank, API, Migrationen und Dateinamen englisch, ebenso Pfade und Query-Parameter der Oberfläche
+  (`/tasks?item=123`), Testdaten-IDs und Bezeichner in Tests; Kommentare, Oberfläche, Commits und Dokumente deutsch.
+  Bestehende Migrationen behalten ihren (teils deutschen) Namen. Frühere deutsche Adressen leitet
+  `frontend/src/legacy-urls.ts` weiter. Deutsch bleiben die Platzhalter der Mail-Vorlagen und Textbausteine
+  (`{{Melder Vorname}}`), weil Admins sie eintippen.
 
 ## Umgebung
 

@@ -266,7 +266,7 @@ export class NotificationsService {
       .orderBy(asc(mailMessages.createdAt));
     const lastInbound = previous.filter((m) => m.direction === 'in').at(-1)?.messageId ?? null;
 
-    const portalUrl = `${appConfig.publicUrl}/portal/v/${mail.portalNumber ?? item.number}`;
+    const portalUrl = `${appConfig.publicUrl}/portal/items/${mail.portalNumber ?? item.number}`;
     const values = { ...(await this.itemValues(item, portalUrl)), ...mail.values };
     const [template, link, footer, reporter] = await Promise.all([
       this.templates.get(mail.template),
@@ -344,7 +344,7 @@ export class NotificationsService {
       this.logger.warn(`Kein aktives Postfach für Benachrichtigungen zu ${itemRef(item.number)}`);
       return;
     }
-    const values = { ...(await this.itemValues(item, `${appConfig.publicUrl}/v/${item.number}`)), ...extra };
+    const values = { ...(await this.itemValues(item, `${appConfig.publicUrl}/items/${item.number}`)), ...extra };
     const [template, link, footer] = await Promise.all([
       this.templates.get(key),
       this.templates.get('staffLink'),

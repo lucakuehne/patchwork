@@ -10,7 +10,7 @@ const ItemView = defineAsyncComponent(() => import('../views/ItemView.vue'));
 
 /**
  * Vorgang im grossen Fenster über der aktuellen Ansicht (Einstellung «Fenster»), gesteuert über die Adresse
- * (`?vorgang=123`): «Zurück» im Browser schliesst es, Neuladen öffnet es wieder. «Als Seite öffnen» wechselt zur Seite.
+ * (`?item=123`): «Zurück» im Browser schliesst es, Neuladen öffnet es wieder. «Als Seite öffnen» wechselt zur Seite.
  */
 const route = useRoute();
 const router = useRouter();

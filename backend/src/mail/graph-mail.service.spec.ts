@@ -160,16 +160,16 @@ describe('Abruf über Microsoft Graph', () => {
   it('beginnt von vorne, wenn sich Ordner, Startzeitpunkt oder Konto geändert haben', async () => {
     const calls = graphApi(({ url }) => {
       if (url.startsWith(`${GRAPH}/me?`)) return json({ userPrincipalName: 'helpdesk@firma.ch', proxyAddresses: [] });
-      if (url.startsWith(`${GRAPH}/me/mailFolders/neu/messages/delta?`)) return json({ value: [], '@odata.deltaLink': `${GRAPH}/me/d` });
+      if (url.startsWith(`${GRAPH}/me/mailFolders/new-folder/messages/delta?`)) return json({ value: [], '@odata.deltaLink': `${GRAPH}/me/d` });
       return json({}, 500);
     });
     // Stand zum Posteingang, gespeichert von einem Abruf, der beim Wechsel des Ordners noch lief
-    const old = withSync({}, { user: 'me', link: `${GRAPH}/me/alter-ordner` });
-    const { service, mailboxes, box } = setup({ ...old, graphFolderId: 'neu' });
+    const old = withSync({}, { user: 'me', link: `${GRAPH}/me/old-folder` });
+    const { service, mailboxes, box } = setup({ ...old, graphFolderId: 'new-folder' });
 
     await service.poll(box, async () => undefined);
 
-    expect(calls.map((c) => c.url)).not.toContain(`${GRAPH}/me/alter-ordner`);
+    expect(calls.map((c) => c.url)).not.toContain(`${GRAPH}/me/old-folder`);
     expect(lastState(mailboxes).sync).toEqual({ key: graphSyncKey(box), user: 'me', link: `${GRAPH}/me/d` });
   });
 

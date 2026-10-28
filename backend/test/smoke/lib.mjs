@@ -24,7 +24,7 @@ export const BOB = `bob-${RUN}@test.local`;
 export const IVAN = `ivan-${RUN}@test.local`;
 export const CARLA = `carla-${RUN}@test.local`;
 export const BERTA = `berta-${RUN}@test.local`;
-export const FREMD = `fremd-${RUN}@test.local`;
+export const STRANGER = `fremd-${RUN}@test.local`;
 export const NEWS = `news-${RUN}@shop.test`;
 
 
@@ -145,9 +145,9 @@ export const createItem = async (fields, files = []) => {
 };
 
 export const inboxNumber = async (title) => (await api('GET', '/items?view=inbox')).items.find((i) => i.title === title).number;
-export const LIEFERANT = `verkauf@lieferant-${RUN}.test`;
-export const STUMM = `stumm-${RUN}@test.local`;
-export const GEWINN = `gewinn-${RUN}@test.local`;
+export const SUPPLIER = `verkauf@lieferant-${RUN}.test`;
+export const MUTED = `stumm-${RUN}@test.local`;
+export const PRIZE = `gewinn-${RUN}@test.local`;
 export const cond = (field, operator, value) => ({ kind: 'condition', field, operator, value });
 export const group = (op, ...children) => ({ kind: 'group', op, children });
 export const byTitle = async (title) => {
@@ -155,10 +155,10 @@ export const byTitle = async (title) => {
   return lists.flatMap((l) => l.items).find((i) => i.title === title);
 };
 export const EXTERN = `extern-${RUN}@test.local`;
-export const ARCHIV = `archiv-${RUN}@test.local`;
-export const archivMailbox = (fetchFrom) => ({
+export const ARCHIVE = `archiv-${RUN}@test.local`;
+export const archiveMailbox = (fetchFrom) => ({
   name: 'Archiv',
-  address: ARCHIV,
+  address: ARCHIVE,
   active: true,
   isDefault: false,
   imapHost: 'localhost',
@@ -169,7 +169,7 @@ export const archivMailbox = (fetchFrom) => ({
   smtpPort: 13025,
   smtpSecurity: 'none',
   authType: 'password',
-  username: ARCHIV,
+  username: ARCHIVE,
   password: 'x',
   ...(fetchFrom ? { fetchFrom } : {}),
 });
@@ -185,6 +185,8 @@ export const reply = async (path, body, kind) => {
   form.append('body', body);
   await api('POST', path, form);
 };
+/** Testbetrieb: dieselben Empfängerkreise für alle Blöcke (Generell, Störungen, Aufgaben) */
+export const everyBlock = (circles) => ({ general: circles, incident: circles, task: circles });
 export const entryStartingWith = async (n, start) => (await detail(n)).entries.find((e) => e.body.startsWith(start));
 export const simulation = (fields, files = []) => {
   const form = new FormData();

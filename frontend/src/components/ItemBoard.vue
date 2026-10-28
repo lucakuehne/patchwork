@@ -30,6 +30,8 @@ const loading = ref(true);
 const manualOrder = computed(() => props.type === 'task');
 const view = computed(() => (props.type === 'task' ? 'board' : 'incidents-board'));
 const typeLabel = computed(() => (props.type === 'task' ? 'Aufgabe' : 'Störung'));
+/** Start-Status der Aufgaben (Standard «Backlog»): Karten leicht ausgegraut wie die abgeschlossenen */
+const backlogId = computed(() => (props.type === 'task' ? session.statusTargets.task.start : undefined));
 
 function dueTitle(dueDate: string, closed: boolean) {
   const state = dueState(dueDate, closed);
@@ -163,7 +165,7 @@ function open(item: ItemSummary, event: MouseEvent) {
         <template #item="{ element }">
           <article
             class="board-card card"
-            :class="{ done: status.closed }"
+            :class="{ done: status.closed, backlog: status.id === backlogId }"
             @click="open(element, $event)"
             @auxclick.middle.prevent="open(element, $event)"
           >
@@ -320,7 +322,8 @@ function open(item: ItemSummary, event: MouseEvent) {
 .board-card:hover {
   border-color: var(--border-strong);
 }
-.board-card.done .card-title {
+.board-card.done .card-title,
+.board-card.backlog .card-title {
   color: var(--text-muted);
 }
 /* Links die Nummer, rechts Priorität und ganz rechts das Alter; passt auch in der schmalsten Spalte (260 px) auf eine

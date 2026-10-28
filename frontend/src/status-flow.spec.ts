@@ -15,7 +15,7 @@ const status = (id: string, closed: boolean, position: number, x: number | null 
 });
 
 const targets: StatusTargetsByType = {
-  incident: { start: 'neu', reply: 'arbeit', close: 'geloest', waiting: 'wartet' },
+  incident: { start: 'new', reply: 'in-progress', close: 'resolved', waiting: 'awaiting' },
   task: { start: 'backlog', reply: 'doing', close: 'done', reject: 'rejected' },
 };
 
@@ -31,7 +31,7 @@ describe('transitionAllowed', () => {
 
 describe('rejectAllowed', () => {
   it('braucht ein Ablehnen-Ziel und bei Einschränkung einen Pfeil dorthin', () => {
-    expect(rejectAllowed(false, [], undefined, 'neu')).toBe(false);
+    expect(rejectAllowed(false, [], undefined, 'new')).toBe(false);
     expect(rejectAllowed(false, [], 'rejected', 'done')).toBe(true);
     expect(rejectAllowed(false, [], 'rejected', 'rejected')).toBe(false);
     expect(rejectAllowed(true, [], 'rejected', 'backlog')).toBe(false);
@@ -45,18 +45,18 @@ describe('isCompleting', () => {
     expect(isCompleting(t, { id: 'doing', closed: false }, { id: 'done', closed: true })).toBe(true);
     expect(isCompleting(t, { id: 'rejected', closed: true }, { id: 'done', closed: true })).toBe(true);
     expect(isCompleting(t, { id: 'doing', closed: false }, { id: 'rejected', closed: true })).toBe(false);
-    expect(isCompleting(t, { id: 'done', closed: true }, { id: 'archiv', closed: true })).toBe(false);
+    expect(isCompleting(t, { id: 'done', closed: true }, { id: 'archive', closed: true })).toBe(false);
   });
 });
 
 describe('suggestTypeChangeStatus', () => {
   it('ordnet nach Rolle zu', () => {
     const s = (id: string, type: 'incident' | 'task', closed = false) => ({ id, type, closed });
-    expect(suggestTypeChangeStatus(targets, s('neu', 'incident'), 'task')).toBe('backlog');
-    expect(suggestTypeChangeStatus(targets, s('wartet', 'incident'), 'task')).toBe('doing');
-    expect(suggestTypeChangeStatus(targets, s('geplant', 'task'), 'incident')).toBe('arbeit');
-    expect(suggestTypeChangeStatus(targets, s('rejected', 'task', true), 'incident')).toBe('geloest');
-    expect(suggestTypeChangeStatus(targets, null, 'incident')).toBe('neu');
+    expect(suggestTypeChangeStatus(targets, s('new', 'incident'), 'task')).toBe('backlog');
+    expect(suggestTypeChangeStatus(targets, s('awaiting', 'incident'), 'task')).toBe('doing');
+    expect(suggestTypeChangeStatus(targets, s('geplant', 'task'), 'incident')).toBe('in-progress');
+    expect(suggestTypeChangeStatus(targets, s('rejected', 'task', true), 'incident')).toBe('resolved');
+    expect(suggestTypeChangeStatus(targets, null, 'incident')).toBe('new');
   });
 });
 

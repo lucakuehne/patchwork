@@ -15,6 +15,8 @@ const entry = (minute: number, patch: Partial<Entry> = {}): Entry => ({
   editedAt: null,
   timeChange: null,
   author: ada,
+  recordedBy: null,
+  recordedById: null,
   originalMessageId: null,
   delivery: null,
   mailId: null,

@@ -15,6 +15,8 @@ defineProps<{
   time: string;
   /** Hinweis beim Darüberfahren über den Zeitpunkt */
   timeTitle?: string;
+  /** Hinweis beim Darüberfahren über den Namen, z.B. «erfasst von …» (Name dann gepunktet unterstrichen) */
+  nameTitle?: string;
 }>();
 </script>
 
@@ -29,7 +31,7 @@ defineProps<{
       </svg>
       <template v-else>{{ initials(name) }}</template>
     </span>
-    <strong class="name">{{ name }}</strong>
+    <strong class="name" :class="{ hinted: !!nameTitle }" :title="nameTitle">{{ name }}</strong>
     <span v-if="kind" class="kind">
       <KindIcon v-if="icon" :kind="icon" />
       {{ kind }}
@@ -52,6 +54,11 @@ defineProps<{
 }
 .name {
   color: var(--text);
+}
+.name.hinted {
+  text-decoration: underline dotted var(--text-faint);
+  text-underline-offset: 3px;
+  cursor: help;
 }
 .kind {
   display: inline-flex;

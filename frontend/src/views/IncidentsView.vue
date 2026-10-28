@@ -82,8 +82,8 @@ useReloadAfterItemModal(load);
     <div class="page-head">
       <h1>Störungen</h1>
       <div class="segmented">
-        <RouterLink to="/stoerungen">Offen</RouterLink>
-        <RouterLink to="/stoerungen/geloest">Gelöst</RouterLink>
+        <RouterLink to="/incidents">Offen</RouterLink>
+        <RouterLink to="/incidents/resolved">Gelöst</RouterLink>
       </div>
       <LayoutToggle v-if="!closed" kind="incidents" />
       <div class="spacer" />

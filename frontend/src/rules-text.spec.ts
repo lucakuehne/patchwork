@@ -12,12 +12,12 @@ const status = (id: string, type: ItemType, label: string, position: number, clo
 
 const statuses = [
   status('backlog', 'task', 'Backlog', 0),
-  status('erledigt', 'task', 'Erledigt', 3, true),
-  status('geplant', 'task', 'Geplant', 1),
-  status('arbeit', 'incident', 'In Arbeit', 1),
-  status('neu', 'incident', 'Neu', 0),
-  status('wartet', 'incident', 'Wartet auf Melder', 2),
-  status('geloest', 'incident', 'Gelöst', 3, true),
+  status('done', 'task', 'Erledigt', 3, true),
+  status('planned', 'task', 'Geplant', 1),
+  status('in-progress', 'incident', 'In Arbeit', 1),
+  status('new', 'incident', 'Neu', 0),
+  status('awaiting', 'incident', 'Wartet auf Melder', 2),
+  status('resolved', 'incident', 'Gelöst', 3, true),
 ];
 
 describe('describeTrigger', () => {
@@ -35,42 +35,42 @@ describe('describeTrigger', () => {
   });
 
   it('nennt die Status mit Typ, nach Typ und Reihenfolge, und lässt gelöschte weg', () => {
-    expect(describeTrigger(timed(2, ['backlog', 'weg', 'neu'], false), statuses)).toBe(
+    expect(describeTrigger(timed(2, ['backlog', 'gone', 'new'], false), statuses)).toBe(
       'seit 2 Tagen in «Neu» (Störung), «Backlog» (Aufgabe)',
     );
-    expect(describeTrigger(timed(3, ['geplant'], true), statuses)).toBe(
+    expect(describeTrigger(timed(3, ['planned'], true), statuses)).toBe(
       'seit 3 Tagen in «Wartet auf den Melder», «Geplant» (Aufgabe)',
     );
   });
 
   it('meldet, wenn alle Status gelöscht sind', () => {
-    expect(describeTrigger(timed(2, ['weg'], false), statuses)).toBe('seit 2 Tagen in (Status gelöscht)');
+    expect(describeTrigger(timed(2, ['gone'], false), statuses)).toBe('seit 2 Tagen in (Status gelöscht)');
   });
 });
 
 describe('scheduleChoices', () => {
   it('bietet die offenen Status je Typ in der eingestellten Reihenfolge an', () => {
     expect(scheduleChoices(statuses).map((g) => [g.type, g.statuses.map((s) => s.id)])).toEqual([
-      ['incident', ['neu', 'arbeit', 'wartet']],
-      ['task', ['backlog', 'geplant']],
+      ['incident', ['new', 'in-progress', 'awaiting']],
+      ['task', ['backlog', 'planned']],
     ]);
   });
 
   it('lässt Typen ohne offenen Status weg', () => {
-    expect(scheduleChoices([status('erledigt', 'task', 'Erledigt', 0, true)])).toEqual([]);
+    expect(scheduleChoices([status('done', 'task', 'Erledigt', 0, true)])).toEqual([]);
   });
 });
 
 describe('openScheduleIds', () => {
   it('behält nur vorhandene offene Status', () => {
-    expect(openScheduleIds(['neu', 'weg', 'geloest', 'backlog'], statuses)).toEqual(['neu', 'backlog']);
+    expect(openScheduleIds(['new', 'gone', 'resolved', 'backlog'], statuses)).toEqual(['new', 'backlog']);
   });
 });
 
 describe('waitingOnly', () => {
   it('gilt nur für «Wartet auf den Melder» allein', () => {
     expect(waitingOnly({ statusIds: [], waiting: true })).toBe(true);
-    expect(waitingOnly({ statusIds: ['neu'], waiting: true })).toBe(false);
+    expect(waitingOnly({ statusIds: ['new'], waiting: true })).toBe(false);
     expect(waitingOnly({ statusIds: [], waiting: false })).toBe(false);
   });
 });

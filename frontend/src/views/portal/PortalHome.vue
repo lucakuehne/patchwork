@@ -33,18 +33,18 @@ watch(state, load, { immediate: true });
         <button type="button" :class="{ active: state === 'closed' }" @click="state = 'closed'">Abgeschlossen</button>
       </div>
       <div class="spacer" />
-      <RouterLink to="/portal/neu" class="btn btn-primary">+ Neue Meldung</RouterLink>
+      <RouterLink to="/portal/new" class="btn btn-primary">+ Neue Meldung</RouterLink>
     </div>
 
     <div v-if="!loading && items.length === 0" class="card empty">
       <template v-if="state === 'open'">
         Du hast keine offenen Meldungen.
-        <div style="margin-top: 12px"><RouterLink to="/portal/neu" class="btn">Etwas melden</RouterLink></div>
+        <div style="margin-top: 12px"><RouterLink to="/portal/new" class="btn">Etwas melden</RouterLink></div>
       </template>
       <template v-else>Keine abgeschlossenen Vorgänge.</template>
     </div>
 
-    <RouterLink v-for="item in items" :key="item.number" :to="`/portal/v/${item.number}`" class="card item-card">
+    <RouterLink v-for="item in items" :key="item.number" :to="`/portal/items/${item.number}`" class="card item-card">
       <div class="row">
         <span class="mono muted small">{{ itemRef(item.number) }}</span>
         <PortalStatusBadge :status="item.status" />

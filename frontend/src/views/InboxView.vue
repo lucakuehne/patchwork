@@ -29,7 +29,7 @@ const newOpen = ref(false);
 function onCreated(number: number, type: ItemType) {
   newOpen.value = false;
   if (type === 'task') {
-    toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/v/${number}`, item: { number, type } });
+    toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/items/${number}`, item: { number, type } });
     void session.refreshCounts();
     return;
   }

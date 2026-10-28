@@ -15,7 +15,7 @@ const session = useSession();
   <img v-if="session.logoUrl" :src="session.logoUrl" :alt="session.appName" class="app-logo custom" :class="`logo-${size}`" />
   <span v-else class="app-logo" :class="[`logo-${size}`, { 'logo-compact': compact }]" role="img" aria-label="Patchwork">
     <img src="/logo.svg" alt="" class="full" />
-    <img v-if="compact" src="/favicon.svg" alt="" class="signet" />
+    <img v-if="compact" src="/favicon.svg" alt="" class="mark" />
   </span>
 </template>
 
@@ -44,14 +44,14 @@ const session = useSession();
 .custom.logo-large {
   max-width: 240px;
 }
-.logo-compact .signet {
+.logo-compact .mark {
   display: none;
 }
 @media (max-width: 560px) {
   .logo-compact .full {
     display: none;
   }
-  .logo-compact .signet {
+  .logo-compact .mark {
     display: block;
   }
 }

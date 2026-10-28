@@ -71,7 +71,7 @@ const router = useRouter();
 onMounted(() => {
   const result = route.query.microsoft;
   if (result === 'ok') toast.success('Mit Microsoft angemeldet. Diesen Tab kannst du schliessen.');
-  if (result === 'fehler') {
+  if (result === 'failed') {
     toast.error(new Error('Die Anmeldung mit Microsoft ist fehlgeschlagen. Die Meldung steht im Anmeldedialog im anderen Tab.'));
   }
   if (result) void router.replace({ query: {} });

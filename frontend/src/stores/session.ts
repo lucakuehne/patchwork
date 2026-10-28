@@ -108,7 +108,7 @@ export const useSession = defineStore('session', () => {
   function followIdentity(other: SessionIdentity) {
     if (sameIdentity(other)) return;
     const params = new URLSearchParams(window.location.search);
-    if (other.userId && window.location.pathname.startsWith('/login')) window.location.assign(params.get('weiter') ?? '/');
+    if (other.userId && window.location.pathname.startsWith('/login')) window.location.assign(params.get('next') ?? '/');
     else window.location.reload();
   }
 

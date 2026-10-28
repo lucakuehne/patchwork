@@ -79,8 +79,8 @@ export interface AdminUser extends User {
 /** Testbetrieb: Wer Mails tatsächlich erhält – niemand, nur ausgewählte oder alle */
 export type DeliveryScope = 'none' | 'selected' | 'all';
 
-/** Testbetrieb (Verwaltung → Allgemein) */
-export interface MailSettings {
+/** Testbetrieb eines Blocks (Verwaltung → Ausgehende Mails) */
+export interface DeliveryCircles {
   /** IT-Mitarbeitende (Rolle IT oder Admin) */
   staff: DeliveryScope;
   /** Melder, Beteiligte und alle übrigen Empfänger */
@@ -89,6 +89,13 @@ export interface MailSettings {
   otherEmails: string[];
 }
 
+/** Blöcke des Testbetriebs: «general» für Vorgänge ohne Typ (Eingang) und Mails ohne Vorgang */
+export type DeliveryBlock = 'general' | ItemType;
+
+export type MailSettings = Record<DeliveryBlock, DeliveryCircles>;
+
+export type DeliveryScopes = Pick<DeliveryCircles, 'staff' | 'others'>;
+
 export interface PublicInfo {
   appName: string;
   hasLogo: boolean;
@@ -96,8 +103,8 @@ export interface PublicInfo {
   setupRequired: boolean;
   /** Testbetrieb: Patchwork versendet nicht alle Mails */
   testMode: boolean;
-  /** Testbetrieb: Empfängerkreise (beide «all» = normaler Betrieb) */
-  delivery: { staff: DeliveryScope; others: DeliveryScope };
+  /** Testbetrieb: Empfängerkreise je Block (überall beide «all» = normaler Betrieb) */
+  delivery: Record<DeliveryBlock, DeliveryScopes>;
   /** Ablauf des HTTPS-Zertifikats, null ohne HTTPS */
   certificateExpiresAt: string | null;
 }
@@ -291,6 +298,9 @@ export interface Entry {
   /** Zeit einer internen Notiz von einem Admin angepasst: ursprüngliche Zeit, wann und von wem */
   timeChange: { originalAt: string; at: string; by: string | null } | null;
   author: User | null;
+  /** Ein Admin hat den Eintrag im Namen des Autors erfasst: Name und Id des Admins, sonst null */
+  recordedBy: string | null;
+  recordedById: string | null;
   originalMessageId: string | null;
   /** Versand einer öffentlichen Antwort, nur bei Abweichungen (sonst null = normal versendet) */
   delivery: {

@@ -52,9 +52,14 @@ const label = computed(() => {
   return fromMail.value ? 'Öffentlich · per Mail' : 'Öffentlich';
 });
 
-// Eigene, in Patchwork erfasste Notiz: «Bearbeiten» nur in den ersten Minuten
+// Eigene, in Patchwork erfasste Notiz (auch eine, die ich im Namen eines anderen erfasst habe): «Bearbeiten» nur in den
+// ersten Minuten
 const ownNote = computed(
-  () => props.entry.kind === 'note' && !meta.value.source && !!session.user && props.entry.author?.id === session.user.id,
+  () =>
+    props.entry.kind === 'note' &&
+    !meta.value.source &&
+    !!session.user &&
+    (props.entry.author?.id === session.user.id || props.entry.recordedById === session.user.id),
 );
 // Hat ein Admin die Zeit angepasst, zählt die Frist ab der ursprünglichen Zeit (wie im Backend)
 const editDeadline = computed(
@@ -126,6 +131,7 @@ async function save() {
   <div class="message" :class="[entry.kind, { automated: meta.automated }]">
     <TimelineHead
       :name="author"
+      :name-title="entry.recordedBy ? `erfasst von ${entry.recordedBy}` : undefined"
       :system="!entry.author"
       :kind="label"
       :icon="entry.kind === 'note' ? 'internal' : 'public'"

@@ -22,6 +22,14 @@ describe('noteEditRefusal', () => {
     expect(noteEditRefusal(note, 'ivan', after(1))?.reason).toBe('author');
   });
 
+  it('im Namen eines anderen erfasst: Autor und erfassender Admin dürfen, sonst niemand', () => {
+    const onBehalf = { ...note, authorId: 'ivan', recordedById: 'ada' };
+    expect(noteEditRefusal(onBehalf, 'ivan', after(1))).toBeNull();
+    expect(noteEditRefusal(onBehalf, 'ada', after(1))).toBeNull();
+    expect(noteEditRefusal(onBehalf, 'carla', after(1))?.reason).toBe('author');
+    expect(noteEditRefusal(onBehalf, 'ada', after(11))?.reason).toBe('expired');
+  });
+
   it('lehnt öffentliche Antworten und per Mail eingegangene Notizen ab', () => {
     expect(noteEditRefusal({ ...note, kind: 'reply' }, 'ada', after(1))?.reason).toBe('kind');
     expect(noteEditRefusal({ ...note, meta: { source: 'mail', external: true } }, 'ada', after(1))?.reason).toBe('kind');

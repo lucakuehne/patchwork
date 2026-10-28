@@ -16,7 +16,7 @@ async function back() {
     const admin = await api.post<User>('/auth/impersonation/end');
     session.announceSessionChange(admin.id, null);
     // Neu laden, damit Stammdaten, Zähler und Rechte wieder dem eigenen Konto entsprechen
-    window.location.assign('/admin/benutzer');
+    window.location.assign('/admin/users');
   } catch (err) {
     // z.B. Sitzung inzwischen beendet (Passwort des Admins geändert): neu laden zeigt den tatsächlichen Stand
     toast.error(err);

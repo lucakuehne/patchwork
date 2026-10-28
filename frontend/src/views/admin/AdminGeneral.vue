@@ -89,7 +89,7 @@ async function removeLogo() {
       </span>
     </div>
     <PortalSettingsCard />
-    <p class="faint small">Den Testbetrieb stellt man unter <RouterLink to="/admin/ausgehende-mails">Ausgehende Mails</RouterLink> ein.</p>
+    <p class="faint small">Den Testbetrieb stellt man unter <RouterLink to="/admin/outgoing-mails">Ausgehende Mails</RouterLink> ein.</p>
   </div>
 </template>
 

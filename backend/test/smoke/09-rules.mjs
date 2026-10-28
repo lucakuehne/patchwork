@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -18,8 +18,8 @@ import {
   entryStartingWith,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +27,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +44,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 // ---------------------------------------------------------------- Etappe 3
 
@@ -59,7 +59,7 @@ let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, t
 await step('Regeln: Mail vom Lieferanten wird Aufgabe mit Priorität, Zuständigem und Checkliste (UND/ODER)', async () => {
   await loginAs('ada@test.local', 'geheim-geheim');
   const template = (await api('GET', '/checklist-templates')).find((t) => t.name === 'Neuer Mitarbeiter');
-  const lieferant = (actions) => ({
+  const supplierRuleBody = (actions) => ({
     name: 'Lieferant',
     active: true,
     triggers: ['mail_new'],
@@ -72,11 +72,11 @@ await step('Regeln: Mail vom Lieferanten wird Aufgabe mit Priorität, Zuständig
     actions: { type: 'task', priority: 'high', assigneeId: ivan.id, checklistTemplateId: template.id, ...actions },
   });
   // «Typ: Aufgabe» verlangt einen Status (seit 23.10.2026), nicht den Ablehnen-Status
-  assert.match((await api('POST', '/admin/rules', lieferant({}), { expect: [400] })).message, /Status wählen/);
+  assert.match((await api('POST', '/admin/rules', supplierRuleBody({}), { expect: [400] })).message, /Status wählen/);
   const rejectedId = status('task', 'rejected').id;
-  assert.match((await api('POST', '/admin/rules', lieferant({ statusId: rejectedId }), { expect: [400] })).message, /Ablehnen/);
-  lieferantRule = await api('POST', '/admin/rules', lieferant({ statusId: status('task', 'planned').id }));
-  await sendMail({ from: LIEFERANT, subject: 'Lieferschein 4711', text: 'Anbei der Lieferschein.' });
+  assert.match((await api('POST', '/admin/rules', supplierRuleBody({ statusId: rejectedId }), { expect: [400] })).message, /Ablehnen/);
+  supplierRule = await api('POST', '/admin/rules', supplierRuleBody({ statusId: status('task', 'planned').id }));
+  await sendMail({ from: SUPPLIER, subject: 'Lieferschein 4711', text: 'Anbei der Lieferschein.' });
   await sendMail({ from: CARLA, subject: 'Bestellung Monitor', text: 'Bitte einen Monitor bestellen.' });
   await sendMail({ from: CARLA, subject: 'Bestellung Newsletter', text: 'Unser Newsletter zur Bestellung.' });
   await sleep(500);
@@ -100,7 +100,7 @@ await step('Regeln: Mail vom Lieferanten wird Aufgabe mit Priorität, Zuständig
   assert.equal((await detail((await byTitle('Bestellung Monitor')).number)).type, 'task', 'ODER-Zweig');
   assert.equal((await detail((await byTitle('Bestellung Newsletter')).number)).type, null, 'UND mit «enthält nicht»');
 
-  const preview = await api('POST', '/admin/rules/preview', { triggers: ['mail_new'], conditions: lieferantRule.conditions });
+  const preview = await api('POST', '/admin/rules/preview', { triggers: ['mail_new'], conditions: supplierRule.conditions });
   assert.deepEqual(
     preview.hits.map((h) => h.title).sort(),
     ['Bestellung Monitor', 'Lieferschein 4711'],
@@ -110,12 +110,12 @@ await step('Regeln: Mail vom Lieferanten wird Aufgabe mit Priorität, Zuständig
 await step('Regeln: Aufgabe gleich abgeschlossen, Mail «Abgeschlossen» nach der Eingangsbestätigung; gelöschter Status', async () => {
   const sender = `quittung-${RUN}@test.local`;
   const title = `Quittung ${RUN}`;
-  const archiv = await api('POST', '/statuses', { type: 'task', label: 'Archiv', closed: true });
+  const archive = await api('POST', '/statuses', { type: 'task', label: 'Archiv', closed: true });
   const rule = await api('POST', '/admin/rules', {
     name: 'Quittungen',
     triggers: ['mail_new'],
     conditions: group('and', cond('sender', 'is', sender)),
-    actions: { type: 'task', statusId: archiv.id },
+    actions: { type: 'task', statusId: archive.id },
   });
   await sendMail({ from: sender, subject: title, text: 'Nur zur Ablage.' });
   await sleep(500);
@@ -131,7 +131,7 @@ await step('Regeln: Aufgabe gleich abgeschlossen, Mail «Abgeschlossen» nach de
   assert.equal(mails.at(-1).subject, done.subject, '«Erledigt» nach der Eingangsbestätigung');
 
   // Status der Regel gelöscht: Die Regel erhält den Ersatz bzw. den Start-Status der Aufgaben
-  await api('DELETE', `/statuses/${archiv.id}`, { replacementId: status('task', 'done').id });
+  await api('DELETE', `/statuses/${archive.id}`, { replacementId: status('task', 'done').id });
   assert.equal((await api('GET', '/admin/rules')).find((r) => r.id === rule.id).actions.statusId, status('task', 'done').id);
   await api('DELETE', `/admin/rules/${rule.id}`);
 });
@@ -146,18 +146,18 @@ await step('Regeln: Verwerfen ohne Bestätigung, Bestätigung unterdrücken, Rei
   await api('POST', '/admin/rules', {
     name: 'Ohne Bestätigung',
     triggers: ['mail_new'],
-    conditions: group('and', cond('sender', 'is', STUMM)),
+    conditions: group('and', cond('sender', 'is', MUTED)),
     actions: { suppressConfirmation: true, priority: 'high' },
   });
   // Von oben nach unten: die spätere Regel gewinnt
   await api('POST', '/admin/rules', {
     name: 'Später: Priorität tief',
     triggers: ['mail_new'],
-    conditions: group('and', cond('sender', 'is', STUMM)),
+    conditions: group('and', cond('sender', 'is', MUTED)),
     actions: { priority: 'low' },
   });
-  await sendMail({ from: GEWINN, subject: 'Gewinnspiel', text: 'Sie haben gewonnen!' });
-  await sendMail({ from: STUMM, subject: 'Ohne Antwort bitte', text: 'Nur zur Info.' });
+  await sendMail({ from: PRIZE, subject: 'Gewinnspiel', text: 'Sie haben gewonnen!' });
+  await sendMail({ from: MUTED, subject: 'Ohne Antwort bitte', text: 'Nur zur Info.' });
   await sleep(500);
   await poll();
   const inboxItems = (await api('GET', '/items?view=inbox')).items;
@@ -167,8 +167,8 @@ await step('Regeln: Verwerfen ohne Bestätigung, Bestätigung unterdrücken, Rei
   const rulesApplied = (await detail(quiet.number)).entries.filter((e) => e.meta?.field === 'rule').map((e) => e.meta.ruleName);
   assert.deepEqual(rulesApplied, ['Ohne Bestätigung', 'Später: Priorität tief']);
   await sleep(3000);
-  assert.equal((await inbox(GEWINN)).length, 0, 'keine Bestätigung für Verworfenes');
-  assert.equal((await inbox(STUMM)).length, 0, 'Bestätigung unterdrückt');
+  assert.equal((await inbox(PRIZE)).length, 0, 'keine Bestätigung für Verworfenes');
+  assert.equal((await inbox(MUTED)).length, 0, 'Bestätigung unterdrückt');
 });
 
 await step('Regeln: Antwort mit «dringend» setzt Priorität, Typ nur im Eingang', async () => {
@@ -179,7 +179,7 @@ await step('Regeln: Antwort mit «dringend» setzt Priorität, Typ nur im Eingan
     actions: { type: 'incident', priority: 'high' },
   });
   const quiet = await byTitle('Ohne Antwort bitte');
-  await sendMail({ from: STUMM, subject: `Re: [PW-${quiet.number}] Ohne Antwort bitte`, text: 'Jetzt ist es doch dringend!' });
+  await sendMail({ from: MUTED, subject: `Re: [PW-${quiet.number}] Ohne Antwort bitte`, text: 'Jetzt ist es doch dringend!' });
   // bestehende Aufgabe: Typ bleibt, Priorität wird hoch
   const task1 = await byTitle('Bestellung Monitor');
   await api('PATCH', `/items/${task1.number}`, { priority: 'low' });
@@ -216,17 +216,17 @@ await step('Regeln: neue Portal-Meldung, Verwaltung nur für Admin', async () =>
   const all = await api('GET', '/admin/rules');
   await api('PUT', '/admin/rules/order', { ids: all.map((r) => r.id).reverse() });
   assert.equal((await api('GET', '/admin/rules'))[0].id, all.at(-1).id);
-  await api('PATCH', `/admin/rules/${lieferantRule.id}/active`, { active: false });
-  assert.equal((await api('GET', '/admin/rules')).find((r) => r.id === lieferantRule.id).active, false);
+  await api('PATCH', `/admin/rules/${supplierRule.id}/active`, { active: false });
+  assert.equal((await api('GET', '/admin/rules')).find((r) => r.id === supplierRule.id).active, false);
 });
 
 await step('Zeitgesteuerte Regeln: erinnern, schliessen und eskalieren', async () => {
   const rule = (name, schedule, conditions, actions) => api('POST', '/admin/rules', { name, schedule, conditions, actions });
   const invalid = (schedule, actions) => api('POST', '/admin/rules', { name: 'x', schedule, conditions: group('and'), actions }, { expect: [400] });
-  const neu = status('incident', 'new').id;
+  const newStatus = status('incident', 'new').id;
   // Erinnern/Schliessen nur mit «Wartet auf den Melder» allein
-  await invalid({ days: 1, statusIds: [neu], waiting: false }, { close: true });
-  await invalid({ days: 1, statusIds: [neu], waiting: true }, { remindReporter: true });
+  await invalid({ days: 1, statusIds: [newStatus], waiting: false }, { close: true });
+  await invalid({ days: 1, statusIds: [newStatus], waiting: true }, { remindReporter: true });
   // Mindestens ein Status, nur bestehende und offene
   await invalid({ days: 1, statusIds: [], waiting: false }, { priority: 'high' });
   assert.match((await invalid({ days: 1, statusIds: [status('incident', 'resolved').id] }, { priority: 'high' })).message, /offene Status/);
@@ -250,7 +250,7 @@ await step('Zeitgesteuerte Regeln: erinnern, schliessen und eskalieren', async (
     // Status beider Typen
     await rule(
       'Eskalation',
-      { days: 2, statusIds: [neu, status('task', 'backlog').id], waiting: false },
+      { days: 2, statusIds: [newStatus, status('task', 'backlog').id], waiting: false },
       group('and', cond('subject', 'contains', 'eskalation')),
       { priority: 'high', assigneeId: ivan.id },
     ),
@@ -318,7 +318,7 @@ await step('Zeitgesteuerte Regeln: erinnern, schliessen und eskalieren', async (
 });
 
 await step('Zeitgesteuerte Regeln: Status löschen ersetzt ihn in den Regeln oder entfernt ihn', async () => {
-  const neu = status('incident', 'new').id;
+  const newStatus = status('incident', 'new').id;
   const inProgress = status('incident', 'in_progress').id;
   const add = (label) => api('POST', '/statuses', { type: 'incident', label, closed: false });
   const [supplier, vendor, customer] = [await add('Beim Lieferanten'), await add('Beim Hersteller'), await add('Beim Kunden')];
@@ -327,7 +327,7 @@ await step('Zeitgesteuerte Regeln: Status löschen ersetzt ihn in den Regeln ode
   const rule = (name, statusIds, waiting = false) =>
     api('POST', '/admin/rules', { name, schedule: { days: 30, statusIds, waiting }, conditions: never, actions: { priority: 'high' } });
   const created = [
-    await rule('Mit Ersatz', [supplier.id, neu]),
+    await rule('Mit Ersatz', [supplier.id, newStatus]),
     await rule('Nur gelöschter', [vendor.id]),
     await rule('Mit Wartet', [vendor.id], true),
     await rule('Ersatz abgeschlossen', [customer.id]),
@@ -351,12 +351,12 @@ await step('Zeitgesteuerte Regeln: Status löschen ersetzt ihn in den Regeln ode
     const { schedule, active } = rules.find((x) => x.id === r.id);
     return [schedule.statusIds, schedule.waiting, active];
   };
-  assert.deepEqual(state(created[0]), [[neu, inProgress], false, true], 'offener Ersatz tritt an die Stelle');
+  assert.deepEqual(state(created[0]), [[newStatus, inProgress], false, true], 'offener Ersatz tritt an die Stelle');
   assert.deepEqual(state(created[1]), [[], false, false], 'ohne Status ausgeschaltet');
   assert.deepEqual(state(created[2]), [[], true, true], 'mit «Wartet auf den Melder» bleibt sie aktiv');
   assert.deepEqual(state(created[3]), [[], false, false], 'abgeschlossener Ersatz fällt weg');
-  assert.deepEqual(await api('GET', '/statuses/rules-usage'), { [neu]: ['Mit Ersatz'], [inProgress]: ['Mit Ersatz'] });
+  assert.deepEqual(await api('GET', '/statuses/rules-usage'), { [newStatus]: ['Mit Ersatz'], [inProgress]: ['Mit Ersatz'] });
   for (const r of created) await api('DELETE', `/admin/rules/${r.id}`);
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

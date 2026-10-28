@@ -15,9 +15,9 @@ const search = ref(typeof route.query.q === 'string' ? route.query.q : '');
 // Nur die Bereiche, die der Benutzer sieht (Bereiche je Rolle)
 const tabs = computed(() =>
   [
-    { area: 'inbox', to: '/eingang', label: 'Eingang', count: session.counts.inbox, prefix: '/eingang' },
-    { area: 'incident', to: '/stoerungen', label: 'Störungen', count: session.counts.incidents, prefix: '/stoerungen' },
-    { area: 'task', to: '/aufgaben', label: 'Aufgaben', count: session.counts.tasks, prefix: '/aufgaben' },
+    { area: 'inbox', to: '/inbox', label: 'Eingang', count: session.counts.inbox, prefix: '/inbox' },
+    { area: 'incident', to: '/incidents', label: 'Störungen', count: session.counts.incidents, prefix: '/incidents' },
+    { area: 'task', to: '/tasks', label: 'Aufgaben', count: session.counts.tasks, prefix: '/tasks' },
   ].filter((tab) => session.areas.includes(tab.area as Area)),
 );
 
@@ -54,7 +54,7 @@ watch(
         {{ tab.label }}
         <span class="count" :class="{ zero: tab.count === 0 }">{{ tab.count }}</span>
       </RouterLink>
-      <RouterLink v-if="session.isAdmin" to="/auswertungen" class="tab" :class="{ active: route.path.startsWith('/auswertungen') }">
+      <RouterLink v-if="session.isAdmin" to="/reports" class="tab" :class="{ active: route.path.startsWith('/reports') }">
         Auswertungen
       </RouterLink>
     </nav>
@@ -66,7 +66,7 @@ watch(
     </form>
 
     <UserMenu>
-      <RouterLink to="/einstellungen" class="menu-item">Einstellungen</RouterLink>
+      <RouterLink to="/settings" class="menu-item">Einstellungen</RouterLink>
       <RouterLink v-if="session.isAdmin" to="/admin" class="menu-item">Verwaltung</RouterLink>
     </UserMenu>
   </header>

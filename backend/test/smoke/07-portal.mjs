@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -18,8 +18,8 @@ import {
   entryStartingWith,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +27,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +44,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Portal freischalten: aus, nur ausgewählte, für alle', async () => {
   assert.deepEqual(await api('GET', '/settings/portal'), { access: 'none', emails: [], groupDn: '' });
@@ -149,7 +149,7 @@ await step('Portal: neue Meldung landet mit Vorschlag im Eingang, Bestätigung m
   assert.equal(d.description, 'Seit heute\nflackert er.');
   assert.equal(d.attachments.length, 1);
   const mail = await waitForMail(ANNA, (m) => m.subject === `[PW-${portalItem}] Bildschirm flackert`, 'Bestätigung Portal');
-  assert.match(mail.source, new RegExp(`/portal/v/${portalItem}`));
+  assert.match(mail.source, new RegExp(`/portal/items/${portalItem}`));
 
   await loginAs('ada@test.local', 'geheim-geheim');
   const inboxItem = (await api('GET', '/items?view=inbox')).items.find((i) => i.number === portalItem);
@@ -224,4 +224,4 @@ await step('Wieder geöffnetes Duplikat: Umleitung endet', async () => {
 
 // ---------------------------------------------------------------- Rückmeldungen 15.10.2026
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

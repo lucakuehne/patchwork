@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -18,8 +18,8 @@ import {
   entryStartingWith,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +27,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +44,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Newsletter: keine Bestätigung, verwerfen', async () => {
   await sendMail({ from: NEWS, subject: 'Grosser Sale', text: 'Kaufen!', headers: { 'List-Unsubscribe': '<mailto:u@shop.test>' } });
@@ -142,27 +142,27 @@ await step('Meldeweg: Pflicht beim Erfassen, automatisch bei Mail, änderbar mit
   await api('PUT', '/channels/order', { ids: ids.slice(1) }, { expect: [400] });
 
   // Vorbelegung je Typ: nur Admin, nicht «Portal»; beim Löschen übernimmt der Ersatz, unbenutzt entfällt sie
-  const intern = channel('Intern');
-  assert.deepEqual(await api('PUT', '/channels/defaults', { incident: null, task: intern.id }), { incident: null, task: intern.id });
+  const internalChannel = channel('Intern');
+  assert.deepEqual(await api('PUT', '/channels/defaults', { incident: null, task: internalChannel.id }), { incident: null, task: internalChannel.id });
   await api('PUT', '/channels/defaults', { incident: channel('Portal').id, task: null }, { expect: [400] });
   const spare = await api('POST', '/channels', { label: 'Ersatz-Test', icon: 'other' });
-  await api('PUT', '/channels/defaults', { incident: spare.id, task: intern.id });
+  await api('PUT', '/channels/defaults', { incident: spare.id, task: internalChannel.id });
   await api('DELETE', `/channels/${spare.id}`);
-  assert.deepEqual(await api('GET', '/channels/defaults'), { incident: null, task: intern.id }, 'unbenutzt: Vorbelegung entfällt');
+  assert.deepEqual(await api('GET', '/channels/defaults'), { incident: null, task: internalChannel.id }, 'unbenutzt: Vorbelegung entfällt');
   const used = await api('POST', '/channels', { label: 'Wird ersetzt', icon: 'other' });
-  await api('PUT', '/channels/defaults', { incident: used.id, task: intern.id });
+  await api('PUT', '/channels/defaults', { incident: used.id, task: internalChannel.id });
   const usedItem = await createItem({ type: 'incident', title: 'Meldeweg wird ersetzt', channelId: used.id });
   await api('DELETE', `/channels/${used.id}?replacementId=${channel('Telefon').id}`);
-  assert.deepEqual(await api('GET', '/channels/defaults'), { incident: channel('Telefon').id, task: intern.id }, 'Ersatz übernimmt');
+  assert.deepEqual(await api('GET', '/channels/defaults'), { incident: channel('Telefon').id, task: internalChannel.id }, 'Ersatz übernimmt');
   assert.equal((await detail(usedItem)).channel.label, 'Telefon');
 
   await loginAs(IVAN, 'geheim-geheim');
   assert.equal((await api('GET', '/channels')).length, 7);
-  assert.deepEqual(await api('GET', '/channels/defaults'), { incident: channel('Telefon').id, task: intern.id });
+  assert.deepEqual(await api('GET', '/channels/defaults'), { incident: channel('Telefon').id, task: internalChannel.id });
   await api('PUT', '/channels/defaults', { incident: null, task: null }, { expect: [403] });
   await api('POST', '/channels', { label: 'Brief', icon: 'letter' }, { expect: [403] });
   await loginAs('ada@test.local', 'geheim-geheim');
   await api('PUT', '/channels/defaults', { incident: null, task: null });
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

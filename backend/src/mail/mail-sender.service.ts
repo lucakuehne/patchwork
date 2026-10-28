@@ -4,7 +4,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import nodemailer, { type SendMailOptions } from 'nodemailer';
 import type PgBoss from 'pg-boss';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
-import { attachments, mailMessages, outgoingMails, users, type Attachment, type Mailbox } from '../db/schema';
+import { attachments, items, mailMessages, outgoingMails, users, type Attachment, type ItemType, type Mailbox } from '../db/schema';
 import { BossService, QUEUE_MAIL_SEND } from '../jobs/boss.service';
 import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
@@ -12,7 +12,7 @@ import { GraphMailService } from './graph-mail.service';
 import { explainMailError } from './mail-errors';
 import { MailboxesService } from './mailboxes.service';
 import { MailTransportService } from './mail-transport.service';
-import { deliveryFilter, isLive } from './test-delivery';
+import { deliveryBlock, deliveryFilter, isBlockLive } from './test-delivery';
 
 export interface OutgoingMail {
   mailboxId: string;
@@ -140,11 +140,11 @@ export class MailSenderService implements OnModuleInit {
 
     const { files, fromName, build } = await this.compose(mail, mailbox);
 
-    // Testbetrieb: nur an freigegebene Empfänger
-    const delivery = await this.settings.get('mail');
-    const allowed = isLive(delivery)
+    // Testbetrieb: nur an freigegebene Empfänger, nach dem Block des Vorgangstyps beim Versand
+    const circles = (await this.settings.get('mail'))[deliveryBlock(await this.itemType(mail.itemId))];
+    const allowed = isBlockLive(circles)
       ? () => true
-      : deliveryFilter(delivery, await this.staffAddresses([...mail.to, ...mail.cc]));
+      : deliveryFilter(circles, await this.staffAddresses([...mail.to, ...mail.cc]));
     const to = mail.to.filter(allowed);
     const cc = mail.cc.filter(allowed);
     const deliveredTo = [...to, ...cc];
@@ -291,6 +291,13 @@ export class MailSenderService implements OnModuleInit {
   }
 
   /** Adressen von IT-Mitarbeitenden (Rolle IT oder Admin) unter den Empfängern. */
+  /** Typ des Vorgangs zur Mail, null ohne Vorgang oder im Eingang */
+  private async itemType(itemId: string | null): Promise<ItemType | null> {
+    if (!itemId) return null;
+    const [row] = await this.db.select({ type: items.type }).from(items).where(eq(items.id, itemId)).limit(1);
+    return row?.type ?? null;
+  }
+
   private async staffAddresses(addresses: string[]): Promise<Set<string>> {
     const normalized = [...new Set(addresses.map((a) => a.trim().toLowerCase()))];
     if (normalized.length === 0) return new Set();

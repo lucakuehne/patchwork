@@ -42,7 +42,7 @@ async function submit() {
     for (const f of files.value) form.append('files', f, f.name);
     const result = await api.post<{ number: number }>('/portal/items', form);
     toast.success(`Danke! Deine Meldung ist eingegangen (${itemRef(result.number)}).`);
-    await router.push(`/portal/v/${result.number}`);
+    await router.push(`/portal/items/${result.number}`);
   } catch (err) {
     error.value = errorMessage(err);
   } finally {

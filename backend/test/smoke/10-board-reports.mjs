@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -18,8 +18,8 @@ import {
   entryStartingWith,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +27,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +44,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Board: abgeschlossene Spalten zeigen nur die letzten 14 Tage', async () => {
   const onBoard = async () => (await api('GET', '/items?view=board')).items.some((i) => i.number === t1);
@@ -208,4 +208,4 @@ await step('Auswertungen je Ansicht (Störungen, Aufgaben, Alle), Zähler «Aufg
   await api('GET', `/admin/reports?${query}&scope=eingang`, undefined, { expect: [400] });
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -18,8 +18,8 @@ import {
   entryStartingWith,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +27,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +44,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Verknüpfungen: beidseitig sichtbar, Timeline, keine Doppelten', async () => {
   const a = await createItem({ type: 'task', title: 'Verknüpfung A' });
@@ -168,7 +168,7 @@ await step('Duplikat von anderem Melder: umgeleitet, Melder und CC werden Beteil
   );
   assert.deepEqual(redirect.to, [BOB]);
   assert.deepEqual(redirect.cc, [CARLA]);
-  assert.match(redirect.text, new RegExp(`/portal/v/${dupOther}\\b`));
+  assert.match(redirect.text, new RegExp(`/portal/items/${dupOther}\\b`));
   // Im Verlauf beim Original und beim Duplikat; ansehen geht unter beiden Nummern, unter anderen nicht
   const inOriginal = (await detail(dupOriginal)).mails.find((m) => m.template === 'duplicateRedirected');
   const inDuplicate = (await detail(dupOther)).mails.find((m) => m.template === 'duplicateRedirected');
@@ -211,4 +211,4 @@ await step('Duplikat: Original muss offen sein und einer der beiden einen Typ ha
   for (const n of [one, two]) await api('POST', `/items/${n}/discard`, { discarded: true });
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -18,8 +18,8 @@ import {
   entryStartingWith,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +27,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +44,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('E-Mail-Vorlagen: Platzhalter mit Vor- und Nachname, ohne {{App}}, Vorschau und zurück zum Standard', async () => {
   const templates = await api('GET', '/admin/mail-templates');
@@ -134,22 +134,22 @@ await step('E-Mail-Vorlagen: Platzhalter mit Vor- und Nachname, ohne {{App}}, Vo
 });
 
 await step('Willkommens-Mail: nur von Hand an IT und Admins, ohne Vorgang und ohne Passwort', async () => {
-  const neu = `willkommen-${RUN}@test.local`;
-  const created = await api('POST', '/admin/users', { name: 'Wilma Willkommen', email: neu, role: 'it', password: 'willkommen-123' });
+  const newEmail = `willkommen-${RUN}@test.local`;
+  const created = await api('POST', '/admin/users', { name: 'Wilma Willkommen', email: newEmail, role: 'it', password: 'willkommen-123' });
   await sleep(1500);
-  assert.equal((await inbox(neu)).length, 0, 'nicht automatisch beim Anlegen');
+  assert.equal((await inbox(newEmail)).length, 0, 'nicht automatisch beim Anlegen');
   await api('POST', `/admin/users/${created.id}/welcome`);
-  const mail = await waitForMail(neu, (m) => m.subject === 'Willkommen bei Patchwork', 'Willkommens-Mail');
+  const mail = await waitForMail(newEmail, (m) => m.subject === 'Willkommen bei Patchwork', 'Willkommens-Mail');
   assert.ok(mail.text.startsWith('Hallo Wilma\n'), mail.text);
   assert.match(mail.text, /Rolle \*\*IT\*\*/);
-  assert.ok(mail.text.includes(`Benutzername: ${neu}`), mail.text);
+  assert.ok(mail.text.includes(`Benutzername: ${newEmail}`), mail.text);
   assert.ok(mail.text.includes('Anmeldung: mit deiner E-Mail-Adresse und dem Passwort, das du separat erhältst'), mail.text);
   assert.match(mail.text, /Patchwork öffnen: http\S+\/(\s|$)/);
   assert.ok(!mail.source.includes('willkommen-123'), 'kein Passwort');
   assert.ok(!/\[PW-\d+\]/.test(mail.subject), 'ohne Nummer');
 
   // Im Protokoll ohne Vorgang, Art «Willkommen»
-  const logged = (await api('GET', '/admin/outgoing-mails')).find((m) => m.to.includes(neu));
+  const logged = (await api('GET', '/admin/outgoing-mails')).find((m) => m.to.includes(newEmail));
   assert.deepEqual([logged.item, logged.template, logged.status], [null, 'welcome', 'sent']);
   assert.ok((await api('GET', `/admin/outgoing-mails/${logged.id}`)).text.includes('Hallo Wilma'));
 
@@ -171,4 +171,4 @@ await step('Willkommens-Mail: nur von Hand an IT und Admins, ohne Vorgang und oh
   assert.ok(preview.text.includes('Benutzername: iinformatik'), preview.text);
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

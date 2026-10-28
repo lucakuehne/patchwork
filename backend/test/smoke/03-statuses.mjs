@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -18,8 +18,8 @@ import {
   entryStartingWith,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +27,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +44,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Intern erfasste Aufgaben und Board-Reihenfolge', async () => {
   const create = async (title) => {
@@ -192,8 +192,8 @@ await step('Status: Ziele für automatische Wechsel lesen, prüfen, setzen und b
   await api('PATCH', `/statuses/${i('waiting')}`, { closed: true }, { expect: [400] });
 
   // Ziele ändern: anderer Start-Status und ein Wartet-Status für Aufgaben
-  const rueckfrage = await api('POST', '/statuses', { type: 'task', label: 'Rückfrage', closed: false });
-  const changed = { ...defaults.task, start: t('planned'), waiting: rueckfrage.id };
+  const followUp = await api('POST', '/statuses', { type: 'task', label: 'Rückfrage', closed: false });
+  const changed = { ...defaults.task, start: t('planned'), waiting: followUp.id };
   assert.deepEqual((await put('task', changed)).task, changed);
   const n = await createItem({ type: 'task', title: `Rückfrage ${RUN}`, reporterId: (await detail(itemNo)).reporter.id });
   assert.equal((await detail(n)).status.label, 'Geplant', '«Neuer Vorgang erhält»');
@@ -205,7 +205,7 @@ await step('Status: Ziele für automatische Wechsel lesen, prüfen, setzen und b
     await poll();
     return detail(n);
   };
-  await api('POST', `/items/${n}/move`, { statusId: rueckfrage.id });
+  await api('POST', `/items/${n}/move`, { statusId: followUp.id });
   assert.equal((await answer('Hier die Angaben.')).status.label, 'In Arbeit', '«Antwort des Melders führt in»');
   await api('POST', `/items/${n}/move`, { statusId: t('backlog') });
   const unchanged = await answer('Noch ein Nachtrag.');
@@ -215,14 +215,14 @@ await step('Status: Ziele für automatische Wechsel lesen, prüfen, setzen und b
   // Typwechsel zur Aufgabe in den Wartet-Status der Aufgaben
   const w = await createItem({ type: 'incident', title: 'Wartet beim Typwechsel' });
   await api('POST', `/items/${w}/move`, { statusId: i('waiting') });
-  await api('POST', `/items/${w}/type`, { type: 'task', statusId: rueckfrage.id });
+  await api('POST', `/items/${w}/type`, { type: 'task', statusId: followUp.id });
   assert.equal((await detail(w)).status.label, 'Rückfrage');
 
   // Ziel-Status löschen: nur mit passendem Ersatz für das Ziel, ein freiwilliges Ziel auch ohne
-  const removeRueckfrage = (body, opts) => api('DELETE', `/statuses/${rueckfrage.id}`, body, opts);
-  assert.match((await removeRueckfrage({ replacementId: t('in_progress') }, { expect: [400] })).message, /Wartet auf den Melder/);
-  await removeRueckfrage({ replacementId: t('in_progress'), targets: { waiting: t('in_progress') } }, { expect: [400] });
-  await removeRueckfrage({ replacementId: t('in_progress'), targets: { waiting: null } });
+  const removeFollowUp = (body, opts) => api('DELETE', `/statuses/${followUp.id}`, body, opts);
+  assert.match((await removeFollowUp({ replacementId: t('in_progress') }, { expect: [400] })).message, /Wartet auf den Melder/);
+  await removeFollowUp({ replacementId: t('in_progress'), targets: { waiting: t('in_progress') } }, { expect: [400] });
+  await removeFollowUp({ replacementId: t('in_progress'), targets: { waiting: null } });
   assert.equal((await detail(w)).status.label, 'In Arbeit');
   let targets = await api('GET', '/statuses/targets');
   assert.deepEqual(targets.task, { ...defaults.task, start: t('planned') }, 'Wartet-Ziel entfernt');
@@ -383,4 +383,4 @@ await step('Status: Farben und Ablauf, eingeschränkt gilt er für Wechsel von H
   await api('PATCH', `/statuses/${backlog.id}`, { color: 'blue' });
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

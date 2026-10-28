@@ -80,6 +80,7 @@ export function statusMeta(from: Pick<Status, 'id' | 'label'> | undefined | null
 
 /** Admin, der die Zeit einer Notiz zuletzt angepasst hat */
 const timeChanger = alias(users, 'time_changer');
+const recorder = alias(users, 'recorder');
 
 /** Multer liefert Dateinamen als latin1. Umlaute wiederherstellen, wenn der Name gültiges UTF-8 ist. */
 export function decodeFilename(name: string): string {
@@ -204,10 +205,11 @@ export class ItemsService {
         .where(eq(participants.itemId, item.id))
         .orderBy(asc(users.name)),
       this.db
-        .select({ entry: entries, author: users, changer: { name: timeChanger.name } })
+        .select({ entry: entries, author: users, changer: { name: timeChanger.name }, recorder: { name: recorder.name } })
         .from(entries)
         .leftJoin(users, eq(users.id, entries.authorId))
         .leftJoin(timeChanger, eq(timeChanger.id, entries.timeChangedById))
+        .leftJoin(recorder, eq(recorder.id, entries.recordedById))
         .where(eq(entries.itemId, item.id))
         .orderBy(asc(entries.createdAt)),
       this.db.select().from(attachments).where(eq(attachments.itemId, item.id)).orderBy(asc(attachments.createdAt)),
@@ -305,7 +307,7 @@ export class ItemsService {
       originalMessageId: originalOfItem,
       participants: participantRows.map((r) => toPublicUser(r.user)),
       attachments: attachmentRows.filter((a) => !a.entryId).map(toAttachment),
-      entries: entryRows.map(({ entry, author, changer }) => ({
+      entries: entryRows.map(({ entry, author, changer, recorder: recordedBy }) => ({
         id: entry.id,
         kind: entry.kind,
         body: entry.body,
@@ -320,6 +322,9 @@ export class ItemsService {
           by: changer?.name ?? null,
         },
         author: author && toPublicUser(author),
+        /** Im Namen des Autors erfasst: Name des Admins (nur intern, nicht im Portal) */
+        recordedBy: recordedBy?.name ?? null,
+        recordedById: entry.recordedById,
         originalMessageId: originalByEntry.get(entry.id) ?? null,
         delivery: deliveryByEntry.get(entry.id) ?? null,
         /** Die versendete Mail einer öffentlichen Antwort */
@@ -697,19 +702,33 @@ export class ItemsService {
     });
   }
 
-  /** Öffentliche Antwort (geht per Mail an Melder und Beteiligte) oder interne Notiz. */
-  async comment(actor: User, number: number, kind: 'reply' | 'note', body: string, files: UploadedFile[]): Promise<void> {
+  /**
+   * Öffentliche Antwort (geht per Mail an Melder und Beteiligte) oder interne Notiz. Admins können im Namen eines
+   * aktiven IT-Mitarbeitenden oder Admins schreiben («asUserId»): Diese Person gilt dann als Autor, auch für Mails.
+   */
+  async comment(
+    actor: User,
+    number: number,
+    kind: 'reply' | 'note',
+    body: string,
+    files: UploadedFile[],
+    asUserId?: string,
+  ): Promise<void> {
     if (!body.trim() && files.length === 0) throw new BadRequestException('Der Text ist leer');
+    const author = asUserId && asUserId !== actor.id ? await this.onBehalfAuthor(actor, asUserId) : actor;
     const pending: Pending = [];
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, number);
       if (kind === 'reply' && !(await this.mailboxes.forSending(item.mailboxId, tx))) {
         const hasRecipients =
-          item.reporterId !== actor.id ||
+          item.reporterId !== author.id ||
           (await tx.select().from(participants).where(eq(participants.itemId, item.id)).limit(1)).length > 0;
         if (hasRecipients) throw new BadRequestException('Es ist kein aktives Postfach für den Versand eingerichtet');
       }
-      const entry = await this.addEntry(tx, item.id, actor.id, kind, body, null);
+      const entry = await this.addEntry(tx, item.id, author.id, kind, body, null, {
+        recordedById: author.id !== actor.id ? actor.id : null,
+      });
+      // Bilder im Text hat hochgeladen, wer schreibt (auch im Namen eines anderen)
       const text = await this.claimEntryImages(tx, actor, entry);
       const saved = await this.saveFiles(tx, item.id, entry.id, files);
       const [updated] = await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, item.id)).returning();
@@ -717,7 +736,7 @@ export class ItemsService {
         pending.push(() =>
           this.notifications.publicReply(
             updated!,
-            actor.id,
+            author.id,
             text,
             entry.id,
             saved.map((a) => a.id),
@@ -725,9 +744,19 @@ export class ItemsService {
         );
       }
       const mentioned = mentionedIds(text);
-      if (mentioned.length) pending.push(() => this.notifications.mentioned(updated!, actor, mentioned, kind, text));
+      if (mentioned.length) pending.push(() => this.notifications.mentioned(updated!, author, mentioned, kind, text));
     });
     await this.flush(pending);
+  }
+
+  /** Im Namen schreiben: nur Admins, nur für aktive IT-Mitarbeitende und Admins (Entscheid vom 28.10.2026) */
+  private async onBehalfAuthor(actor: User, userId: string): Promise<User> {
+    if (actor.role !== 'admin') throw new ForbiddenException('Nur Admins können im Namen eines anderen schreiben');
+    const [user] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user?.active || (user.role !== 'it' && user.role !== 'admin')) {
+      throw new BadRequestException('Im Namen schreiben geht nur für aktive IT-Mitarbeitende und Admins');
+    }
+    return user;
   }
 
   /** Eigene interne Notiz kurz nach dem Erfassen korrigieren (siehe note-rules). */
@@ -911,7 +940,7 @@ export class ItemsService {
     kind: Entry['kind'],
     body: string,
     meta: Record<string, unknown> | null,
-    extra: { bodyHtml?: string | null; mailMessageId?: string | null } = {},
+    extra: { bodyHtml?: string | null; mailMessageId?: string | null; recordedById?: string | null } = {},
   ): Promise<Entry> {
     const [entry] = await tx
       .insert(entries)
@@ -923,6 +952,7 @@ export class ItemsService {
         meta,
         bodyHtml: extra.bodyHtml ?? null,
         mailMessageId: extra.mailMessageId ?? null,
+        recordedById: extra.recordedById ?? null,
       })
       .returning();
     return entry!;

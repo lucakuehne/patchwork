@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -18,8 +18,8 @@ import {
   entryStartingWith,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +27,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +44,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Eigene interne Notiz kurz nach dem Erfassen bearbeiten', async () => {
   await loginAs('ada@test.local', 'geheim-geheim');
@@ -117,6 +117,58 @@ await step('Admin passt die Zeit einer internen Notiz an: auch fremde, nicht in 
   await loginAs('ada@test.local', 'geheim-geheim');
 });
 
+await step('Admin schreibt im Namen eines anderen: Autor ist die gewählte Person, intern mit Vermerk, Melder ohne', async () => {
+  const staff = await api('GET', '/users/staff');
+  const ivanUser = staff.find((u) => u.email === IVAN);
+  const ada = staff.find((u) => u.email === 'ada@test.local');
+  const entry = (kind, body, asUserId) => {
+    const f = new FormData();
+    f.append('kind', kind);
+    f.append('body', body);
+    if (asUserId) f.append('asUserId', asUserId);
+    return f;
+  };
+
+  // Interne Notiz im Namen von Ivan, mit Erwähnung von Ivan (keine Mail an sich selbst) und Ada
+  const mention = (u, label) => `[@${label}](mention:${u.id})`;
+  const noteText = `Im Namen von Ivan ${mention(ivanUser, 'Ivan IT')} ${mention(ada, 'Ada Admin')} ${RUN}`;
+  await api('POST', `/items/${itemNo}/entries`, entry('note', noteText, ivanUser.id));
+  const note = (await detail(itemNo)).entries.find((e) => e.body === noteText);
+  assert.equal(note.author.email, IVAN, 'Autor ist Ivan');
+  assert.equal(note.recordedBy, 'Ada Admin', 'erfasst von Ada');
+  assert.equal(note.recordedById, ada.id);
+  await waitForMail(
+    'ada@test.local',
+    (m) => m.subject.includes('Erwähnt') && m.text.includes(`Ivan IT hat dich in PW-${itemNo}`) && m.text.includes(`Im Namen von Ivan`),
+    'Erwähnt an Ada, von Ivan',
+  );
+  await sleep(1500);
+  assert.ok(!(await inbox(IVAN)).some((m) => m.subject.includes('Erwähnt') && m.text.includes(`Im Namen von Ivan`)), 'keine Mail «Erwähnt» an Ivan selbst');
+  // Bearbeiten: Ada (hat erfasst) und Ivan (Autor) dürfen, eine eigene Notiz von Ada hat keinen Vermerk
+  await api('PATCH', `/entries/${note.id}`, { body: `${noteText} – korrigiert` });
+  await loginAs(IVAN, 'geheim-geheim');
+  await api('PATCH', `/entries/${note.id}`, { body: `${noteText} – von Ivan` });
+  // Nur Admins dürfen im Namen schreiben
+  await api('POST', `/items/${itemNo}/entries`, entry('note', 'Ivan als Ada', ada.id), { expect: [403] });
+  await loginAs('ada@test.local', 'geheim-geheim');
+  await api('POST', `/items/${itemNo}/entries`, entry('note', `Selbst ${RUN}`, ada.id));
+  const own = (await detail(itemNo)).entries.find((e) => e.body === `Selbst ${RUN}`);
+  assert.equal(own.recordedBy, null, 'im eigenen Namen ohne Vermerk');
+  // Nur für aktive IT-Mitarbeitende und Admins, nicht für Melder
+  await api('POST', `/items/${itemNo}/entries`, entry('note', 'als Anna', anna.id), { expect: [400] });
+
+  // Öffentliche Antwort im Namen von Ivan: geht an die Melderin, im Portal wie jede Antwort der IT, ohne Vermerk
+  const replyText = `Antwort im Namen von Ivan ${RUN}`;
+  await api('POST', `/items/${itemNo}/entries`, entry('reply', replyText, ivanUser.id));
+  assert.equal((await detail(itemNo)).entries.find((e) => e.body === replyText).author.email, IVAN);
+  await waitForMail(ANNA, (m) => m.text.includes(replyText), 'Antwort im Namen an die Melderin');
+  await loginAs(ANNA, 'anna-passwort-1');
+  const portal = await api('GET', `/portal/items/${itemNo}`);
+  assert.equal(portal.entries.find((e) => e.body === replyText).author, 'IT');
+  assert.ok(!JSON.stringify(portal).includes('recorded') && !JSON.stringify(portal).includes('Ada Admin'), 'Portal ohne Vermerk');
+  await loginAs('ada@test.local', 'geheim-geheim');
+});
+
 await step('Antwort-Postfach: ein Eintrag pro Postfach, Verlauf nennt das tatsächliche Postfach', async () => {
   const support = await api('POST', '/admin/mailboxes', {
     name: 'Support',
@@ -162,4 +214,4 @@ await step('Personensuche: Name und E-Mail in Patchwork, ohne Verzeichnis', asyn
   assert.deepEqual([nora.firstName, nora.lastName], ['Nora', 'Neu'], 'neuer Kontakt: aus dem Namen geschätzt');
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

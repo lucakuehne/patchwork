@@ -11,7 +11,7 @@ const text = computed(() => testModeText(session.info?.delivery));
 <template>
   <div v-if="text" class="test-mode" role="status">
     <strong>Testbetrieb:</strong> {{ text }}
-    <RouterLink v-if="session.isAdmin" to="/admin/ausgehende-mails?status=nicht-versendet">Nicht versendete Mails ansehen</RouterLink>
+    <RouterLink v-if="session.isAdmin" to="/admin/outgoing-mails?status=withheld">Nicht versendete Mails ansehen</RouterLink>
   </div>
 </template>
 

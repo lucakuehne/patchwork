@@ -58,7 +58,7 @@ function createIn(statusId?: string) {
 // Die neue Aufgabe erscheint in ihrer Spalte bzw. der Liste; geöffnet wird sie über die Meldung
 function onCreated(number: number) {
   newOpen.value = false;
-  toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/v/${number}`, item: { number, type: 'task' } });
+  toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/items/${number}`, item: { number, type: 'task' } });
   if (asBoard.value) void board.value?.reload();
   else void load();
   void session.refreshCounts();

@@ -78,7 +78,7 @@ async function send() {
 
     <div v-if="item.duplicateOf" class="card duplicate">
       Diese Meldung betrifft dasselbe wie
-      <RouterLink v-if="item.duplicateOf.accessible" :to="`/portal/v/${item.duplicateOf.number}`">
+      <RouterLink v-if="item.duplicateOf.accessible" :to="`/portal/items/${item.duplicateOf.number}`">
         {{ itemRef(item.duplicateOf.number) }} «{{ item.duplicateOf.title }}»
       </RouterLink>
       <template v-else>{{ itemRef(item.duplicateOf.number) }} «{{ item.duplicateOf.title }}»</template>

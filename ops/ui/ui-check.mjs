@@ -56,7 +56,7 @@ async function step(name, fn) {
 await login('ada@test.local', 'geheim-geheim');
 
 await step('eingang', async () => {
-  await page.goto(`${BASE}/eingang`);
+  await page.goto(`${BASE}/inbox`);
   await page.getByRole('button', { name: '+ Neu' }).waitFor();
   await shot('01-eingang');
   await page.getByRole('button', { name: '+ Neu' }).click();
@@ -66,7 +66,7 @@ await step('eingang', async () => {
 });
 
 await step('vorgang', async () => {
-  await page.goto(`${BASE}/v/1`);
+  await page.goto(`${BASE}/items/1`);
   await page.locator('.timeline').waitFor();
   await shot('03-vorgang', true);
   // «?» beim Typ erklärt Störung und Aufgabe (Darüberfahren und Tastatur)
@@ -124,7 +124,7 @@ await step('originalmail', async () => {
 });
 
 await step('mails-im-verlauf', async () => {
-  await page.goto(`${BASE}/v/1`);
+  await page.goto(`${BASE}/items/1`);
   const line = page.locator('.timeline .mail-line').filter({ hasText: 'Eingangsbestätigung' }).first();
   await line.waitFor();
   const text = (await line.innerText()).replace(/\s+/g, ' ');
@@ -166,7 +166,7 @@ await step('mails-im-verlauf', async () => {
 
 await step('notiz-zeit', async () => {
   // Admin setzt eine interne Notiz auf gestern 09:30; sie zeigt «Zeit angepasst» mit der ursprünglichen Zeit
-  await page.goto(`${BASE}/v/1`);
+  await page.goto(`${BASE}/items/1`);
   await page.locator('.timeline').waitFor();
   await page.getByRole('button', { name: 'Intern', exact: true }).click();
   await page.locator('.composer .ProseMirror').click();
@@ -197,9 +197,33 @@ await step('notiz-zeit', async () => {
   console.log('Bild 66-notiz-zeit-angepasst');
 });
 
+await step('im-namen', async () => {
+  // Admin schreibt eine interne Notiz im Namen von Ivan: Autor Ivan, beim Darüberfahren «erfasst von Ada Admin»
+  await page.goto(`${BASE}/items/1`);
+  await page.locator('.timeline').waitFor();
+  await page.getByRole('button', { name: 'Intern', exact: true }).click();
+  const as = page.locator('.composer select[aria-label="Im Namen von"]');
+  if ((await as.inputValue()) !== '') throw new Error('«Als» steht nicht auf mir selbst');
+  await as.selectOption({ label: 'Ivan IT' });
+  await page.locator('.composer .ProseMirror').click();
+  await page.keyboard.type('Im Namen von Ivan nachgetragen');
+  await page.locator('.composer').screenshot({ path: `${OUT}/85-im-namen.png` });
+  console.log('Bild 85-im-namen');
+  await page.getByRole('button', { name: 'Notiz speichern' }).click();
+  const note = page.locator('.timeline .message.note', { hasText: 'Im Namen von Ivan nachgetragen' });
+  await note.waitFor();
+  const name = note.locator('.entry-head .name');
+  if ((await name.innerText()).trim() !== 'Ivan IT') throw new Error(`Autor der Notiz: ${await name.innerText()}`);
+  if ((await name.getAttribute('title')) !== 'erfasst von Ada Admin') throw new Error(`Vermerk: ${await name.getAttribute('title')}`);
+  if (!(await note.getByRole('button', { name: 'Bearbeiten' }).count())) throw new Error('Erfassender Admin kann die Notiz nicht bearbeiten');
+  if ((await as.inputValue()) !== '') throw new Error('«Als» nach dem Senden nicht zurück auf mir selbst');
+  await note.screenshot({ path: `${OUT}/86-im-namen-verlauf.png` });
+  console.log('Bild 86-im-namen-verlauf');
+});
+
 await step('vorschau', async () => {
   // Anhänge der Antwort «Mit Anhängen …» aus dem Smoke-Test öffnen sich im Fenster statt als Download
-  await page.goto(`${BASE}/v/1`);
+  await page.goto(`${BASE}/items/1`);
   const message = page.locator('.timeline .message.reply', { hasText: 'Mit Anhängen' }).first();
   await message.waitFor();
   await message.screenshot({ path: `${OUT}/44-anhaenge.png` });
@@ -254,7 +278,7 @@ await step('vorschau', async () => {
   const inbox = (await api('GET', '/items?view=inbox')).data.items;
   const withImage = inbox.find((i) => i.title.startsWith('Bild im Span'));
   if (!withImage) throw new Error('Vorgang «Bild im Span» fehlt');
-  await page.goto(`${BASE}/v/${withImage.number}`);
+  await page.goto(`${BASE}/items/${withImage.number}`);
   const shown = page.locator('section.original .prose img');
   await shown.waitFor();
   await page.waitForFunction((img) => img.complete && img.naturalWidth > 0, await shown.elementHandle());
@@ -267,15 +291,15 @@ await step('vorschau', async () => {
 });
 
 await step('listen', async () => {
-  await page.goto(`${BASE}/stoerungen`);
+  await page.goto(`${BASE}/incidents`);
   await page.locator('table.table').waitFor();
   await shot('07-liste-stoerungen');
-  await page.goto(`${BASE}/aufgaben/erledigt`).catch(() => undefined);
+  await page.goto(`${BASE}/tasks/done`).catch(() => undefined);
 });
 
 await step('filter', async () => {
   // Störungen nach Priorität filtern; die Auswahl bleibt nach dem Neuladen
-  await page.goto(`${BASE}/stoerungen`);
+  await page.goto(`${BASE}/incidents`);
   const bar = page.locator('.list-filters');
   await bar.waitFor();
   await bar.locator('select[aria-label="Priorität"]').selectOption('high');
@@ -300,23 +324,42 @@ await step('filter', async () => {
   await page.waitForTimeout(300);
   if (await page.locator('th[aria-sort]').count()) throw new Error('Sortierung nach dem dritten Klick nicht aufgehoben');
   // Board und abgeschlossene Aufgaben haben die Filterleiste ebenso
-  for (const path of ['/aufgaben', '/aufgaben/erledigt', '/eingang', '/stoerungen/geloest']) {
+  for (const path of ['/tasks', '/tasks/done', '/inbox', '/incidents/resolved']) {
     await page.goto(`${BASE}${path}`);
     await page.locator('.list-filters select[aria-label="Zuständig"]').waitFor();
   }
 });
 
+await step('alte-adressen', async () => {
+  // Frühere deutsche Adressen (Lesezeichen, Links in versendeten Mails) führen auf die englischen
+  const cases = [
+    ['/eingang', '/inbox', ''],
+    ['/aufgaben?vorgang=1', '/tasks', '?item=1'],
+    ['/v/1', '/items/1', ''],
+    ['/admin/ausgehende-mails?status=nicht-versendet', '/admin/outgoing-mails', '?status=withheld'],
+    ['/admin/eingehende-mails?ergebnis=fehler&herkunft=simuliert', '/admin/incoming-mails', '?result=failed&origin=simulated'],
+    ['/admin/status', '/admin/statuses', ''],
+  ];
+  for (const [old, path, search] of cases) {
+    await page.goto(`${BASE}${old}`);
+    await page.waitForURL((url) => url.pathname === path && url.search === search, { timeout: 5000 }).catch(() => {
+      throw new Error(`${old} führt auf ${new URL(page.url()).pathname}${new URL(page.url()).search} statt ${path}${search}`);
+    });
+  }
+  await page.keyboard.press('Escape');
+});
+
 await step('verwaltung', async () => {
-  await page.goto(`${BASE}/admin/meldewege`);
+  await page.goto(`${BASE}/admin/channels`);
   await page.locator('.channel-row').first().waitFor();
   await shot('08-meldewege');
   await page.locator('.channel-row .icon-picker button').first().click();
   await shot('09-symbolauswahl');
-  await page.goto(`${BASE}/admin/allgemein`);
+  await page.goto(`${BASE}/admin/general`);
   await page.locator('#portal-access').waitFor();
   await page.selectOption('#portal-access', 'selected');
   await shot('10-portal-einstellung', true);
-  await page.goto(`${BASE}/admin/eingehende-mails`);
+  await page.goto(`${BASE}/admin/incoming-mails`);
   await page.locator('tbody tr.clickable').first().waitFor();
   await shot('11-eingehende-mails');
   await page.locator('tbody tr.clickable').first().click();
@@ -328,7 +371,7 @@ await step('verwaltung', async () => {
 await step('logo', async () => {
   // Ohne eigenes Logo: Patchwork-Logo (Signet und Schriftzug), unabhängig vom eingestellten Namen
   const loaded = (selector) => page.locator(selector).evaluate((img) => img.complete && img.naturalWidth > 0);
-  await page.goto(`${BASE}/eingang`);
+  await page.goto(`${BASE}/inbox`);
   await page.locator('.header .brand [role="img"][aria-label="Patchwork"]').waitFor();
   if (!(await loaded('.header .brand img[src="/logo.svg"]'))) throw new Error('Logo nicht geladen');
   await page.locator('header.header').screenshot({ path: `${OUT}/67-logo-kopfzeile.png` });
@@ -373,7 +416,7 @@ await step('logo', async () => {
 });
 
 await step('status', async () => {
-  await page.goto(`${BASE}/admin/status`);
+  await page.goto(`${BASE}/admin/statuses`);
   await page.locator('.vue-flow__node').first().waitFor();
   await shot('16-status', true);
   // Pfeil ziehen: in der Karte «Aufgabe» von «Backlog» nach «Geplant»
@@ -473,7 +516,7 @@ await step('status', async () => {
 await step('typwechsel', async () => {
   const tasks = (await api('GET', '/items?view=board')).data.items;
   const task = tasks.find((t) => t.status) ?? tasks[0];
-  await page.goto(`${BASE}/v/${task.number}`);
+  await page.goto(`${BASE}/items/${task.number}`);
   await page.locator('.type-switch').waitFor();
   await page.locator('.type-switch').getByRole('button', { name: 'Störung' }).click();
   await page.locator('#type-change-status').waitFor();
@@ -485,7 +528,7 @@ await step('typwechsel', async () => {
   // Zur Aufgabe: Status-Dialog ohne Vorauswahl und ohne Ablehnen-Status, erst nach der Wahl wird der Typ gesetzt
   const statuses = (await api('GET', '/statuses')).data;
   const incident = (await api('GET', '/items?view=incidents')).data.items[0];
-  await page.goto(`${BASE}/v/${incident.number}`);
+  await page.goto(`${BASE}/items/${incident.number}`);
   await page.locator('.type-switch').getByRole('button', { name: 'Aufgabe' }).click();
   const select = page.locator('#type-change-status');
   await select.waitFor();
@@ -502,7 +545,7 @@ await step('typwechsel', async () => {
   await page.locator('.title-row', { hasText: 'Geplant' }).waitFor();
 
   // Aus dem Eingang ebenso
-  await page.goto(`${BASE}/eingang`);
+  await page.goto(`${BASE}/inbox`);
   await page.locator('tbody tr').first().getByRole('button', { name: 'Aufgabe' }).click();
   await page.locator('#type-change-status').waitFor();
   if ((await page.locator('#type-change-status').inputValue()) !== '') throw new Error('Status im Eingang vorgewählt');
@@ -512,7 +555,7 @@ await step('typwechsel', async () => {
 });
 
 await step('regel-status', async () => {
-  await page.goto(`${BASE}/admin/regeln`);
+  await page.goto(`${BASE}/admin/rules`);
   await page.getByRole('button', { name: '+ Regel' }).click();
   await page.selectOption('#rule-type', 'task');
   const select = page.locator('#rule-status');
@@ -524,7 +567,7 @@ await step('regel-status', async () => {
 });
 
 await step('zeitregel', async () => {
-  await page.goto(`${BASE}/admin/regeln`);
+  await page.goto(`${BASE}/admin/rules`);
   await page.getByRole('button', { name: '+ Regel' }).click();
   await page.getByRole('button', { name: 'nach Zeit' }).click();
   await page.waitForTimeout(300);
@@ -535,7 +578,7 @@ await step('zeitregel', async () => {
 });
 
 await step('vorlagen', async () => {
-  await page.goto(`${BASE}/admin/e-mail-vorlagen`);
+  await page.goto(`${BASE}/admin/mail-templates`);
   await page.locator('nav.list .entry', { hasText: 'Zugewiesen' }).click();
   const editor = page.locator('section.editor .ProseMirror');
   await editor.waitFor();
@@ -560,7 +603,7 @@ await step('vorlagen', async () => {
 });
 
 await step('textbaustein', async () => {
-  await page.goto(`${BASE}/admin/textbausteine`);
+  await page.goto(`${BASE}/admin/snippets`);
   await page.getByRole('button', { name: '+ Textbaustein' }).click();
   const editor = page.locator('.dialog .ProseMirror');
   await editor.waitFor();
@@ -574,7 +617,7 @@ await step('textbaustein', async () => {
 });
 
 await step('benutzer-namen', async () => {
-  await page.goto(`${BASE}/admin/benutzer`);
+  await page.goto(`${BASE}/admin/users`);
   // Spalte «Zuletzt aktiv» neben der letzten Anmeldung; Ada ist gerade aktiv
   await page.locator('th', { hasText: 'Zuletzt aktiv' }).waitFor();
   const adaRow = page.locator('tbody tr', { hasText: 'ada@test.local' });
@@ -598,9 +641,9 @@ await step('als-benutzer', async () => {
   const ivan = (await api('GET', '/admin/users')).data.find((u) => u.email.startsWith('ivan-'));
   // Ein zweiter Tab mit einem Vorgang: Er muss den Wechsel bemerken und neu laden
   const other = await context.newPage();
-  await other.goto(`${BASE}/v/1`);
+  await other.goto(`${BASE}/items/1`);
   await other.locator('.timeline').waitFor();
-  await page.goto(`${BASE}/admin/benutzer`);
+  await page.goto(`${BASE}/admin/users`);
   await page.locator('tbody tr', { hasText: ivan.email }).click();
   // Ungespeicherte Änderung: Rückfrage; Escape schliesst nur die Rückfrage, der Dialog bleibt mit der Änderung
   await page.locator('#u-name').fill(`${ivan.name} geändert`);
@@ -611,13 +654,13 @@ await step('als-benutzer', async () => {
   if ((await page.locator('#u-name').inputValue()) !== `${ivan.name} geändert`) throw new Error('Escape hat den Bearbeiten-Dialog geschlossen');
   await page.locator('#u-name').fill(ivan.name);
   await page.getByRole('button', { name: 'Als dieser Benutzer arbeiten' }).click();
-  await page.waitForURL((url) => url.pathname.startsWith('/eingang'));
+  await page.waitForURL((url) => url.pathname.startsWith('/inbox'));
   await page.locator('.impersonation').waitFor();
   await other.locator('.impersonation').waitFor({ timeout: 10000 });
   console.log('Zweiter Tab zeigt den Balken');
   await other.close();
   // Balken und Kopfzeile kleben beim Scrollen oben
-  await page.goto(`${BASE}/v/1`);
+  await page.goto(`${BASE}/items/1`);
   await page.locator('.timeline').waitFor();
   await page.mouse.wheel(0, 2500);
   await page.waitForTimeout(500);
@@ -625,27 +668,35 @@ await step('als-benutzer', async () => {
   if (!top || top.y > 1) throw new Error(`Balken klebt nicht oben (y = ${top?.y})`);
   await shot('28-als-benutzer');
   await page.getByRole('button', { name: /Zurück zu/ }).click();
-  await page.waitForURL((url) => url.pathname.startsWith('/admin/benutzer'));
+  await page.waitForURL((url) => url.pathname.startsWith('/admin/users'));
   if (await page.locator('.impersonation').count()) throw new Error('Balken nach der Rückkehr noch sichtbar');
 });
 
 await step('board', async () => {
-  await page.goto(`${BASE}/aufgaben`);
+  await page.goto(`${BASE}/tasks`);
   await page.locator('.column').first().waitFor();
+  // Karten im Backlog (Start-Status) leicht ausgegraut wie die erledigten: Titel in derselben Farbe
+  const backlog = page.locator('.board-card.backlog .card-title').first();
+  await backlog.waitFor();
+  const color = (locator) => locator.evaluate((el) => getComputedStyle(el).color);
+  const done = await color(page.locator('.board-card.done .card-title').first());
+  const open = await color(page.locator('.board-card:not(.backlog):not(.done) .card-title').first());
+  if ((await color(backlog)) !== done || done === open) throw new Error(`Backlog nicht ausgegraut (${await color(backlog)}, erledigt ${done}, offen ${open})`);
+  if ((await page.locator('.column').first().locator('.board-card:not(.backlog)').count()) > 0) throw new Error('Nicht alle Karten im Backlog ausgegraut');
   await shot('19-board');
 });
 
 await step('aufgaben-neu', async () => {
   // Vorbelegung «Intern» für Aufgaben
   const channels = (await api('GET', '/channels')).data;
-  const intern = channels.find((c) => c.label === 'Intern');
-  if (!intern || intern.icon !== 'alert') throw new Error('Meldeweg «Intern» mit Glocke fehlt');
-  await api('PUT', '/channels/defaults', { incident: null, task: intern.id });
-  await page.goto(`${BASE}/admin/meldewege`);
+  const internalChannel = channels.find((c) => c.label === 'Intern');
+  if (!internalChannel || internalChannel.icon !== 'alert') throw new Error('Meldeweg «Intern» mit Glocke fehlt');
+  await api('PUT', '/channels/defaults', { incident: null, task: internalChannel.id });
+  await page.goto(`${BASE}/admin/channels`);
   await page.getByRole('heading', { name: 'Vorbelegung beim Erfassen' }).waitFor();
   await shot('35-meldewege-vorbelegung', true);
 
-  await page.goto(`${BASE}/aufgaben`);
+  await page.goto(`${BASE}/tasks`);
   await page.locator('.column').first().waitFor();
   // Spalten leicht in der Farbe des Status, nicht einfach grau
   const backgrounds = await page.locator('.column').evaluateAll((cols) => cols.map((c) => getComputedStyle(c).backgroundColor));
@@ -669,16 +720,16 @@ await step('aufgaben-neu', async () => {
   await page.getByRole('button', { name: 'Erfassen' }).click();
   const created = page.locator('.toast', { hasText: 'erstellt' });
   await created.waitFor();
-  if (!page.url().endsWith('/aufgaben')) throw new Error(`Nach dem Erstellen auf ${page.url()} statt auf dem Board`);
+  if (!page.url().endsWith('/tasks')) throw new Error(`Nach dem Erstellen auf ${page.url()} statt auf dem Board`);
   await page.locator('.board-card', { hasText: 'Neue Aufgabe aus der Spalte' }).waitFor();
   await page.screenshot({ path: `${OUT}/40-erstellt-meldung.png` });
   console.log('Bild 40-erstellt-meldung');
   // «Öffnen» zeigt die Aufgabe im Fenster (Standard); weiter geht es auf ihrer Seite
   await created.getByRole('link', { name: 'Öffnen' }).click();
-  await page.waitForURL(/\/aufgaben\?vorgang=\d+$/);
-  const number = Number(new URL(page.url()).searchParams.get('vorgang'));
+  await page.waitForURL(/\/tasks\?item=\d+$/);
+  const number = Number(new URL(page.url()).searchParams.get('item'));
   await page.locator('.dialog.huge .composer').waitFor();
-  await page.goto(`${BASE}/v/${number}`);
+  await page.goto(`${BASE}/items/${number}`);
 
   // Aufgabe: Antwortfeld standardmässig «Intern», Fälligkeit überfällig in der Seitenleiste
   await page.locator('.composer').waitFor();
@@ -715,7 +766,7 @@ await step('aufgaben-neu', async () => {
   await shot('37-aufgabe-intern-faellig', true);
 
   // Board-Karte: Fortschrittsbalken mit Zahl und überfällige Fälligkeit
-  await page.goto(`${BASE}/aufgaben`);
+  await page.goto(`${BASE}/tasks`);
   const card = page.locator('.board-card', { hasText: 'Neue Aufgabe aus der Spalte' });
   await card.waitFor();
   if ((await card.locator('.checklist-progress .count').innerText()).trim() !== '1/2') throw new Error('Fortschritt nicht «1/2»');
@@ -782,7 +833,7 @@ await step('aufgaben-neu', async () => {
 
 await step('liste-board', async () => {
   // Offene Störungen: Liste (Standard) oder Board, pro Benutzer auf dem Server gespeichert
-  await page.goto(`${BASE}/stoerungen`);
+  await page.goto(`${BASE}/incidents`);
   await page.locator('table.table').waitFor();
   const toggle = page.getByRole('group', { name: 'Ansicht', exact: true });
   await toggle.getByRole('button', { name: 'Board' }).click();
@@ -800,12 +851,12 @@ await step('liste-board', async () => {
   await toggle.getByRole('button', { name: 'Liste' }).click();
   await page.locator('table.table').waitFor();
   // Gelöste: immer eine Liste, ohne Umschalter
-  await page.goto(`${BASE}/stoerungen/geloest`);
+  await page.goto(`${BASE}/incidents/resolved`);
   await page.locator('table.table').waitFor();
   if (await page.getByRole('group', { name: 'Ansicht', exact: true }).count()) throw new Error('Umschalter bei den gelösten Störungen');
 
   // Aufgaben: Board (Standard) oder Liste nach Status; Navigation «Offen | Erledigt | Abgelehnt»
-  await page.goto(`${BASE}/aufgaben`);
+  await page.goto(`${BASE}/tasks`);
   await page.locator('.column').first().waitFor();
   const nav = await page.locator('.page-head .segmented').first().innerText();
   if (!nav.startsWith('Offen')) throw new Error(`Navigation der Aufgaben: ${nav}`);
@@ -819,10 +870,10 @@ await step('liste-board', async () => {
 
 await step('fenster', async () => {
   // Einstellungen im Benutzermenü: Standard überall «Fenster»; Störungen auf «Seite» umstellen
-  await page.goto(`${BASE}/aufgaben`);
+  await page.goto(`${BASE}/tasks`);
   await page.locator('.user-btn').click();
   await page.getByRole('link', { name: 'Einstellungen' }).click();
-  await page.waitForURL(/\/einstellungen$/);
+  await page.waitForURL(/\/settings$/);
   await page.getByRole('heading', { name: 'Vorgang öffnen als' }).waitFor();
   for (const area of ['Vorgänge im Eingang', 'Störungen', 'Aufgaben']) {
     const active = await page.getByRole('group', { name: area, exact: true }).locator('button.active').innerText();
@@ -833,12 +884,12 @@ await step('fenster', async () => {
   await shot('62-einstellungen');
 
   // Klick auf eine Karte öffnet das Fenster über dem Board, die Adresse trägt den Vorgang
-  await page.goto(`${BASE}/aufgaben`);
+  await page.goto(`${BASE}/tasks`);
   const card = page.locator('.board-card').first();
   await card.waitFor();
   const ref = (await card.locator('.card-top .mono').innerText()).trim();
   await card.click();
-  await page.waitForURL(/\/aufgaben\?vorgang=\d+$/);
+  await page.waitForURL(/\/tasks\?item=\d+$/);
   const dialog = page.locator('.dialog.huge');
   await dialog.locator('.timeline').waitFor();
   if (!(await dialog.locator('.head h2').innerText()).includes(ref)) throw new Error('Fenster zeigt einen anderen Vorgang');
@@ -854,7 +905,7 @@ await step('fenster', async () => {
   if (behind !== 0) throw new Error(`Seite hinter dem Fenster gescrollt: ${behind} px`);
   // «Zurück» im Browser schliesst das Fenster, das Board bleibt
   await page.goBack();
-  await page.waitForURL((url) => url.pathname === '/aufgaben' && !url.search);
+  await page.waitForURL((url) => url.pathname === '/tasks' && !url.search);
   await dialog.waitFor({ state: 'detached' });
   // Escape im Antwortfeld schliesst nicht (Entwurf), ausserhalb schon; ein Klick daneben auch nicht
   await card.click();
@@ -869,19 +920,19 @@ await step('fenster', async () => {
   await dialog.waitFor({ state: 'detached' });
   // Neuladen öffnet es wieder; «Als Seite öffnen» wechselt zur Seite
   await card.click();
-  await page.waitForURL(/vorgang=/);
+  await page.waitForURL(/item=/);
   await page.reload();
   await dialog.locator('.timeline').waitFor();
   await dialog.getByRole('link', { name: 'Als Seite öffnen' }).click();
-  await page.waitForURL(/\/v\/\d+$/);
+  await page.waitForURL(/\/items\/\d+$/);
   await page.locator('.timeline').waitFor();
   if (await page.locator('.dialog.huge').count()) throw new Error('Fenster nach «Als Seite öffnen» noch offen');
   // Die Einstellung gilt je Typ: Störungen öffnen jetzt als Seite
-  await page.goto(`${BASE}/stoerungen`);
+  await page.goto(`${BASE}/incidents`);
   await page.locator('table.table tbody tr').first().click();
-  await page.waitForURL(/\/v\/\d+$/);
+  await page.waitForURL(/\/items\/\d+$/);
   // Nach dem Schliessen scrollt die Seite wieder
-  await page.goto(`${BASE}/aufgaben`);
+  await page.goto(`${BASE}/tasks`);
   await card.click();
   await dialog.locator('.timeline').waitFor();
   await page.goBack();
@@ -893,9 +944,48 @@ await step('fenster', async () => {
   await api('PUT', '/me/preferences', { open: { incident: 'modal' } });
 });
 
+await step('testbetrieb-je-typ', async () => {
+  // Drei Blöcke: Generell keine Mails, Störungen nur an ausgewählte IT, Aufgaben alle
+  const circles = (staff, others, staffEmails = []) => ({ staff, others, staffEmails, otherEmails: [] });
+  await api('PUT', '/settings/mail', {
+    general: circles('none', 'none'),
+    incident: circles('selected', 'none', ['ada@test.local']),
+    task: circles('all', 'all'),
+  });
+  await page.goto(`${BASE}/admin/outgoing-mails`);
+  const blocks = page.locator('section.block h3');
+  await blocks.first().waitFor();
+  const labels = (await blocks.allInnerTexts()).map((t) => t.trim());
+  if (labels.join('|') !== 'Generell|Störungen|Aufgaben') throw new Error(`Blöcke: ${labels.join(', ')}`);
+  if ((await page.locator('#tm-incident-staff').inputValue()) !== 'selected') throw new Error('Störungen nicht «nur an ausgewählte»');
+  const banner = (await page.locator('.test-mode[role="status"]').innerText()).trim();
+  if (!banner.includes('Generell: keine Mails. Störungen: nur an ausgewählte IT-Mitarbeitende. Aufgaben: alle Mails.')) {
+    throw new Error(`Hinweis oben: ${banner}`);
+  }
+  await page.locator('.card', { has: page.locator('section.block') }).screenshot({ path: `${OUT}/87-testbetrieb-je-typ.png` });
+  console.log('Bild 87-testbetrieb-je-typ');
+  // Ändern über die Oberfläche: Generell an alle IT-Mitarbeitenden
+  await page.locator('#tm-general-staff').selectOption('all');
+  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await page.locator('.toast', { hasText: 'Testbetrieb gespeichert' }).waitFor();
+  if ((await api('GET', '/settings/mail')).data.general.staff !== 'all') throw new Error('Generell nicht gespeichert');
+  // Antwortfeld: Vermerk nach dem Block des Vorgangs (Störung ja, Aufgabe nein)
+  const incident = (await api('GET', '/items?view=incidents')).data.items[0];
+  await page.goto(`${BASE}/items/${incident.number}`);
+  await page.getByRole('button', { name: 'Öffentlich', exact: true }).click();
+  await page.locator('.composer .test-mode').waitFor();
+  const task = (await api('GET', '/items?view=tasks')).data.items[0];
+  await page.goto(`${BASE}/items/${task.number}`);
+  await page.getByRole('button', { name: 'Öffentlich', exact: true }).click();
+  await page.locator('.composer .faint.small').first().waitFor();
+  if (await page.locator('.composer .test-mode').count()) throw new Error('Vermerk zum Testbetrieb bei einer Aufgabe, obwohl Aufgaben an alle gehen');
+  await api('PUT', '/settings/mail', { general: circles('all', 'all'), incident: circles('all', 'all'), task: circles('all', 'all') });
+});
+
 await step('simulieren', async () => {
-  await api('PUT', '/settings/mail', { staff: 'none', others: 'none', staffEmails: [], otherEmails: [] });
-  await page.goto(`${BASE}/admin/ausgehende-mails`);
+  const none = { staff: 'none', others: 'none', staffEmails: [], otherEmails: [] };
+  await api('PUT', '/settings/mail', { general: none, incident: none, task: none });
+  await page.goto(`${BASE}/admin/outgoing-mails`);
   await page.locator('tbody tr.clickable').first().waitFor();
   await page.locator('tbody tr.clickable').first().click();
   // Ansicht wie versendet: Fusszeile klein mit Trennlinie (Formatierung der Vorlage bleibt)
@@ -914,7 +1004,7 @@ await step('simulieren', async () => {
   const inbox = (await api('GET', '/items?view=inbox')).data.items.filter((i) => i.source === 'mail' && !i.discarded);
   const real = inbox[0];
   if (!real) throw new Error('Keine echte Mail im Eingang');
-  await page.goto(`${BASE}/v/${real.number}`);
+  await page.goto(`${BASE}/items/${real.number}`);
   await page.locator('section.original').getByRole('button', { name: 'Originalmail' }).click();
   await page.getByRole('button', { name: 'Als simulierte Mail …' }).click();
   await page.locator('#sim-subject').waitFor();
@@ -929,11 +1019,12 @@ await step('simulieren', async () => {
   await page.locator('.dialog').getByRole('button', { name: 'Simulieren' }).click();
   await page.locator('.toast', { hasText: 'Simulierte Mail' }).waitFor();
   await page.locator('.badge', { hasText: 'Verworfen' }).waitFor();
-  await api('PUT', '/settings/mail', { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] });
+  const live = { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] };
+  await api('PUT', '/settings/mail', { general: live, incident: live, task: live });
 });
 
 await step('auswertung', async () => {
-  await page.goto(`${BASE}/auswertungen`);
+  await page.goto(`${BASE}/reports`);
   await page.locator('canvas').first().waitFor();
   await page.waitForTimeout(1200);
   await shot('14-auswertung', true);
@@ -957,7 +1048,7 @@ await step('auswertung', async () => {
 
 await step('willkommen', async () => {
   // Neues IT-Konto: nach dem Speichern die Frage nach der Willkommens-Mail
-  await page.goto(`${BASE}/admin/benutzer`);
+  await page.goto(`${BASE}/admin/users`);
   await page.getByRole('button', { name: '+ Benutzer' }).click();
   if (await page.getByRole('button', { name: 'Lokales Konto' }).count()) await page.getByRole('button', { name: 'Lokales Konto' }).click();
   const email = `neu-${Date.now()}@test.local`;
@@ -982,7 +1073,7 @@ await step('willkommen', async () => {
   await page.locator('.toast', { hasText: 'Willkommens-Mail' }).waitFor();
   await page.keyboard.press('Escape');
   // Ausgehende Mails: Art «Willkommen», ohne Vorgang
-  await page.goto(`${BASE}/admin/ausgehende-mails`);
+  await page.goto(`${BASE}/admin/outgoing-mails`);
   const row = page.locator('tbody tr', { hasText: email }).first();
   await row.waitFor();
   if (!(await row.innerText()).includes('Willkommen')) throw new Error('Art «Willkommen» fehlt in den ausgehenden Mails');
@@ -990,7 +1081,7 @@ await step('willkommen', async () => {
 
 await step('bereiche', async () => {
   // Verwaltung → Benutzer: Karte «Bereiche der IT»
-  await page.goto(`${BASE}/admin/benutzer`);
+  await page.goto(`${BASE}/admin/users`);
   const card = page.locator('.card', { hasText: 'Bereiche der IT' });
   await card.waitFor();
   await card.screenshot({ path: `${OUT}/52-bereiche-der-it.png` });
@@ -1001,16 +1092,16 @@ await step('bereiche', async () => {
   const incident = (await api('GET', '/items?view=incidents')).data.items[0];
   await api('POST', '/auth/logout');
   await login(ivan.email, 'geheim-geheim');
-  await page.waitForURL(/\/aufgaben$/).catch(() => {
+  await page.waitForURL(/\/tasks$/).catch(() => {
     throw new Error(`Nach dem Anmelden auf ${page.url()} statt auf den Aufgaben`);
   });
   await page.locator('nav.tabs .tab').first().waitFor();
   const tabs = (await page.locator('nav.tabs .tab').allInnerTexts()).map((t) => t.replace(/\s*\d+$/, '').trim());
   if (tabs.join(',') !== 'Aufgaben') throw new Error(`Navigation: ${tabs.join(', ')}`);
-  await page.goto(`${BASE}/eingang`);
-  await page.waitForURL(/\/aufgaben$/);
+  await page.goto(`${BASE}/inbox`);
+  await page.waitForURL(/\/tasks$/);
   const before = problems.length;
-  await page.goto(`${BASE}/v/${incident.number}`);
+  await page.goto(`${BASE}/items/${incident.number}`);
   await page.locator('.empty', { hasText: 'gesperrt' }).waitFor();
   await shot('53-gesperrt');
   // Die Antwort 403 des gesperrten Vorgangs meldet der Browser in der Konsole; sie ist hier erwartet
@@ -1054,7 +1145,7 @@ await step('farbschema', async () => {
     await page.locator('.toast', { hasText: 'Gespeichert' }).nth(toasts).waitFor();
   };
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.goto(`${BASE}/einstellungen`);
+  await page.goto(`${BASE}/settings`);
   await page.getByRole('heading', { name: 'Darstellung' }).waitFor();
   const active = (await group.locator('button.active').innerText()).trim();
   if (active !== 'Automatisch') throw new Error(`Standard: ${active}`);
@@ -1072,16 +1163,16 @@ await step('farbschema', async () => {
 
   // Rundgang im dunklen Schema
   const pages = [
-    ['/eingang', 'nav.tabs', '76-dunkel-eingang', false],
-    ['/aufgaben', '.column', '77-dunkel-board', false],
-    ['/v/1', '.timeline', '78-dunkel-vorgang', true],
-    ['/auswertungen', 'canvas', '79-dunkel-auswertung', true],
-    ['/admin/status', '.vue-flow__node', '80-dunkel-status', true],
+    ['/inbox', 'nav.tabs', '76-dunkel-eingang', false],
+    ['/tasks', '.column', '77-dunkel-board', false],
+    ['/items/1', '.timeline', '78-dunkel-vorgang', true],
+    ['/reports', 'canvas', '79-dunkel-auswertung', true],
+    ['/admin/statuses', '.vue-flow__node', '80-dunkel-status', true],
   ];
   for (const [path, ready, name, full] of pages) {
     await page.goto(`${BASE}${path}`);
     await page.locator(ready).first().waitFor();
-    if (path === '/auswertungen') await page.waitForTimeout(1200);
+    if (path === '/reports') await page.waitForTimeout(1200);
     if ((await theme()) !== 'dark') throw new Error(`${path}: nicht dunkel`);
     await shot(name, full);
   }
@@ -1089,7 +1180,7 @@ await step('farbschema', async () => {
   // Schon vor dem Start des Programms dunkel (Skript in index.html): Programm blockiert, Schema trotzdem gesetzt
   const before = problems.length;
   await page.route('**/assets/*.js', (route) => route.abort());
-  await page.goto(`${BASE}/eingang`);
+  await page.goto(`${BASE}/inbox`);
   const early = await theme();
   await page.unroute('**/assets/*.js');
   if (early !== 'dark') throw new Error(`Vor dem Start: ${early}`);
@@ -1097,7 +1188,7 @@ await step('farbschema', async () => {
   for (let i = problems.length - 1; i >= before; i--) if (problems[i].includes('Failed to load resource')) problems.splice(i, 1);
 
   // «Hell» gilt auch bei dunklem System, «Automatisch» folgt dem System
-  await page.goto(`${BASE}/einstellungen`);
+  await page.goto(`${BASE}/settings`);
   await page.getByRole('heading', { name: 'Darstellung' }).waitFor();
   await page.emulateMedia({ colorScheme: 'dark' });
   await choose('Hell');
@@ -1117,7 +1208,7 @@ await step('portal', async () => {
   await page.locator('h1.brand img[src="/logo.svg"]').waitFor();
   await shot('71-anmeldung');
   await login(anna.email, 'anna-passwort-1');
-  await page.goto(`${BASE}/portal/v/1`);
+  await page.goto(`${BASE}/portal/items/1`);
   await page.locator('.timeline').waitFor();
   if (!(await page.locator('.portal-header .brand img[src="/logo.svg"]').isVisible())) throw new Error('Portal: Logo fehlt');
   await shot('15-portal', true);

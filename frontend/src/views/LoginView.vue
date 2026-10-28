@@ -19,10 +19,10 @@ async function submit() {
   error.value = '';
   try {
     await session.login(username.value, password.value);
-    const weiter = route.query.weiter;
+    const next = route.query.next;
     // Nur interne Pfade, keine fremden Adressen («//host»)
-    const internal = typeof weiter === 'string' && weiter.startsWith('/') && !weiter.startsWith('//');
-    await router.replace(internal ? weiter : session.isStaff ? '/eingang' : '/portal');
+    const internal = typeof next === 'string' && next.startsWith('/') && !next.startsWith('//');
+    await router.replace(internal ? next : session.isStaff ? '/inbox' : '/portal');
   } catch (err) {
     error.value = errorMessage(err);
   } finally {

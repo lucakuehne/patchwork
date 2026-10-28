@@ -2,17 +2,17 @@
   <div class="page admin">
     <nav class="admin-nav card">
       <h2>Verwaltung</h2>
-      <RouterLink to="/admin/allgemein">Allgemein</RouterLink>
-      <RouterLink to="/admin/benutzer">Benutzer</RouterLink>
-      <RouterLink to="/admin/postfaecher">Postfächer</RouterLink>
-      <RouterLink to="/admin/eingehende-mails">Eingehende Mails</RouterLink>
-      <RouterLink to="/admin/ausgehende-mails">Ausgehende Mails</RouterLink>
-      <RouterLink to="/admin/e-mail-vorlagen">E-Mail-Vorlagen</RouterLink>
-      <RouterLink to="/admin/status">Status</RouterLink>
-      <RouterLink to="/admin/meldewege">Meldewege</RouterLink>
-      <RouterLink to="/admin/regeln">Regeln</RouterLink>
-      <RouterLink to="/admin/checklisten">Checklisten-Vorlagen</RouterLink>
-      <RouterLink to="/admin/textbausteine">Textbausteine</RouterLink>
+      <RouterLink to="/admin/general">Allgemein</RouterLink>
+      <RouterLink to="/admin/users">Benutzer</RouterLink>
+      <RouterLink to="/admin/mailboxes">Postfächer</RouterLink>
+      <RouterLink to="/admin/incoming-mails">Eingehende Mails</RouterLink>
+      <RouterLink to="/admin/outgoing-mails">Ausgehende Mails</RouterLink>
+      <RouterLink to="/admin/mail-templates">E-Mail-Vorlagen</RouterLink>
+      <RouterLink to="/admin/statuses">Status</RouterLink>
+      <RouterLink to="/admin/channels">Meldewege</RouterLink>
+      <RouterLink to="/admin/rules">Regeln</RouterLink>
+      <RouterLink to="/admin/checklist-templates">Checklisten-Vorlagen</RouterLink>
+      <RouterLink to="/admin/snippets">Textbausteine</RouterLink>
       <RouterLink to="/admin/ldap">LDAP / AD</RouterLink>
       <RouterLink to="/admin/https">HTTPS</RouterLink>
     </nav>

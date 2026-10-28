@@ -77,7 +77,7 @@ export class MicrosoftCallbackController {
       error: typeof query.error === 'string' ? query.error : undefined,
       error_description: typeof query.error_description === 'string' ? query.error_description : undefined,
     });
-    res.redirect(303, `/admin/postfaecher?microsoft=${result.status === 'done' ? 'ok' : 'fehler'}`);
+    res.redirect(303, `/admin/mailboxes?microsoft=${result.status === 'done' ? 'ok' : 'failed'}`);
   }
 }
 

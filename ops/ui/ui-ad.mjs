@@ -61,7 +61,7 @@ await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
 try {
   console.log('LDAP-Einstellungen:', (await api('PUT', '/settings/ldap', ldap)).status);
-  await page.goto(`${BASE}/admin/benutzer`);
+  await page.goto(`${BASE}/admin/users`);
   await page.locator('table.table').waitFor();
   await page.getByRole('button', { name: '+ Benutzer' }).click();
   const dialog = page.locator('.dialog');

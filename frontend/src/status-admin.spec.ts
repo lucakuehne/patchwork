@@ -3,32 +3,32 @@ import { targetOptions, targetsAfterRemoval, targetsOf } from './status-admin';
 import type { StatusTargets } from './types';
 
 const s = (id: string, closed = false) => ({ id, closed });
-const statuses = [s('neu'), s('arbeit'), s('wartet'), s('geloest', true), s('archiv', true), s('abgelehnt', true)];
-const targets: StatusTargets = { start: 'neu', reply: 'arbeit', close: 'geloest', reject: 'abgelehnt', waiting: 'wartet' };
+const statuses = [s('new'), s('in-progress'), s('awaiting'), s('resolved', true), s('archive', true), s('rejected', true)];
+const targets: StatusTargets = { start: 'new', reply: 'in-progress', close: 'resolved', reject: 'rejected', waiting: 'awaiting' };
 const ids = (list: { id: string }[]) => list.map((x) => x.id);
 
 describe('targetsOf', () => {
   it('liefert alle Ziele eines Status', () => {
     expect(targetsOf({ start: 'a', reply: 'a', close: 'b' }, 'a')).toEqual(['start', 'reply']);
-    expect(targetsOf(targets, 'archiv')).toEqual([]);
+    expect(targetsOf(targets, 'archive')).toEqual([]);
   });
 });
 
 describe('targetOptions', () => {
   it('bietet für offene Ziele nur offene Status, ohne den Wartet-Status', () => {
-    expect(ids(targetOptions(statuses, targets, 'start'))).toEqual(['neu', 'arbeit']);
-    expect(ids(targetOptions(statuses, targets, 'reply'))).toEqual(['neu', 'arbeit']);
+    expect(ids(targetOptions(statuses, targets, 'start'))).toEqual(['new', 'in-progress']);
+    expect(ids(targetOptions(statuses, targets, 'reply'))).toEqual(['new', 'in-progress']);
   });
 
   it('bietet für «Wartet» offene Status ausser Start und «nach Antwort»', () => {
-    expect(ids(targetOptions(statuses, targets, 'waiting'))).toEqual(['wartet']);
-    expect(ids(targetOptions(statuses, { start: 'neu', reply: 'neu' }, 'waiting'))).toEqual(['arbeit', 'wartet']);
+    expect(ids(targetOptions(statuses, targets, 'waiting'))).toEqual(['awaiting']);
+    expect(ids(targetOptions(statuses, { start: 'new', reply: 'new' }, 'waiting'))).toEqual(['in-progress', 'awaiting']);
   });
 
   it('trennt Schliessen und Ablehnen', () => {
-    expect(ids(targetOptions(statuses, targets, 'close'))).toEqual(['geloest', 'archiv']);
-    expect(ids(targetOptions(statuses, targets, 'reject'))).toEqual(['archiv', 'abgelehnt']);
-    expect(ids(targetOptions(statuses, { ...targets, reject: undefined }, 'close'))).toEqual(['geloest', 'archiv', 'abgelehnt']);
+    expect(ids(targetOptions(statuses, targets, 'close'))).toEqual(['resolved', 'archive']);
+    expect(ids(targetOptions(statuses, targets, 'reject'))).toEqual(['archive', 'rejected']);
+    expect(ids(targetOptions(statuses, { ...targets, reject: undefined }, 'close'))).toEqual(['resolved', 'archive', 'rejected']);
   });
 });
 
@@ -42,16 +42,16 @@ describe('targetsAfterRemoval', () => {
   });
 
   it('leert freiwillige Ziele mit «keiner» und lässt nicht gewählte leer', () => {
-    expect(targetsAfterRemoval(targets, 'wartet', { waiting: null })).toEqual({
-      start: 'neu',
-      reply: 'arbeit',
-      close: 'geloest',
-      reject: 'abgelehnt',
+    expect(targetsAfterRemoval(targets, 'awaiting', { waiting: null })).toEqual({
+      start: 'new',
+      reply: 'in-progress',
+      close: 'resolved',
+      reject: 'rejected',
     });
-    expect(targetsAfterRemoval(targets, 'geloest', {}).close).toBeUndefined();
+    expect(targetsAfterRemoval(targets, 'resolved', {}).close).toBeUndefined();
   });
 
   it('ändert nichts, wenn der Status kein Ziel ist', () => {
-    expect(targetsAfterRemoval(targets, 'archiv', { close: 'archiv' })).toEqual(targets);
+    expect(targetsAfterRemoval(targets, 'archive', { close: 'archive' })).toEqual(targets);
   });
 });

@@ -26,20 +26,20 @@ const simulating = ref(false);
 const mailboxes = ref<Mailbox[]>([]);
 
 const FILTERS = [
-  { key: 'alle', label: 'Alle', results: '' },
-  { key: 'neu', label: 'Neue Vorgänge', results: 'created' },
-  { key: 'antworten', label: 'Antworten und Notizen', results: 'reply,note,automated' },
-  { key: 'ignoriert', label: 'Ignoriert', results: 'ignored' },
-  { key: 'fehler', label: 'Fehler', results: 'failed' },
+  { key: 'all', label: 'Alle', results: '' },
+  { key: 'created', label: 'Neue Vorgänge', results: 'created' },
+  { key: 'replies', label: 'Antworten und Notizen', results: 'reply,note,automated' },
+  { key: 'ignored', label: 'Ignoriert', results: 'ignored' },
+  { key: 'failed', label: 'Fehler', results: 'failed' },
 ] as const;
 const ORIGINS = [
-  { key: 'alle', label: 'Echt und simuliert' },
-  { key: 'echt', label: 'Nur echte' },
-  { key: 'simuliert', label: 'Nur simulierte' },
+  { key: 'all', label: 'Echt und simuliert' },
+  { key: 'real', label: 'Nur echte' },
+  { key: 'simulated', label: 'Nur simulierte' },
 ] as const;
 
-const filter = ref<string>(FILTERS.some((f) => f.key === route.query.ergebnis) ? String(route.query.ergebnis) : 'alle');
-const origin = ref<string>(ORIGINS.some((o) => o.key === route.query.herkunft) ? String(route.query.herkunft) : 'alle');
+const filter = ref<string>(FILTERS.some((f) => f.key === route.query.result) ? String(route.query.result) : 'all');
+const origin = ref<string>(ORIGINS.some((o) => o.key === route.query.origin) ? String(route.query.origin) : 'all');
 
 async function load() {
   loading.value = true;
@@ -59,8 +59,8 @@ async function load() {
 onMounted(load);
 watch([filter, origin], () => {
   const query: Record<string, string> = {};
-  if (filter.value !== 'alle') query.ergebnis = filter.value;
-  if (origin.value !== 'alle') query.herkunft = origin.value;
+  if (filter.value !== 'all') query.result = filter.value;
+  if (origin.value !== 'all') query.origin = origin.value;
   void router.replace({ query });
   void load();
 });

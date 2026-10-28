@@ -11,18 +11,22 @@ const FUTURE_GRACE_MS = 60_000;
 
 /**
  * Prüft, ob jemand eine Notiz bearbeiten darf: nur eigene, in Patchwork erfasste interne Notizen
- * (keine per Mail eingegangenen) und nur kurz nach dem Erfassen. Hat ein Admin die Zeit angepasst, zählt die Frist ab
- * der ursprünglichen Zeit. Gibt den Grund zurück, falls nicht.
+ * (keine per Mail eingegangenen) und nur kurz nach dem Erfassen. Eigene sind auch die, die ein Admin im eigenen Namen
+ * erfasst hat, und für diesen Admin die, die er im Namen eines anderen erfasst hat. Hat ein Admin die Zeit angepasst,
+ * zählt die Frist ab der ursprünglichen Zeit. Gibt den Grund zurück, falls nicht.
  */
 export function noteEditRefusal(
-  entry: Pick<Entry, 'kind' | 'authorId' | 'meta' | 'createdAt'> & { originalCreatedAt?: Date | null },
+  entry: Pick<Entry, 'kind' | 'authorId' | 'meta' | 'createdAt'> & {
+    originalCreatedAt?: Date | null;
+    recordedById?: string | null;
+  },
   actorId: string,
   now: Date,
 ): { reason: 'kind' | 'author' | 'expired'; message: string } | null {
   if (entry.kind !== 'note' || entry.meta?.source) {
     return { reason: 'kind', message: 'Nur interne Notizen aus Patchwork lassen sich bearbeiten' };
   }
-  if (entry.authorId !== actorId) {
+  if (entry.authorId !== actorId && entry.recordedById !== actorId) {
     return { reason: 'author', message: 'Nur eigene Notizen lassen sich bearbeiten' };
   }
   const created = entry.originalCreatedAt ?? entry.createdAt;

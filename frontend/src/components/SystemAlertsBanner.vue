@@ -40,12 +40,12 @@ const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1).replace('.', ','
   <template v-if="session.isAdmin && alerts">
     <div v-for="m in alerts.mailboxes" :key="m.id" class="alert" role="alert">
       <strong>Mail-Abruf gestört:</strong> Postfach «{{ m.name }}» seit {{ formatDateTime(m.since) }} ({{ m.error }}).
-      <RouterLink to="/admin/postfaecher">Postfächer</RouterLink>
+      <RouterLink to="/admin/mailboxes">Postfächer</RouterLink>
     </div>
     <div v-if="alerts.failedMails > 0" class="alert" role="alert">
       <strong>Versand:</strong>
       {{ alerts.failedMails === 1 ? '1 Mail ist' : `${alerts.failedMails} Mails sind` }} fehlgeschlagen.
-      <RouterLink :to="{ path: '/admin/ausgehende-mails', query: { status: 'fehler' } }">Ausgehende Mails</RouterLink>
+      <RouterLink :to="{ path: '/admin/outgoing-mails', query: { status: 'failed' } }">Ausgehende Mails</RouterLink>
     </div>
     <div v-if="alerts.disk" class="alert" role="alert">
       <strong>Wenig Speicherplatz:</strong> noch {{ String(alerts.disk.freePercent).replace('.', ',') }} % frei

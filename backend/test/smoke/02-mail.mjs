@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -18,8 +18,8 @@ import {
   entryStartingWith,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +27,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +44,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Mail mit CC landet im Eingang, Bestätigung an Melder', async () => {
   firstMessageId = await sendMail({
@@ -83,7 +83,7 @@ await step('Mail mit CC landet im Eingang, Bestätigung an Melder', async () => 
   const confirmation = await waitForMail(ANNA, (m) => m.subject === `[PW-${itemNo}] VPN verbindet nicht`, 'Bestätigung');
   assert.ok(/auto-submitted: auto-generated/i.test(confirmation.headers));
   // Das Portal ist ohne Einstellung aus: kein Link dorthin
-  assert.ok(!confirmation.source.includes('/portal/v/'), 'ohne Portal keine Link-Zeile');
+  assert.ok(!confirmation.source.includes('/portal/items/'), 'ohne Portal keine Link-Zeile');
   // Standardtext per Du mit Vorname; Standard-Fusszeile mit «Patchwork», nicht dem App-Namen
   assert.ok(confirmation.text.startsWith('Hallo Anna\n\nDeine Meldung ist bei uns eingegangen'), confirmation.text);
   assert.ok(confirmation.text.includes(`Patchwork · PW-${itemNo}\nBitte lass bei Antworten die Nummer [PW-${itemNo}] im Betreff stehen.`), confirmation.text);
@@ -123,7 +123,7 @@ await step('Zuweisen: Mail an Zuständigen', async () => {
   const mail = await waitForMail(IVAN, (m) => m.subject === `[PW-${itemNo}] Zugewiesen: VPN verbindet nicht`, 'Zuweisung');
   // Standardtext mit Vor- und Nachname des Melders, Link-Zeile «Vorgang öffnen», Fusszeile mit «Patchwork»
   assert.ok(mail.text.includes(`Melder: Anna Muster (${ANNA})`), mail.text);
-  assert.match(mail.text, new RegExp(`Vorgang öffnen: \\S+/v/${itemNo}\\b`));
+  assert.match(mail.text, new RegExp(`Vorgang öffnen: \\S+/items/${itemNo}\\b`));
   assert.ok(mail.text.includes(`Patchwork · Benachrichtigung zu PW-${itemNo}`), mail.text);
   assert.ok(!mail.text.includes('Patchwork Test'), 'kein App-Name in der Mail');
   const mine = await api('GET', '/items?view=incidents&mine=1');
@@ -190,7 +190,7 @@ await step('Abwesenheitsnotiz ändert den Status nicht', async () => {
 });
 
 await step('Unbeteiligter Dritter mit Nummer im Betreff wird interne Notiz', async () => {
-  await sendMail({ from: FREMD, subject: `[PW-${itemNo}] Hallo`, text: 'Ich mische mich ein.' });
+  await sendMail({ from: STRANGER, subject: `[PW-${itemNo}] Hallo`, text: 'Ich mische mich ein.' });
   await sleep(500);
   await poll();
   const item = await detail(itemNo);
@@ -228,4 +228,4 @@ await step('Erledigt: Mail an Melder, Antwort öffnet wieder', async () => {
   assert.equal(item.closedAt, null);
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

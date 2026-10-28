@@ -18,7 +18,7 @@ setUnauthorizedHandler(() => {
   const session = useSession();
   session.user = null;
   if (router.currentRoute.value.name !== 'login') {
-    void router.push({ name: 'login', query: { weiter: router.currentRoute.value.fullPath } });
+    void router.push({ name: 'login', query: { next: router.currentRoute.value.fullPath } });
   }
 });
 

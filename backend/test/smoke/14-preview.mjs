@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -16,10 +16,11 @@ import {
   createItem,
   detail,
   entryStartingWith,
+  everyBlock,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +28,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,17 +45,17 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Aus einer echten Mail simulieren: vorbelegt, als Antwort auf einen Vorgang, Original verwerfen', async () => {
-  await api('PUT', '/settings/mail', { staff: 'none', others: 'none' });
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'none', others: 'none' }));
   // Echte Mail wie eine Antwort auf ein HelpSpot-Ticket: Patchwork kennt die Nummer nicht, sie landet im Eingang
   const subject = `AW: Installation PdfCraft - Ticket:{18195} ${RUN}`;
   await sendMail({ from: ANNA, subject, text: 'Danke, PdfCraft läuft jetzt.', attachments: [{ filename: 'log.txt', content: 'Logdatei' }] });
@@ -104,7 +105,7 @@ await step('Aus einer echten Mail simulieren: vorbelegt, als Antwort auf einen V
   await loginAs(IVAN, 'geheim-geheim');
   await api('GET', `/admin/incoming-mails/draft?id=${logged.id}`, undefined, { expect: [403] });
   await loginAs('ada@test.local', 'geheim-geheim');
-  await api('PUT', '/settings/mail', { staff: 'all', others: 'all' });
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'all', others: 'all' }));
 });
 
 await step('Eingebettete Bilder: im HTML auch in einem leeren <span>, in Antworten an ihrer Stelle, Zitat-Bilder weg', async () => {
@@ -141,8 +142,8 @@ await step('Eingebettete Bilder: im HTML auch in einem leeren <span>, in Antwort
   await poll();
   const reply = (await detail(item.number)).entries.find((e) => e.kind === 'reply' && e.body.includes('Hier das neue Bild'));
   assert.deepEqual(reply.attachments.map((a) => a.filename).sort(), ['Protokoll.log', 'neu.png'], 'Bild aus dem Zitat nicht übernommen');
-  const neu = reply.attachments.find((a) => a.filename === 'neu.png');
-  assert.ok(reply.body.includes(`Hier das neue Bild:\n![neu.png](attachment:${neu.id})\nGruss Anna`), reply.body);
+  const newImage = reply.attachments.find((a) => a.filename === 'neu.png');
+  assert.ok(reply.body.includes(`Hier das neue Bild:\n![neu.png](attachment:${newImage.id})\nGruss Anna`), reply.body);
   assert.ok(!reply.body.includes('cid:'), 'keine Marken mehr');
 });
 
@@ -214,4 +215,4 @@ await step('Vorschau von Anhängen: Text, Bild, PDF, Mail (.eml) mit Anhängen, 
   await loginAs('ada@test.local', 'geheim-geheim');
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

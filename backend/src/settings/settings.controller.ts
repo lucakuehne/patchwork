@@ -30,7 +30,7 @@ import { StorageService } from '../storage/storage.service';
 import { TlsService } from '../tls/tls.service';
 import type { User } from '../db/schema';
 import { AREAS, AreasService } from './areas';
-import { SettingsService, type LdapSettings } from './settings.service';
+import { DELIVERY_BLOCKS, SettingsService, type LdapSettings } from './settings.service';
 
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
 
@@ -42,7 +42,9 @@ const addressList = z
   .default([])
   .transform((list) => [...new Set(list)]);
 /** Testbetrieb: Empfängerkreise für IT-Mitarbeitende und alle übrigen (beide «all» = normaler Betrieb) */
-const mailSchema = z.object({ staff: scope, others: scope, staffEmails: addressList, otherEmails: addressList });
+const circlesSchema = z.object({ staff: scope, others: scope, staffEmails: addressList, otherEmails: addressList });
+/** Je ein Block für Mails ohne Typ, zu Störungen und zu Aufgaben */
+const mailSchema = z.object({ general: circlesSchema, incident: circlesSchema, task: circlesSchema });
 /** Portal: niemand, ausgewählte (Personen und AD-Gruppe) oder alle */
 const portalSchema = z.object({
   access: scope,
@@ -142,9 +144,9 @@ export class SettingsController {
       hasLogo: !!logo,
       logoVersion: logo?.storageKey.slice(-8) ?? null,
       setupRequired,
-      // Testbetrieb: Wer bekommt Mails (für den Hinweis oben)?
+      // Testbetrieb: Wer bekommt Mails, je Block (für den Hinweis oben und im Antwortfeld)?
       testMode: !isLive(mail),
-      delivery: { staff: mail.staff, others: mail.others },
+      delivery: Object.fromEntries(DELIVERY_BLOCKS.map((b) => [b, { staff: mail[b].staff, others: mail[b].others }])),
       // Für den Hinweis an Admins vor Ablauf; das Zertifikat ist ohnehin öffentlich
       certificateExpiresAt: this.tls.expiresAt,
     };

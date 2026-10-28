@@ -113,7 +113,7 @@ describe('Platzhalter', () => {
 });
 
 describe('Fertige Mail', () => {
-  const values = { Nummer: 'PW-12', Titel: 'Fehler bei *.pdf und _Daten_', Link: 'https://pw.firma.local/portal/v/12' };
+  const values = { Nummer: 'PW-12', Titel: 'Fehler bei *.pdf und _Daten_', Link: 'https://pw.firma.local/portal/items/12' };
 
   it('Text wörtlich, HTML maskiert: Zeichen aus Titeln lösen keine Formatierung aus', () => {
     const mail = composeMail(
@@ -121,11 +121,11 @@ describe('Fertige Mail', () => {
       values,
     );
     expect(mail.text).toBe(
-      'Zu «Fehler bei *.pdf und _Daten_» (PW-12)\n\nIhre Meldung online ansehen: https://pw.firma.local/portal/v/12\n\n-- \nIT · PW-12',
+      'Zu «Fehler bei *.pdf und _Daten_» (PW-12)\n\nIhre Meldung online ansehen: https://pw.firma.local/portal/items/12\n\n-- \nIT · PW-12',
     );
     expect(mail.html).toContain('Zu «Fehler bei *.pdf und _Daten_» (PW-12)');
     expect(mail.html).not.toContain('<em>');
-    expect(mail.html).toContain('<a href="https://pw.firma.local/portal/v/12">Ihre Meldung online ansehen</a>');
+    expect(mail.html).toContain('<a href="https://pw.firma.local/portal/items/12">Ihre Meldung online ansehen</a>');
     expect(mail.html).toContain('IT · PW-12</div>');
   });
 
@@ -151,11 +151,11 @@ describe('Fertige Mail', () => {
     );
     expect(mail.text).toBe(
       'Guten Tag Anna Muster\nZu **PW-12**: A & B <C> *nicht fett* [x]\n\nGruss\n\n' +
-        'Ihre Meldung [online] ansehen: https://pw.firma.local/portal/v/12',
+        'Ihre Meldung [online] ansehen: https://pw.firma.local/portal/items/12',
     );
     expect(mail.html).toContain('Guten Tag Anna Muster<br>');
     expect(mail.html).toContain('<strong>PW-12</strong>: A &amp; B &lt;C&gt; *nicht fett* [x]');
-    expect(mail.html).toContain('<a href="https://pw.firma.local/portal/v/12">Ihre Meldung [online] ansehen</a>');
+    expect(mail.html).toContain('<a href="https://pw.firma.local/portal/items/12">Ihre Meldung [online] ansehen</a>');
   });
 
   it('Link-Zeile: Platzhalter als Ziel auch mit Leerzeichen, Titel und Ziel in spitzen Klammern', () => {
@@ -273,7 +273,7 @@ describe('Vorlagen verwalten', () => {
     expect(confirmation.text).toContain('-- \nPatchwork · PW-123\nBitte lass bei Antworten die Nummer [PW-123] im Betreff stehen.');
 
     const staff = await templates.preview('staffLink', { subject: null, body: '[Öffnen]({{Link}})' });
-    expect(staff.text).toContain('Öffnen: https://patchwork.firma.local/v/123\n\n-- \nPatchwork · Benachrichtigung zu PW-123');
-    expect(staff.html).toContain('<a href="https://patchwork.firma.local/v/123">Öffnen</a>');
+    expect(staff.text).toContain('Öffnen: https://patchwork.firma.local/items/123\n\n-- \nPatchwork · Benachrichtigung zu PW-123');
+    expect(staff.html).toContain('<a href="https://patchwork.firma.local/items/123">Öffnen</a>');
   });
 });

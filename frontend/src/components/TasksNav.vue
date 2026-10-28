@@ -7,8 +7,8 @@ const session = useSession();
 
 <template>
   <div class="segmented">
-    <RouterLink to="/aufgaben">Offen</RouterLink>
-    <RouterLink to="/aufgaben/erledigt">Erledigt</RouterLink>
-    <RouterLink v-if="session.statusTargets.task.reject" to="/aufgaben/abgelehnt">Abgelehnt</RouterLink>
+    <RouterLink to="/tasks">Offen</RouterLink>
+    <RouterLink to="/tasks/done">Erledigt</RouterLink>
+    <RouterLink v-if="session.statusTargets.task.reject" to="/tasks/rejected">Abgelehnt</RouterLink>
   </div>
 </template>

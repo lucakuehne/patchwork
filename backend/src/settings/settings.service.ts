@@ -57,10 +57,10 @@ export const DEFAULT_LDAP: LdapSettings = {
 export type DeliveryScope = 'none' | 'selected' | 'all';
 
 /**
- * Testbetrieb: Mails an Empfänger ausserhalb der Kreise werden fertig zusammengestellt und abgelegt, aber nicht
- * versendet. Beide Kreise auf «all» ist der normale Betrieb.
+ * Testbetrieb eines Blocks: Mails an Empfänger ausserhalb der Kreise werden fertig zusammengestellt und abgelegt, aber
+ * nicht versendet. Beide Kreise auf «all» ist der normale Betrieb.
  */
-export interface MailSettings {
+export interface DeliveryCircles {
   /** IT-Mitarbeitende (Rolle IT oder Admin) */
   staff: DeliveryScope;
   /** Melder, Beteiligte und alle übrigen Empfänger */
@@ -70,6 +70,16 @@ export interface MailSettings {
   /** Ausgewählte Melder, Beteiligte und Kunden (E-Mail-Adressen, klein geschrieben) */
   otherEmails: string[];
 }
+
+/**
+ * Blöcke des Testbetriebs je Typ des Vorgangs (Entscheid vom 28.10.2026). «general» gilt für Vorgänge ohne Typ
+ * (Eingang) und Mails ohne Vorgang (Willkommen).
+ */
+export const DELIVERY_BLOCKS = ['general', 'incident', 'task'] as const;
+export type DeliveryBlock = (typeof DELIVERY_BLOCKS)[number];
+export type MailSettings = Record<DeliveryBlock, DeliveryCircles>;
+
+const LIVE: DeliveryCircles = { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] };
 
 /**
  * Portal: wer es nutzen darf. «selected»: die ausgewählten Personen und die Mitglieder der AD-Gruppe.
@@ -127,7 +137,7 @@ const DEFAULTS: SettingsMap = {
   channelDefaults: { incident: null, task: null },
   logo: null,
   ldap: DEFAULT_LDAP,
-  mail: { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] },
+  mail: { general: LIVE, incident: LIVE, task: LIVE },
   // Ohne Einstellung ist das Portal aus (Entscheid vom 20.10.2026)
   portal: { access: 'none', emails: [], groupDn: '' },
   // Solange kein Ablauf festgelegt ist, sind alle Wechsel erlaubt

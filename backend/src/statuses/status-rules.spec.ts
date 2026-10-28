@@ -107,20 +107,20 @@ describe('rejectAllowed', () => {
 });
 
 describe('transitionAllowed', () => {
-  const transitions = [{ fromId: 'neu', toId: 'arbeit' }];
+  const transitions = [{ fromId: 'new', toId: 'in-progress' }];
 
   it('erlaubt ohne Einschränkung jeden Wechsel', () => {
-    expect(transitionAllowed(false, transitions, 'arbeit', 'neu')).toBe(true);
+    expect(transitionAllowed(false, transitions, 'in-progress', 'new')).toBe(true);
   });
 
   it('erlaubt mit Einschränkung nur die festgelegten Wechsel', () => {
-    expect(transitionAllowed(true, transitions, 'neu', 'arbeit')).toBe(true);
-    expect(transitionAllowed(true, transitions, 'arbeit', 'neu')).toBe(false);
-    expect(transitionAllowed(true, [], 'neu', 'arbeit')).toBe(false);
+    expect(transitionAllowed(true, transitions, 'new', 'in-progress')).toBe(true);
+    expect(transitionAllowed(true, transitions, 'in-progress', 'new')).toBe(false);
+    expect(transitionAllowed(true, [], 'new', 'in-progress')).toBe(false);
   });
 
   it('lässt Verbleiben und Vorgänge ohne Status zu', () => {
-    expect(transitionAllowed(true, [], 'neu', 'neu')).toBe(true);
-    expect(transitionAllowed(true, [], null, 'neu')).toBe(true);
+    expect(transitionAllowed(true, [], 'new', 'new')).toBe(true);
+    expect(transitionAllowed(true, [], null, 'new')).toBe(true);
   });
 });

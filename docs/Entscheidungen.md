@@ -262,6 +262,41 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Bereiche: Einstellung `areas` (`{ it: [...] }`). Der AuthGuard prüft jede Route mit `:number`; Anhänge, Notizen und Checklisten (über ihre ID), Listen, Zähler, Suche, Verknüpfungen und aus anderen Vorgängen kopierte Bilder prüfen selbst. Mails an die IT laufen über eine Stelle, die ohne Zugriff nichts versendet; Beteiligte ohne Zugriff fallen aus dem CC.
   - Gesperrte Vorgänge antworten mit 403 «Kein Zugriff auf den Bereich …», die Oberfläche zeigt «PW-… ist für Sie gesperrt».
 
+## Testbetrieb je Typ, im Namen anderer antworten, Backlog im Board (bestätigt am 28.10.2026)
+
+- **Testbetrieb je Vorgangstyp** (ergänzt Punkt 14 unter «Testbetrieb, Mail-Abruf und Microsoft 365»): Unter
+  Verwaltung → Ausgehende Mails gibt es drei vollständige Blöcke «Generell», «Störungen» und «Aufgaben», jeder mit
+  beiden Empfängerkreisen (IT-Mitarbeitende; Melder, Beteiligte und alle übrigen) und einer eigenen Auswahl an
+  Personen. Massgebend ist der Typ des Vorgangs beim Versand. «Generell» gilt für Mails zu Vorgängen ohne Typ (Eingang,
+  z.B. Eingangsbestätigung) und für Mails ohne Vorgang (Willkommen). Normaler Betrieb ist, wenn in allen drei Blöcken
+  beide Kreise auf «an alle» stehen. Nach dem Update gilt die bisherige Einstellung für alle drei Blöcke.
+  - Noch zu bestätigen: Sind die Blöcke verschieden eingestellt, nennt der Hinweis oben jeden Block (z.B. «Generell:
+    keine Mails. Störungen: nur an ausgewählte IT-Mitarbeitende. Aufgaben: alle Mails.»), sonst ein Satz wie bisher.
+    Der Vermerk zum Testbetrieb im Antwortfeld richtet sich nach dem Block des Vorgangs. «Antwort simulieren» gibt es,
+    solange mindestens ein Block im Testbetrieb ist.
+- **Antworten und Notizen im Namen eines anderen Benutzers:** Admins wählen im Antwortfeld unter «Als» eine andere
+  Person (aktive Benutzer mit der Rolle IT oder Admin), für öffentliche Antworten und interne Notizen. Vorgabe ist man
+  selbst; nach dem Senden steht die Auswahl wieder auf einem selbst. Die gewählte Person gilt als Autor: im Verlauf,
+  bei den Platzhaltern {{Bearbeiter …}} der Textbausteine und bei Mails (die Person selbst bekommt weder die Antwort
+  noch die Mail «Erwähnt», in «Erwähnt» steht ihr Name). Intern steht beim Darüberfahren über den Namen «erfasst von …»
+  mit dem Admin; Melder sehen das weder im Portal (dort wie jede Antwort der IT als «IT») noch in der Mail.
+  - Noch zu bestätigen: Eine solche Notiz können in den ersten 5 Minuten die gewählte Person und der Admin bearbeiten,
+    der sie erfasst hat.
+  - Technisch: Spalte `entries.recorded_by_id` (nur gesetzt, wenn jemand im Namen eines anderen schreibt).
+- **Backlog im Board:** Karten im Start-Status der Aufgaben (Standard «Backlog») sind leicht ausgegraut wie die
+  abgeschlossenen (Titel grau). Nur im Board der Aufgaben.
+- **Englische Adressen** (gewünscht am 28.10.2026): Pfade und Query-Parameter der Oberfläche sind englisch, z.B.
+  `/inbox`, `/incidents`, `/incidents/resolved`, `/tasks`, `/tasks/done`, `/tasks/rejected`, `/search`, `/settings`,
+  `/setup`, `/reports`, `/items/123` (bisher `/v/123`), `/portal/new`, `/portal/items/123`, `/admin/general`,
+  `/admin/users`, `/admin/mailboxes`, `/admin/incoming-mails`, `/admin/outgoing-mails`, `/admin/mail-templates`,
+  `/admin/statuses`, `/admin/channels`, `/admin/rules`, `/admin/checklist-templates`, `/admin/snippets`; Parameter
+  `?item=` (Fenster), `?next=` (nach der Anmeldung), `?result=`, `?origin=` und `?status=` mit englischen Werten. Links in
+  neuen Mails zeigen auf `/items/…` bzw. `/portal/items/…`.
+  - Frühere deutsche Adressen (Lesezeichen, Links in bereits versendeten Mails) führen auf die neuen weiter, mit
+    umbenannten Parametern und Werten.
+  - Ebenso englisch: Bezeichner und Testdaten-IDs in Tests, die CSS-Klasse des Signets (`.mark`). Deutsch bleiben die
+    Platzhalter der Mail-Vorlagen und Textbausteine, weil Admins sie eintippen.
+
 ## Farbschema hell oder dunkel (bestätigt am 28.10.2026)
 
 - Unter «Einstellungen» (Benutzermenü) steht zuoberst der Block «Darstellung» mit dem Farbschema **Automatisch | Hell |
@@ -368,7 +403,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   Gespeichert pro Benutzer. Die Wahl gilt überall in Patchwork (Listen, Board, Suche, Verknüpfungen, Verweise im Verlauf,
   «Öffnen» in Meldungen), jeweils nach dem Typ des Vorgangs; Links aus Mails öffnen immer als Seite. Solange das Fenster
   (oder ein anderer Dialog) offen ist, scrollt die Seite dahinter nicht mit. Ctrl+Klick bzw. die mittlere Maustaste öffnen wie gewohnt einen neuen Browser-Tab.
-- Technisch (entschieden am 27.10.2026): Das Fenster steht in der Adresse (`?vorgang=123`), «Zurück» im Browser schliesst
+- Technisch (entschieden am 27.10.2026): Das Fenster steht in der Adresse (`?vorgang=123`, seit 28.10.2026 `?item=123`), «Zurück» im Browser schliesst
   es, Neuladen öffnet es wieder. Im Fenster gibt es «Als Seite öffnen». Ein Link auf einen anderen Vorgang öffnet diesen je
   nach Wahl wieder im Fenster (ersetzt den Inhalt, «Zurück» führt zum vorherigen) oder als Seite. Nach dem Schliessen lädt
   die Liste bzw. das Board neu. Einstellungen in der Spalte `users.preferences`. Die Navigation der Aufgaben heisst
@@ -510,6 +545,7 @@ Bestätigt am 19.10.2026:
     - Solange nicht beide Kreise «an alle» sind, sehen alle Benutzer oben einen Hinweis, der sagt, wer Mails bekommt. In der Timeline steht bei öffentlichen Antworten «nicht versendet» bzw. «teilweise versendet».
     - Bestehende Einstellung: eingeschaltet wird «an niemanden / an niemanden», ausgeschaltet «an alle / an alle».
     - Gewünscht am 20.10.2026: Die Einstellung steht auf der Seite «Ausgehende Mails» über der Liste, nicht mehr unter «Allgemein».
+    - Seit 28.10.2026 je Vorgangstyp (Generell, Störungen, Aufgaben), siehe «Testbetrieb je Typ, im Namen anderer antworten, Backlog im Board».
 15. Bestätigt am 20.10.2026: **Alle ausgehenden Mails werden protokolliert**, nicht nur die im Testbetrieb zurückgehaltenen:
     - Seite Verwaltung → «Ausgehende Mails» (ersetzt «Nicht versendete Mails», nur Admin) mit Status «versendet», «teilweise versendet», «nicht versendet», «Fehler» oder «wird versendet», Filter nach Status und vollständiger Ansicht (Text, Anhänge, .eml).
     - Jede Mail wird vollständig gespeichert, ohne automatische Löschung.

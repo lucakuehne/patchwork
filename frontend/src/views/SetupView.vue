@@ -37,7 +37,7 @@ async function submit() {
     });
     await session.loadInfo();
     await session.loadAppData();
-    await router.replace('/admin/postfaecher');
+    await router.replace('/admin/mailboxes');
   } catch (err) {
     error.value = errorMessage(err);
   } finally {

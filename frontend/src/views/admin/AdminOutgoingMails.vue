@@ -39,13 +39,13 @@ function simulated(mail: IncomingMail) {
 }
 
 const FILTERS = [
-  { key: 'alle', label: 'Alle', statuses: '' },
-  { key: 'nicht-versendet', label: 'Nicht oder teilweise versendet', statuses: 'held,partial' },
-  { key: 'fehler', label: 'Fehler und unterwegs', statuses: 'failed,queued' },
-  { key: 'versendet', label: 'Versendet', statuses: 'sent' },
+  { key: 'all', label: 'Alle', statuses: '' },
+  { key: 'withheld', label: 'Nicht oder teilweise versendet', statuses: 'held,partial' },
+  { key: 'failed', label: 'Fehler und unterwegs', statuses: 'failed,queued' },
+  { key: 'sent', label: 'Versendet', statuses: 'sent' },
 ] as const;
 
-const filter = ref<string>(FILTERS.some((f) => f.key === route.query.status) ? String(route.query.status) : 'alle');
+const filter = ref<string>(FILTERS.some((f) => f.key === route.query.status) ? String(route.query.status) : 'all');
 
 const STATUS = OUTGOING_STATUS;
 
@@ -62,7 +62,7 @@ async function load() {
 }
 onMounted(load);
 watch(filter, () => {
-  void router.replace({ query: filter.value === 'alle' ? {} : { status: filter.value } });
+  void router.replace({ query: filter.value === 'all' ? {} : { status: filter.value } });
   void load();
 });
 

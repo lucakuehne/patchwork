@@ -2,8 +2,8 @@
 import {
   ANNA,
   api,
-  ARCHIV,
-  archivMailbox,
+  ARCHIVE,
+  archiveMailbox,
   assert,
   BASE,
   cookie,
@@ -16,10 +16,11 @@ import {
   createItem,
   detail,
   entryStartingWith,
+  everyBlock,
   EXTERN,
   finish,
-  FREMD,
-  GEWINN,
+  STRANGER,
+  PRIZE,
   group,
   https,
   HTTPS_PORT,
@@ -27,7 +28,7 @@ import {
   inbox,
   inboxNumber,
   IVAN,
-  LIEFERANT,
+  SUPPLIER,
   loginAs,
   MAILBOX,
   NEWS,
@@ -44,14 +45,14 @@ import {
   state,
   status,
   step,
-  STUMM,
+  MUTED,
   uploadImage,
   waitForMail,
   webcrypto,
   x509,
 } from './lib.mjs';
 
-let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule } = state;
+let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Bilder im Text: hochladen, in der Antwort eingebettet, in der Mail eingebettet mit Link auf die volle Grösse', async () => {
   assert.match((await uploadImage('text.png', Buffer.from('kein Bild'))).message, /PNG, JPEG, GIF oder WebP/);
@@ -131,7 +132,7 @@ await step('Eingehende Mails: jede abgeholte Mail steht mit Ergebnis im Protokol
   assert.equal(first.mailbox.id, mailboxId);
   assert.ok(all.some((m) => m.result === 'reply' && m.item?.number === itemNo && m.fromAddress === ANNA), 'Antwort des Melders');
   assert.ok(all.some((m) => m.result === 'automated' && m.item?.number === itemNo), 'Abwesenheitsnotiz');
-  assert.ok(all.some((m) => m.result === 'note' && m.fromAddress === FREMD), 'Unbeteiligter als interne Notiz');
+  assert.ok(all.some((m) => m.result === 'note' && m.fromAddress === STRANGER), 'Unbeteiligter als interne Notiz');
   const loop = all.find((m) => m.subject === `Schleife ${RUN}`);
   assert.equal(loop.result, 'ignored');
   assert.match(loop.reason, /Postfach von Patchwork/);
@@ -171,7 +172,7 @@ await step('Testbetrieb: Antworten und neue Mails simulieren, verarbeitet wie ec
   });
   assert.match(refused.message, /nur im Testbetrieb/);
 
-  await api('PUT', '/settings/mail', { staff: 'none', others: 'none' });
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'none', others: 'none' }));
   // Ivan hat den Vorgang weiter oben stummgeschaltet; für die Benachrichtigung wieder aufheben
   await loginAs(IVAN, 'geheim-geheim');
   await api('PUT', `/items/${itemNo}/mute`, { muted: false });
@@ -247,7 +248,7 @@ await step('Testbetrieb: Antworten und neue Mails simulieren, verarbeitet wie ec
   await loginAs(ANNA, 'anna-passwort-1');
   assert.equal((await api('GET', `/portal/items/${itemNo}`)).entries.find((e) => e.body === text).simulated, true);
   await loginAs('ada@test.local', 'geheim-geheim');
-  await api('PUT', '/settings/mail', { staff: 'all', others: 'all' });
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'all', others: 'all' }));
 });
 
-Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, lieferantRule });
+Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

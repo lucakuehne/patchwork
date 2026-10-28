@@ -66,7 +66,7 @@ async function impersonate() {
     await api.post(`/admin/users/${target.id}/impersonate`);
     session.announceSessionChange(target.id, session.user?.id ?? null);
     // Neu laden: Stammdaten, Zähler und Rechte gelten ab jetzt für diesen Benutzer
-    window.location.assign('/eingang');
+    window.location.assign('/inbox');
   } catch (err) {
     error.value = errorMessage(err);
     impersonating.value = false;

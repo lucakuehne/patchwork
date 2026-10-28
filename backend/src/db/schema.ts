@@ -280,6 +280,8 @@ export const entries = pgTable(
     originalCreatedAt: timestamp('original_created_at', { withTimezone: true }),
     timeChangedAt: timestamp('time_changed_at', { withTimezone: true }),
     timeChangedById: uuid('time_changed_by_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Admin, der die Antwort oder Notiz im Namen des Autors erfasst hat; null = vom Autor selbst */
+    recordedById: uuid('recorded_by_id').references(() => users.id, { onDelete: 'set null' }),
     search: tsvector('search').generatedAlwaysAs(
       (): SQL => sql`to_tsvector('german'::regconfig, coalesce(${entries.body}, ''))`,
     ),

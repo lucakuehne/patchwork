@@ -1,39 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import type { MailSettings } from '../settings/settings.service';
-import { deliveryFilter, isLive } from './test-delivery';
+import type { DeliveryCircles } from '../settings/settings.service';
+import { deliveryBlock, deliveryFilter, isBlockLive, isLive } from './test-delivery';
 
 const staff = new Set(['ivan@firma.ch', 'ada@firma.ch']);
-const settings = (patch: Partial<MailSettings>): MailSettings => ({
+const circles = (patch: Partial<DeliveryCircles>): DeliveryCircles => ({
   staff: 'none',
   others: 'none',
   staffEmails: [],
   otherEmails: [],
   ...patch,
 });
-const receivers = (s: MailSettings) =>
-  ['ivan@firma.ch', 'ada@firma.ch', 'anna@kunde.ch', 'bob@kunde.ch'].filter(deliveryFilter(s, staff));
+const receivers = (c: DeliveryCircles) =>
+  ['ivan@firma.ch', 'ada@firma.ch', 'anna@kunde.ch', 'bob@kunde.ch'].filter(deliveryFilter(c, staff));
 
 describe('Testbetrieb: Empfängerkreise', () => {
-  it('beide Kreise «alle» ist der normale Betrieb', () => {
-    expect(isLive({ staff: 'all', others: 'all' })).toBe(true);
-    expect(isLive({ staff: 'all', others: 'selected' })).toBe(false);
+  it('beide Kreise «alle» ist der normale Betrieb des Blocks', () => {
+    expect(isBlockLive({ staff: 'all', others: 'all' })).toBe(true);
+    expect(isBlockLive({ staff: 'all', others: 'selected' })).toBe(false);
+  });
+
+  it('normaler Betrieb erst, wenn alle drei Blöcke «alle / alle» sind', () => {
+    const live = { staff: 'all', others: 'all' } as const;
+    expect(isLive({ general: live, incident: live, task: live })).toBe(true);
+    expect(isLive({ general: live, incident: { staff: 'selected', others: 'none' }, task: live })).toBe(false);
+    expect(isLive({ general: { staff: 'all', others: 'none' }, incident: live, task: live })).toBe(false);
+  });
+
+  it('Block nach dem Typ des Vorgangs, ohne Typ oder ohne Vorgang «Generell»', () => {
+    expect(deliveryBlock('incident')).toBe('incident');
+    expect(deliveryBlock('task')).toBe('task');
+    expect(deliveryBlock(null)).toBe('general');
+    expect(deliveryBlock(undefined)).toBe('general');
   });
 
   it('niemand, ausgewählte oder alle – je für IT-Mitarbeitende und die übrigen', () => {
-    expect(receivers(settings({}))).toEqual([]);
-    expect(receivers(settings({ staff: 'selected', staffEmails: ['Ivan@Firma.ch'] }))).toEqual(['ivan@firma.ch']);
-    expect(receivers(settings({ staff: 'all' }))).toEqual(['ivan@firma.ch', 'ada@firma.ch']);
-    expect(receivers(settings({ staff: 'all', others: 'selected', otherEmails: ['anna@kunde.ch'] }))).toEqual([
+    expect(receivers(circles({}))).toEqual([]);
+    expect(receivers(circles({ staff: 'selected', staffEmails: ['Ivan@Firma.ch'] }))).toEqual(['ivan@firma.ch']);
+    expect(receivers(circles({ staff: 'all' }))).toEqual(['ivan@firma.ch', 'ada@firma.ch']);
+    expect(receivers(circles({ staff: 'all', others: 'selected', otherEmails: ['anna@kunde.ch'] }))).toEqual([
       'ivan@firma.ch',
       'ada@firma.ch',
       'anna@kunde.ch',
     ]);
-    expect(receivers(settings({ others: 'all' }))).toEqual(['anna@kunde.ch', 'bob@kunde.ch']);
+    expect(receivers(circles({ others: 'all' }))).toEqual(['anna@kunde.ch', 'bob@kunde.ch']);
   });
 
   it('massgebend ist der Empfänger: eine ausgewählte Kundenadresse gilt nicht für IT-Mitarbeitende', () => {
-    const s = settings({ others: 'selected', otherEmails: ['ivan@firma.ch', 'bob@kunde.ch'] });
-    expect(receivers(s)).toEqual(['bob@kunde.ch']);
-    expect(deliveryFilter(s, staff)(' BOB@kunde.ch ')).toBe(true);
+    const c = circles({ others: 'selected', otherEmails: ['ivan@firma.ch', 'bob@kunde.ch'] });
+    expect(receivers(c)).toEqual(['bob@kunde.ch']);
+    expect(deliveryFilter(c, staff)(' BOB@kunde.ch ')).toBe(true);
   });
 });

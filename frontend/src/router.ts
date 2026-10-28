@@ -1,32 +1,33 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { legacyLocation } from './legacy-urls';
 import { useSession } from './stores/session';
 import type { Area } from './types';
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/eingang' },
+    { path: '/', redirect: '/inbox' },
     { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
-    { path: '/einrichtung', name: 'setup', component: () => import('./views/SetupView.vue'), meta: { public: true } },
+    { path: '/setup', name: 'setup', component: () => import('./views/SetupView.vue'), meta: { public: true } },
     // «area»: nur mit Zugriff auf diesen Bereich (Bereiche je Rolle, siehe beforeEach)
-    { path: '/eingang', name: 'inbox', component: () => import('./views/InboxView.vue'), meta: { area: 'inbox' } },
+    { path: '/inbox', name: 'inbox', component: () => import('./views/InboxView.vue'), meta: { area: 'inbox' } },
     {
-      path: '/stoerungen',
+      path: '/incidents',
       name: 'incidents',
       component: () => import('./views/IncidentsView.vue'),
       props: { closed: false },
       meta: { area: 'incident' },
     },
     {
-      path: '/stoerungen/geloest',
+      path: '/incidents/resolved',
       name: 'incidents-closed',
       component: () => import('./views/IncidentsView.vue'),
       props: { closed: true },
       meta: { area: 'incident' },
     },
-    { path: '/aufgaben', name: 'tasks', component: () => import('./views/TasksView.vue'), meta: { area: 'task' } },
+    { path: '/tasks', name: 'tasks', component: () => import('./views/TasksView.vue'), meta: { area: 'task' } },
     {
-      path: '/aufgaben/erledigt',
+      path: '/tasks/done',
       name: 'tasks-done',
       component: () => import('./views/TasksClosedView.vue'),
       props: { view: 'tasks-done' },
@@ -34,16 +35,16 @@ export const router = createRouter({
     },
     // Nur mit Ablehnen-Ziel für Aufgaben (siehe beforeEach)
     {
-      path: '/aufgaben/abgelehnt',
+      path: '/tasks/rejected',
       name: 'tasks-rejected',
       component: () => import('./views/TasksClosedView.vue'),
       props: { view: 'tasks-rejected' },
       meta: { area: 'task' },
     },
-    { path: '/suche', name: 'search', component: () => import('./views/SearchView.vue') },
-    { path: '/einstellungen', name: 'settings', component: () => import('./views/SettingsView.vue') },
+    { path: '/search', name: 'search', component: () => import('./views/SearchView.vue') },
+    { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     {
-      path: '/v/:number(\\d+)',
+      path: '/items/:number(\\d+)',
       name: 'item',
       component: () => import('./views/ItemView.vue'),
       props: (route) => ({ number: Number(route.params.number) }),
@@ -53,42 +54,40 @@ export const router = createRouter({
       component: () => import('./views/admin/AdminLayout.vue'),
       meta: { admin: true },
       children: [
-        { path: '', redirect: '/admin/allgemein' },
-        { path: 'allgemein', name: 'admin-general', component: () => import('./views/admin/AdminGeneral.vue') },
-        { path: 'benutzer', name: 'admin-users', component: () => import('./views/admin/AdminUsers.vue') },
-        { path: 'postfaecher', name: 'admin-mailboxes', component: () => import('./views/admin/AdminMailboxes.vue') },
+        { path: '', redirect: '/admin/general' },
+        { path: 'general', name: 'admin-general', component: () => import('./views/admin/AdminGeneral.vue') },
+        { path: 'users', name: 'admin-users', component: () => import('./views/admin/AdminUsers.vue') },
+        { path: 'mailboxes', name: 'admin-mailboxes', component: () => import('./views/admin/AdminMailboxes.vue') },
         {
-          path: 'ausgehende-mails',
+          path: 'outgoing-mails',
           name: 'admin-outgoing-mails',
           component: () => import('./views/admin/AdminOutgoingMails.vue'),
         },
         {
-          path: 'eingehende-mails',
+          path: 'incoming-mails',
           name: 'admin-incoming-mails',
           component: () => import('./views/admin/AdminIncomingMails.vue'),
         },
         {
-          path: 'e-mail-vorlagen',
+          path: 'mail-templates',
           name: 'admin-mail-templates',
           component: () => import('./views/admin/AdminMailTemplates.vue'),
         },
-        // Frühere Seite: nur die nicht versendeten Mails
-        { path: 'nicht-versendet', redirect: { path: '/admin/ausgehende-mails', query: { status: 'nicht-versendet' } } },
-        { path: 'status', name: 'admin-statuses', component: () => import('./views/admin/AdminStatuses.vue') },
-        { path: 'meldewege', name: 'admin-channels', component: () => import('./views/admin/AdminChannels.vue') },
+        { path: 'statuses', name: 'admin-statuses', component: () => import('./views/admin/AdminStatuses.vue') },
+        { path: 'channels', name: 'admin-channels', component: () => import('./views/admin/AdminChannels.vue') },
         { path: 'ldap', name: 'admin-ldap', component: () => import('./views/admin/AdminLdap.vue') },
         { path: 'https', name: 'admin-https', component: () => import('./views/admin/AdminHttps.vue') },
         {
-          path: 'checklisten',
+          path: 'checklist-templates',
           name: 'admin-checklists',
           component: () => import('./views/admin/AdminChecklistTemplates.vue'),
         },
-        { path: 'textbausteine', name: 'admin-snippets', component: () => import('./views/admin/AdminSnippets.vue') },
-        { path: 'regeln', name: 'admin-rules', component: () => import('./views/admin/AdminRules.vue') },
+        { path: 'snippets', name: 'admin-snippets', component: () => import('./views/admin/AdminSnippets.vue') },
+        { path: 'rules', name: 'admin-rules', component: () => import('./views/admin/AdminRules.vue') },
       ],
     },
     {
-      path: '/auswertungen',
+      path: '/reports',
       name: 'reports',
       component: () => import('./views/ReportsView.vue'),
       meta: { admin: true },
@@ -99,20 +98,31 @@ export const router = createRouter({
       meta: { portal: true },
       children: [
         { path: '', name: 'portal-home', component: () => import('./views/portal/PortalHome.vue') },
-        { path: 'neu', name: 'portal-new', component: () => import('./views/portal/PortalNew.vue') },
+        { path: 'new', name: 'portal-new', component: () => import('./views/portal/PortalNew.vue') },
         {
-          path: 'v/:number(\\d+)',
+          path: 'items/:number(\\d+)',
           name: 'portal-item',
           component: () => import('./views/portal/PortalItem.vue'),
           props: (route) => ({ number: Number(route.params.number) }),
         },
       ],
     },
-    { path: '/:pathMatch(.*)*', redirect: '/eingang' },
+    // Frühere deutsche Adressen führen weiter, alles Übrige in den Eingang
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: (to) => {
+        const legacy = legacyLocation(to.path, to.query);
+        return legacy ? { ...legacy, hash: to.hash } : '/inbox';
+      },
+    },
   ],
 });
 
 router.beforeEach(async (to) => {
+  // Frühere deutsche Parameter (z.B. «?vorgang=») auf bestehenden Seiten
+  const legacy = legacyLocation(to.path, to.query);
+  if (legacy) return { ...legacy, hash: to.hash, replace: true };
+
   const session = useSession();
   if (!session.info) await session.loadInfo();
 
@@ -124,7 +134,7 @@ router.beforeEach(async (to) => {
     await session.loadMe();
     await session.loadUserData();
   }
-  if (!session.user) return { name: 'login', query: to.fullPath !== '/eingang' ? { weiter: to.fullPath } : {} };
+  if (!session.user) return { name: 'login', query: to.fullPath !== '/inbox' ? { next: to.fullPath } : {} };
 
   const portalRoute = to.matched.some((r) => r.meta.portal);
   if (!session.isStaff) {

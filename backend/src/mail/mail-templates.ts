@@ -63,8 +63,8 @@ const ITEM = [
   p('Zuständig Vorname', 'Vorname des Zuständigen, leer ohne Zuweisung', 'Ivan'),
   p('Zuständig Nachname', 'Nachname des Zuständigen, leer ohne Zuweisung', 'IT'),
 ];
-const PORTAL_LINK = p('Link', 'Link zur Meldung im Portal', 'https://patchwork.firma.local/portal/v/123');
-const STAFF_LINK = p('Link', 'Link zum Vorgang in Patchwork', 'https://patchwork.firma.local/v/123');
+const PORTAL_LINK = p('Link', 'Link zur Meldung im Portal', 'https://patchwork.firma.local/portal/items/123');
+const STAFF_LINK = p('Link', 'Link zum Vorgang in Patchwork', 'https://patchwork.firma.local/items/123');
 const FRAME = (link: Placeholder) => [NUMBER, TITLE, link];
 
 export const TEMPLATES: TemplateDefinition[] = [

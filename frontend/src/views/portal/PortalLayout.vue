@@ -38,7 +38,7 @@ async function setTheme(theme: Theme) {
       </RouterLink>
       <nav class="nav">
         <RouterLink to="/portal" class="nav-link" exact-active-class="active">Meine Vorgänge</RouterLink>
-        <RouterLink to="/portal/neu" class="nav-link" active-class="active">Neue Meldung</RouterLink>
+        <RouterLink to="/portal/new" class="nav-link" active-class="active">Neue Meldung</RouterLink>
       </nav>
       <div class="spacer" />
       <UserMenu>

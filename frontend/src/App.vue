@@ -37,7 +37,7 @@ session.watchOtherTabs();
     <RouterView />
   </main>
   <ToastHost />
-  <!-- Vorgang im Fenster (Einstellung «Fenster»), über ?vorgang=123 -->
+  <!-- Vorgang im Fenster (Einstellung «Fenster»), über ?item=123 -->
   <ItemModal v-if="showHeader" />
   <ConfirmHost />
 </template>

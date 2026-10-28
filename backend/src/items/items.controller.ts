@@ -114,6 +114,8 @@ const rejectSchema = z.object({
 const commentSchema = z.object({
   kind: z.enum(['reply', 'note']),
   body: z.string().max(100000).default('').transform(normalizeNewlines),
+  /** Nur Admins: im Namen dieses IT-Mitarbeitenden oder Admins schreiben (Entscheid vom 28.10.2026) */
+  asUserId: z.uuid('Ungültiger Benutzer').optional(),
 });
 
 const noteEditSchema = z.object({ body: z.string().max(100000).transform(normalizeNewlines) });
@@ -238,7 +240,7 @@ export class ItemsController {
     @UploadedFiles() files: UploadedFile[] | undefined,
     @CurrentUser() user: User,
   ) {
-    await this.items.comment(user, number, body.kind, body.body, files ?? []);
+    await this.items.comment(user, number, body.kind, body.body, files ?? [], body.asUserId);
   }
 
   @Patch('entries/:id')
