@@ -1,6 +1,6 @@
 # <img src="frontend/public/logo.svg" alt="Patchwork" height="48">
 
-Störungen und Aufgaben an einem Ort, als Ersatz für Wekan und HelpSpot.
+Störungen und Aufgaben an einem Ort, als Ersatz für Wekan bzw. Planka und HelpSpot.
 Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/Entscheidungen.md](docs/Entscheidungen.md).
 
 ## Funktionsumfang (MVP)
@@ -9,6 +9,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 - **Tabs:** Eingang (Mails ohne Typ, mit «+ Neu» für einen Vorgang beliebigen Typs), Störungen (offene als Liste oder Board; Ansicht «Gelöst»), Aufgaben (offene als Board mit Drag & Drop oder Liste; Ansichten «Erledigt» und «Abgelehnt»). Jeder Tab zeigt die Anzahl offener Vorgänge (bei Aufgaben ohne die im Backlog, d.h. im Start-Status der Aufgaben) und hat den Filter «Nur meine».
 - **Liste oder Board** für offene Störungen (Standard Liste, dringend zuerst) und offene Aufgaben (Standard Board), Umschalter in der Kopfzeile, pro Benutzer gespeichert. Das Board der Störungen zeigt dazu die gelösten der letzten 14 Tage, Karten nach Priorität und Alter, Ziehen wechselt den Status. Die Liste der Aufgaben ist nach Status sortiert, dann wie im Board.
 - **Vorgang als Seite oder Fenster:** Unter «Einstellungen» im Benutzermenü wählt man je Bereich (Eingang, Störungen, Aufgaben), ob ein Vorgang in einem grossen Fenster über der Liste (Standard) oder als Seite öffnet (`?vorgang=123`, «Zurück» schliesst es, «Als Seite öffnen» wechselt, die Seite dahinter scrollt nicht mit). Ctrl+Klick öffnet einen neuen Tab, Links aus Mails immer die Seite.
+- **Farbschema** Automatisch (wie Windows bzw. der Browser), Hell oder Dunkel: unter «Einstellungen» im Benutzermenü, im Portal im Menü beim Namen. Pro Benutzer gespeichert und auf jedem Gerät gültig; die Anmeldeseite zeigt die letzte Wahl in diesem Browser.
 - **Filter und Sortierung** in Eingang, Störungen (offen und gelöst), bei den offenen Aufgaben und unter Erledigt/Abgelehnt: nach Priorität, Zuständig (auch «niemand»), Status (wo es mehrere gibt) und Meldeweg; in den Listen zusätzlich Sortieren per Klick auf den Spaltenkopf (aufsteigend, absteigend, zurück). Die Auswahl bleibt pro Ansicht im Browser gespeichert.
 - **Hinweise bei Störungen** für Admins als Balken oben: Mail-Abruf eines Postfachs seit 60 Minuten gestört, fehlgeschlagene ausgehende Mails (bis «Erneut senden» oder «Als erledigt markieren»), weniger als 10 % freier Platz auf dem Datenträger der Ablage.
 - **Anrede:** Patchwork, Portal und alle Mails sprechen per du an; gegenüber Meldern heisst ein Vorgang «Meldung».

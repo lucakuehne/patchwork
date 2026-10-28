@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { api } from '../api';
 import { rejectAllowed, transitionAllowed } from '../status-flow';
+import { applyTheme } from '../theme';
 import type {
   Area,
   Channel,
@@ -38,10 +39,11 @@ export const useSession = defineStore('session', () => {
   const mailboxes = ref<MailboxOption[]>([]);
   /** Bereiche des Benutzers (Admins alle, IT laut Verwaltung → Benutzer) */
   const areas = ref<Area[]>(['inbox', 'incident', 'task']);
-  /** Einstellungen des Benutzers (auf dem Server gespeichert): Board oder Liste, Vorgang als Seite oder Fenster */
+  /** Einstellungen des Benutzers (auf dem Server gespeichert): Board oder Liste, Vorgang als Seite oder Fenster, Farbschema */
   const preferences = ref<Preferences>({
     layout: { incidents: 'list', tasks: 'board' },
     open: { inbox: 'modal', incident: 'modal', task: 'modal' },
+    theme: 'auto',
   });
   /** Wie ein Vorgang dieses Typs öffnet (null = Eingang) */
   const openMode = (type: ItemType | null) => preferences.value.open[type ?? 'inbox'];
@@ -73,7 +75,7 @@ export const useSession = defineStore('session', () => {
     user.value = await api.post<User>('/auth/login', { username, password });
     impersonator.value = null;
     announceSessionChange(user.value.id, null);
-    if (isStaff.value) await loadAppData();
+    await loadUserData();
   }
 
   async function logout() {
@@ -133,6 +135,12 @@ export const useSession = defineStore('session', () => {
     window.addEventListener('focus', check);
   }
 
+  /** Nach dem Login: Admin und IT die Stammdaten, Melder (Portal) nur ihre Einstellungen (Farbschema) */
+  async function loadUserData() {
+    if (isStaff.value) await loadAppData();
+    else if (user.value) await loadPreferences().catch(() => undefined);
+  }
+
   /** Stammdaten nach dem Login. */
   async function loadAppData() {
     await Promise.all([refreshCounts(), loadStatuses(), loadChannels(), loadStaff(), loadMailboxes(), loadAreas(), loadPreferences()]);
@@ -144,20 +152,29 @@ export const useSession = defineStore('session', () => {
 
   async function loadPreferences() {
     preferences.value = await api.get<Preferences>('/me/preferences');
+    applyTheme(preferences.value.theme);
   }
 
   /** Einstellung ändern: sofort wirksam, danach gespeichert (bei einem Fehler wieder der gespeicherte Stand) */
-  async function savePreferences(patch: { layout?: Partial<Preferences['layout']>; open?: Partial<Preferences['open']> }) {
+  async function savePreferences(patch: {
+    layout?: Partial<Preferences['layout']>;
+    open?: Partial<Preferences['open']>;
+    theme?: Preferences['theme'];
+  }) {
     const before = preferences.value;
     preferences.value = {
       layout: { ...before.layout, ...patch.layout },
       open: { ...before.open, ...patch.open },
+      theme: patch.theme ?? before.theme,
     };
+    applyTheme(preferences.value.theme);
     try {
       preferences.value = await api.put<Preferences>('/me/preferences', patch);
     } catch (err) {
       preferences.value = before;
       throw err;
+    } finally {
+      applyTheme(preferences.value.theme);
     }
   }
 
@@ -248,6 +265,7 @@ export const useSession = defineStore('session', () => {
     loadMe,
     login,
     logout,
+    loadUserData,
     loadAppData,
     refreshCounts,
     loadStatuses,

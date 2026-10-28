@@ -4,6 +4,11 @@ export const NUMBER_PREFIX = 'PW';
 export const itemRef = (n: number) => `${NUMBER_PREFIX}-${n}`;
 
 export const TYPE_LABELS: Record<ItemType, string> = { incident: 'Störung', task: 'Aufgabe' };
+/** Leitfrage je Typ: beim Erfassen und als Erklärung beim Feld «Typ» eines Vorgangs */
+export const TYPE_HINTS: Record<ItemType, string> = {
+  incident: 'Etwas funktioniert nicht mehr, das vorher ging',
+  task: 'Etwas Neues oder Anderes soll gemacht werden',
+};
 export const PRIORITY_LABELS: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
 export const ROLE_LABELS: Record<Role, string> = { admin: 'Admin', it: 'IT', standard: 'Standard' };
 

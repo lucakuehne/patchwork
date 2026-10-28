@@ -14,12 +14,15 @@ export type View =
   | 'tasks-rejected'
   | 'search';
 
-/** Einstellungen des Benutzers: offene Störungen/Aufgaben als Board oder Liste, Vorgänge als Seite oder Fenster */
+/** Einstellungen des Benutzers: offene Störungen/Aufgaben als Board oder Liste, Vorgänge als Seite oder Fenster, Farbschema */
 export type ListLayout = 'list' | 'board';
 export type OpenMode = 'page' | 'modal';
+/** «auto»: wie Windows bzw. der Browser */
+export type Theme = 'auto' | 'light' | 'dark';
 export interface Preferences {
   layout: { incidents: ListLayout; tasks: ListLayout };
   open: { inbox: OpenMode; incident: OpenMode; task: OpenMode };
+  theme: Theme;
 }
 
 export interface User {

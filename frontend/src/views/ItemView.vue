@@ -4,6 +4,7 @@ import { api, errorMessage } from '../api';
 import ChecklistsPanel from '../components/ChecklistsPanel.vue';
 import CommentComposer from '../components/CommentComposer.vue';
 import ChannelIcon from '../components/ChannelIcon.vue';
+import HelpTip from '../components/HelpTip.vue';
 import ItemDescription from '../components/ItemDescription.vue';
 import LinksPanel from '../components/LinksPanel.vue';
 import PersonSearch from '../components/PersonSearch.vue';
@@ -15,7 +16,7 @@ import TimelineMail from '../components/TimelineMail.vue';
 import TimelineMessage from '../components/TimelineMessage.vue';
 import TypeChangeDialog from '../components/TypeChangeDialog.vue';
 import UserPicker from '../components/UserPicker.vue';
-import { dueState, formatDateTime, itemRef, PRIORITY_LABELS, TYPE_LABELS } from '../format';
+import { dueState, formatDateTime, itemRef, PRIORITY_LABELS, TYPE_HINTS, TYPE_LABELS } from '../format';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import { groupTimeline, type TimelineBlock } from '../timeline';
@@ -238,7 +239,13 @@ function onRejected() {
 
       <aside class="side card card-body">
         <div class="field">
-          <span class="label">Typ</span>
+          <span class="label type-label">
+            Typ
+            <HelpTip label="Was ist eine Störung, was eine Aufgabe?">
+              <strong>Störung:</strong> {{ TYPE_HINTS.incident }}.<br />
+              <strong>Aufgabe:</strong> {{ TYPE_HINTS.task }}.
+            </HelpTip>
+          </span>
           <div class="segmented type-switch">
             <!-- Nur in Bereiche, die man selbst sieht (Bereiche je Rolle) -->
             <button
@@ -477,6 +484,11 @@ function onRejected() {
   flex: 1;
   height: 1px;
   background: var(--border-strong);
+}
+.type-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .side {
   position: sticky;

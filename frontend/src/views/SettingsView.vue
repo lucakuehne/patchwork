@@ -2,11 +2,12 @@
 import { computed } from 'vue';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
+import { THEMES } from '../theme';
 import type { Area, ListLayout, OpenMode, Preferences } from '../types';
 
 /**
- * Persönliche Einstellungen (Benutzermenü): Liste oder Board für offene Störungen und Aufgaben, Vorgang als Seite oder
- * im Fenster öffnen je Typ. Gespeichert pro Benutzer, wirksam sofort. Nur Bereiche, die man sieht.
+ * Persönliche Einstellungen (Benutzermenü): Farbschema, Liste oder Board für offene Störungen und Aufgaben, Vorgang als
+ * Seite oder im Fenster öffnen je Typ. Gespeichert pro Benutzer, wirksam sofort. Nur Bereiche, die man sieht.
  */
 const session = useSession();
 const toast = useToast();
@@ -52,6 +53,26 @@ async function save(patch: Parameters<typeof session.savePreferences>[0]) {
   <div class="page settings">
     <div class="page-head">
       <h1>Einstellungen</h1>
+    </div>
+
+    <div class="card card-body stack">
+      <h2>Darstellung</h2>
+      <div class="setting">
+        <span class="setting-label">Farbschema</span>
+        <div class="segmented" role="group" aria-label="Farbschema">
+          <button
+            v-for="o in THEMES"
+            :key="o.value"
+            type="button"
+            :class="{ active: session.preferences.theme === o.value }"
+            :aria-pressed="session.preferences.theme === o.value"
+            @click="session.preferences.theme !== o.value && save({ theme: o.value })"
+          >
+            {{ o.label }}
+          </button>
+        </div>
+      </div>
+      <span class="hint faint">«Automatisch» folgt Windows bzw. dem Browser. Die Wahl gilt auf jedem Gerät, an dem du dich anmeldest.</span>
     </div>
 
     <div v-if="layoutRows.length" class="card card-body stack">

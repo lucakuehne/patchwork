@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { TYPE_HINTS, TYPE_LABELS } from '../format';
 import type { ItemType } from '../types';
 
 /** Auswahl des Typs beim Erfassen: Karten mit Leitfrage. «types»: nur diese Typen (Bereiche je Rolle). */
 const props = withDefaults(defineProps<{ types?: ItemType[] }>(), { types: () => ['incident', 'task'] });
 const model = defineModel<ItemType>({ required: true });
 
-const all: { value: ItemType; label: string; hint: string }[] = [
-  { value: 'incident', label: 'Störung', hint: 'Etwas funktioniert nicht mehr, das vorher ging' },
-  { value: 'task', label: 'Aufgabe', hint: 'Etwas Neues oder Anderes soll gemacht werden' },
-];
-const options = computed(() => all.filter((o) => props.types.includes(o.value)));
+const options = computed(() => props.types.map((value) => ({ value, label: TYPE_LABELS[value], hint: TYPE_HINTS[value] })));
 </script>
 
 <template>

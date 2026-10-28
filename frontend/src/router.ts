@@ -122,7 +122,7 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true;
   if (!session.user) {
     await session.loadMe();
-    if (session.isStaff) await session.loadAppData();
+    await session.loadUserData();
   }
   if (!session.user) return { name: 'login', query: to.fullPath !== '/eingang' ? { weiter: to.fullPath } : {} };
 

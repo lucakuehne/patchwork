@@ -64,65 +64,64 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12151b;
-    --surface: #1a1e26;
-    --surface-2: #222833;
-    --surface-hover: #262d39;
-    --border: #2e3542;
-    --border-strong: #3d4656;
-    --text: #e6e9ef;
-    --text-muted: #a3acba;
-    --text-faint: #6f7a8b;
-    --accent: #6d8dff;
-    --accent-hover: #8aa3ff;
-    --accent-soft: #232d4a;
-    --danger: #f07171;
-    --danger-soft: #3a2224;
-    --success: #4cc584;
-    --success-soft: #1c3327;
-    --warning: #e3a53c;
-    --warning-soft: #3a2f1a;
-    --note-bg: #231f1b;
-    --note-border: #3d3226;
-    --note-accent: #7a5b37;
-    --note-soft: #3a2c1e;
-    --note-text: #f2b56b;
-    --note-strong: #b45309;
-    --note-strong-hover: #c2620a;
-    --reply-bg: #1b2030;
-    --reply-border: #2c3550;
-    --reply-accent: #44558a;
-    --original-bg: #1a1e26;
-    --original-border: #3d4656;
-    --high: #f07171;
-    --normal: #a3acba;
-    --low: #6f7a8b;
-    --st-gray-bg: #262d39;
-    --st-gray: #a3acba;
-    --st-blue-bg: #232d4a;
-    --st-blue: #6d8dff;
-    --st-teal-bg: #173533;
-    --st-teal: #4fd1c5;
-    --st-green-bg: #1c3327;
-    --st-green: #4cc584;
-    --st-yellow-bg: #3a351a;
-    --st-yellow: #e3c84a;
-    --st-orange-bg: #3a2f1a;
-    --st-orange: #e3a53c;
-    --st-red-bg: #3a2224;
-    --st-red: #f07171;
-    --st-pink-bg: #3a1f2e;
-    --st-pink: #f48fbf;
-    --st-purple-bg: #2c2346;
-    --st-purple: #a78bfa;
-    --st-brown-bg: #33281f;
-    --st-brown: #d0a07d;
-    --shadow: 0 1px 2px rgb(0 0 0 / 30%);
-    --shadow-lg: 0 12px 32px rgb(0 0 0 / 50%);
-    color-scheme: dark;
-  }
+/* Dunkles Farbschema: data-theme setzt src/theme.ts bzw. das Skript in index.html (gewählt oder wie das System) */
+:root[data-theme='dark'] {
+  --bg: #12151b;
+  --surface: #1a1e26;
+  --surface-2: #222833;
+  --surface-hover: #262d39;
+  --border: #2e3542;
+  --border-strong: #3d4656;
+  --text: #e6e9ef;
+  --text-muted: #a3acba;
+  --text-faint: #6f7a8b;
+  --accent: #6d8dff;
+  --accent-hover: #8aa3ff;
+  --accent-soft: #232d4a;
+  --danger: #f07171;
+  --danger-soft: #3a2224;
+  --success: #4cc584;
+  --success-soft: #1c3327;
+  --warning: #e3a53c;
+  --warning-soft: #3a2f1a;
+  --note-bg: #231f1b;
+  --note-border: #3d3226;
+  --note-accent: #7a5b37;
+  --note-soft: #3a2c1e;
+  --note-text: #f2b56b;
+  --note-strong: #b45309;
+  --note-strong-hover: #c2620a;
+  --reply-bg: #1b2030;
+  --reply-border: #2c3550;
+  --reply-accent: #44558a;
+  --original-bg: #1a1e26;
+  --original-border: #3d4656;
+  --high: #f07171;
+  --normal: #a3acba;
+  --low: #6f7a8b;
+  --st-gray-bg: #262d39;
+  --st-gray: #a3acba;
+  --st-blue-bg: #232d4a;
+  --st-blue: #6d8dff;
+  --st-teal-bg: #173533;
+  --st-teal: #4fd1c5;
+  --st-green-bg: #1c3327;
+  --st-green: #4cc584;
+  --st-yellow-bg: #3a351a;
+  --st-yellow: #e3c84a;
+  --st-orange-bg: #3a2f1a;
+  --st-orange: #e3a53c;
+  --st-red-bg: #3a2224;
+  --st-red: #f07171;
+  --st-pink-bg: #3a1f2e;
+  --st-pink: #f48fbf;
+  --st-purple-bg: #2c2346;
+  --st-purple: #a78bfa;
+  --st-brown-bg: #33281f;
+  --st-brown: #d0a07d;
+  --shadow: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 50%);
+  color-scheme: dark;
 }
 
 * {
@@ -694,6 +693,14 @@ h3 {
 .mail-html {
   max-height: 520px;
   overflow: auto;
+}
+/* Empfangene Mails im dunklen Schema: Farben aus Attributen (bgcolor, <font color>) ergäben helle Flächen bzw. dunkle
+   Schrift auf dunklem Grund (style-Attribute entfernt renderMailHtml schon) */
+:root[data-theme='dark'] .mail-html:not(.own-mail) :is([bgcolor], [background]) {
+  background: none;
+}
+:root[data-theme='dark'] .mail-html:not(.own-mail) font[color] {
+  color: inherit;
 }
 /* Von Patchwork versendete Mails: hell wie in der Vorlage (weisser Grund), auch im dunklen Farbschema */
 .own-mail {

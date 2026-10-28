@@ -2,32 +2,38 @@ import { z } from 'zod';
 
 /**
  * Einstellungen eines Benutzers (Entscheid vom 27.10.2026): offene Störungen und Aufgaben als Board oder Liste, Vorgänge
- * je Bereich als Seite oder im grossen Fenster öffnen. Gespeichert wird nur, was vom Standard abweicht bzw. gewählt
- * wurde; fehlende Werte ergänzt «withDefaults».
+ * je Bereich als Seite oder im grossen Fenster öffnen. Dazu das Farbschema (Entscheid vom 28.10.2026), auch für Melder
+ * im Portal. Gespeichert wird nur, was vom Standard abweicht bzw. gewählt wurde; fehlende Werte ergänzt «withDefaults».
  */
 export type ListLayout = 'list' | 'board';
 export type OpenMode = 'page' | 'modal';
+/** «auto»: wie Windows bzw. der Browser */
+export type Theme = 'auto' | 'light' | 'dark';
 
 export interface Preferences {
   layout: { incidents: ListLayout; tasks: ListLayout };
   open: { inbox: OpenMode; incident: OpenMode; task: OpenMode };
+  theme: Theme;
 }
 
 /** Gespeicherte Fassung (Spalte users.preferences): Teile davon */
 export interface StoredPreferences {
   layout?: Partial<Preferences['layout']>;
   open?: Partial<Preferences['open']>;
+  theme?: Theme;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
   layout: { incidents: 'list', tasks: 'board' },
   open: { inbox: 'modal', incident: 'modal', task: 'modal' },
+  theme: 'auto',
 };
 
 export function withDefaults(stored: StoredPreferences | null | undefined): Preferences {
   return {
     layout: { ...DEFAULT_PREFERENCES.layout, ...stored?.layout },
     open: { ...DEFAULT_PREFERENCES.open, ...stored?.open },
+    theme: stored?.theme ?? DEFAULT_PREFERENCES.theme,
   };
 }
 
@@ -39,12 +45,15 @@ export const preferencesPatchSchema = z
   .object({
     layout: z.object({ incidents: layout, tasks: layout }).partial().strict().optional(),
     open: z.object({ inbox: open, incident: open, task: open }).partial().strict().optional(),
+    theme: z.enum(['auto', 'light', 'dark']).optional(),
   })
   .strict();
 
 export function mergePreferences(stored: StoredPreferences | null | undefined, patch: z.infer<typeof preferencesPatchSchema>): StoredPreferences {
+  const theme = patch.theme ?? stored?.theme;
   return {
     layout: { ...stored?.layout, ...patch.layout },
     open: { ...stored?.open, ...patch.open },
+    ...(theme ? { theme } : {}),
   };
 }

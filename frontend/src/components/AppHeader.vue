@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { initials } from '../format';
 import { useSession } from '../stores/session';
 import type { Area } from '../types';
 import AppLogo from './AppLogo.vue';
+import UserMenu from './UserMenu.vue';
 
 const session = useSession();
 const route = useRoute();
 const router = useRouter();
 
 const search = ref(typeof route.query.q === 'string' ? route.query.q : '');
-const menuOpen = ref(false);
 
 // Nur die Bereiche, die der Benutzer sieht (Bereiche je Rolle)
 const tabs = computed(() =>
@@ -27,15 +26,6 @@ function submitSearch() {
   if (q) void router.push({ name: 'search', query: { q } });
 }
 
-async function logout() {
-  menuOpen.value = false;
-  try {
-    await session.logout();
-  } finally {
-    await router.push({ name: 'login' });
-  }
-}
-
 let timer: number | undefined;
 onMounted(() => {
   timer = window.setInterval(() => void session.refreshCounts(true).catch(() => undefined), 30000);
@@ -43,17 +33,8 @@ onMounted(() => {
 onBeforeUnmount(() => window.clearInterval(timer));
 watch(
   () => route.fullPath,
-  () => {
-    menuOpen.value = false;
-    void session.refreshCounts().catch(() => undefined);
-  },
+  () => void session.refreshCounts().catch(() => undefined),
 );
-
-function closeMenu(e: MouseEvent) {
-  if (!(e.target as HTMLElement).closest('.user-menu')) menuOpen.value = false;
-}
-onMounted(() => document.addEventListener('click', closeMenu));
-onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 </script>
 
 <template>
@@ -84,21 +65,10 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
       <input v-model="search" class="input" type="search" placeholder="Suchen (Text oder PW-Nummer)" />
     </form>
 
-    <div class="user-menu">
-      <button class="btn btn-ghost user-btn" type="button" @click="menuOpen = !menuOpen">
-        <span class="avatar">{{ initials(session.user?.name ?? '') }}</span>
-        <span class="user-name">{{ session.user?.name }}</span>
-      </button>
-      <div v-if="menuOpen" class="menu card">
-        <div class="menu-head">
-          <div>{{ session.user?.name }}</div>
-          <div class="faint">{{ session.user?.email }}</div>
-        </div>
-        <RouterLink to="/einstellungen" class="menu-item">Einstellungen</RouterLink>
-        <RouterLink v-if="session.isAdmin" to="/admin" class="menu-item">Verwaltung</RouterLink>
-        <button class="menu-item" type="button" @click="logout">Abmelden</button>
-      </div>
-    </div>
+    <UserMenu>
+      <RouterLink to="/einstellungen" class="menu-item">Einstellungen</RouterLink>
+      <RouterLink v-if="session.isAdmin" to="/admin" class="menu-item">Verwaltung</RouterLink>
+    </UserMenu>
   </header>
 </template>
 
@@ -163,42 +133,6 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 .search {
   width: 280px;
 }
-.user-menu {
-  position: relative;
-}
-.user-btn {
-  padding: 0 6px;
-}
-.menu {
-  position: absolute;
-  right: 0;
-  top: 40px;
-  min-width: 220px;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: var(--shadow-lg);
-}
-.menu-head {
-  padding: 6px 8px 8px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
-}
-.menu-item {
-  padding: 7px 8px;
-  border-radius: var(--radius-sm);
-  background: none;
-  border: none;
-  text-align: left;
-  font: inherit;
-  color: var(--text);
-  cursor: pointer;
-  text-decoration: none;
-}
-.menu-item:hover {
-  background: var(--surface-hover);
-  text-decoration: none;
-}
 .tab {
   white-space: nowrap;
 }
@@ -211,7 +145,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
   .search {
     width: 160px;
   }
-  .user-name {
+  .header :deep(.user-name) {
     display: none;
   }
 }

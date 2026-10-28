@@ -18,7 +18,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { AdminOnly, CurrentUser, type AuthedRequest } from '../auth/auth.decorators';
+import { AdminOnly, CurrentUser, PortalRoute, type AuthedRequest } from '../auth/auth.decorators';
 import { LdapService, type DirectoryPerson, type LdapIdentity } from '../auth/ldap.service';
 import { SessionService } from '../auth/session.service';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
@@ -90,12 +90,17 @@ export class UsersController {
     private readonly welcomeMail: WelcomeMailService,
   ) {}
 
-  /** Eigene Einstellungen: offene Störungen/Aufgaben als Board oder Liste, Vorgänge als Seite oder Fenster öffnen */
+  /**
+   * Eigene Einstellungen: offene Störungen/Aufgaben als Board oder Liste, Vorgänge als Seite oder Fenster öffnen,
+   * Farbschema. Auch für Melder im Portal (dort zählt nur das Farbschema).
+   */
+  @PortalRoute()
   @Get('me/preferences')
   preferences(@CurrentUser() user: User) {
     return withDefaults(user.preferences);
   }
 
+  @PortalRoute()
   @Put('me/preferences')
   async updatePreferences(
     @Body(new ZodPipe(preferencesPatchSchema)) body: z.infer<typeof preferencesPatchSchema>,

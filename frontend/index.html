@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Patchwork</title>
+    <!-- Farbschema vor dem ersten Bild setzen, damit nichts hell aufblitzt (gleiche Logik wie src/theme.ts) -->
+    <script>
+      (function () {
+        try {
+          var theme = JSON.parse(localStorage.getItem('patchwork.theme') || 'null');
+          var dark = theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {
+          // ohne Speicher: src/theme.ts setzt das Schema beim Start
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

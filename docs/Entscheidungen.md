@@ -199,6 +199,10 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - Editor (gewünscht am 20.10.2026): Die Knöpfe für Listen zeigen drei Punkte bzw. drei Nummern untereinander. Eine Trennlinie gibt es im Editor nicht.
 - Knopf «+ Neu» (gewünscht am 20.10.2026): steht im Eingang rechts neben «Nur meine», wie «+ Störung» und «+ Aufgabe» in den anderen Ansichten, nicht mehr in der Kopfzeile. Er öffnet wie bisher «Neuer Vorgang» mit Auswahl des Typs.
 - Seitenleiste eines Vorgangs (gewünscht am 20.10.2026): unten «Erstellt», «Aktualisiert» und bei abgeschlossenen Vorgängen «Abgeschlossen».
+- Typ in der Seitenleiste (gewünscht am 28.10.2026): Ein «?» neben «Typ» erklärt beim Darüberfahren (oder per
+  Tastatur) den Unterschied, mit denselben Leitfragen wie beim Erfassen: Störung «Etwas funktioniert nicht mehr, das
+  vorher ging», Aufgabe «Etwas Neues oder Anderes soll gemacht werden». Der Benutzer liess offen, ob «?» oder Karten
+  wie beim Erfassen; gewählt ist «?», weil die Karten in der schmalen Seitenleiste untereinander stünden.
 - Originalmail (gewünscht am 20.10.2026): «Originalmail» bei einer Nachricht oder der ursprünglichen Meldung öffnet die Mail in einem Fenster (Kopf, Text bzw. bereinigtes HTML ohne externe Bilder, Anhänge). Die .eml-Datei lädt man dort herunter, nicht mehr direkt.
 - Bestätigt am 20.10.2026:
   - «Öffentlich» mit Weltkugel und «Intern» mit Schloss, im Umschalter über dem Antwortfeld und ebenso in der Timeline.
@@ -229,6 +233,10 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - **Fortschritt der Checklisten** als schmaler Balken mit kleiner Zahl daneben («3/5»), auf den Board-Karten und in den Listen, statt «☑ 3/5». Auf den Board-Karten füllt der Balken die ganze Breite der Karte (gewünscht am 23.10.2026).
 - **Aufgabe in einer Spalte erstellen:** «+» im Kopf jeder offenen Spalte des Boards öffnet «Neue Aufgabe» mit diesem Status vorgewählt. Abgeschlossene Spalten haben kein «+».
 - **Board-Karte** (bestätigt am 21.10.2026): ein kleines Text-Symbol, wenn die Aufgabe eine Beschreibung hat, beim Darüberfahren die ersten Zeilen als Text. Dazu eine Sprechblase mit der Anzahl Kommentare: öffentliche Antworten (auch die des Melders) und interne Notizen, ohne Änderungen, automatische Mails und Abwesenheitsnotizen; bei 0 keine.
+  - Aufbau seit 28.10.2026 (gewünscht vom Benutzer, gilt für die Boards der Aufgaben und der Störungen): oben Nummer,
+    Fälligkeit und Priorität; darunter Titel und Fortschritt der Checklisten; unten Melder, die Symbole für Beschreibung
+    und Kommentare, Alter und Zuständig. Die eigene Zeile für Symbole und Fälligkeit entfällt, lange Namen des Melders
+    werden gekürzt.
 - **Nach dem Erstellen einer Aufgabe** (bestätigt am 21.10.2026) bleibt man, wo man ist (z.B. auf dem Board, die Karte erscheint in ihrer Spalte), mit der Meldung «PW-123 erstellt» und «Öffnen». Gilt für alle neuen Aufgaben, auch über «+ Neu». Neue Störungen öffnen wie bisher.
 - **Erwähnen** (bestätigt am 21.10.2026): Mit «@» im Antwortfeld (öffentliche Antworten und interne Notizen, auch beim Bearbeiten einer Notiz) öffnet sich eine Auswahl der IT-Mitarbeitenden und Admins. Die Erwähnung erscheint in Patchwork hervorgehoben. Beim Melder (Mail und Portal) steht sie als gewöhnlicher Text «@Vorname Nachname». Die Erwähnten erhalten eine Mail «Erwähnt» mit dem Text und dem Link (Vorlage unter Verwaltung → Mail-Vorlagen, IT), nicht an sich selbst; beim Bearbeiten einer Notiz nur neu hinzugekommene Erwähnte.
 - **Stummschalten ausgeblendet** (bestätigt am 21.10.2026): Die Option «Benachrichtigungen für mich stummschalten» ist vorläufig ausgeblendet. Bestehende Stummschaltungen bleiben gespeichert, wirken aber nicht mehr: Alle erhalten wieder ihre Mails. Wird die Option später wieder eingeblendet, gelten sie wieder.
@@ -250,6 +258,26 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   - Migration 0030: Aufgaben, Ziele, Pfeile und zeitgesteuerte Regeln von «Offen» gehen auf das Backlog (fehlt es, auf den ersten übrigen offenen Status ausser dem Wartet-Status), dann wird «Offen» gelöscht. Bestehende Regeln mit «Typ: Aufgabe» erhalten den Start-Status der Aufgaben.
   - Bereiche: Einstellung `areas` (`{ it: [...] }`). Der AuthGuard prüft jede Route mit `:number`; Anhänge, Notizen und Checklisten (über ihre ID), Listen, Zähler, Suche, Verknüpfungen und aus anderen Vorgängen kopierte Bilder prüfen selbst. Mails an die IT laufen über eine Stelle, die ohne Zugriff nichts versendet; Beteiligte ohne Zugriff fallen aus dem CC.
   - Gesperrte Vorgänge antworten mit 403 «Kein Zugriff auf den Bereich …», die Oberfläche zeigt «PW-… ist für Sie gesperrt».
+
+## Farbschema hell oder dunkel (bestätigt am 28.10.2026)
+
+- Unter «Einstellungen» (Benutzermenü) steht zuoberst der Block «Darstellung» mit dem Farbschema **Automatisch | Hell |
+  Dunkel**. Standard «Automatisch»: wie Windows bzw. der Browser (so wie bisher), ein Wechsel des Systems gilt sofort.
+  Im Benutzermenü selbst gibt es keinen Umschalter.
+- Die Wahl gehört zum Benutzerkonto und gilt auf jedem Gerät. Die Anmeldeseite (vor dem Login) zeigt das zuletzt in
+  diesem Browser gewählte Schema.
+- Melder im Portal wählen das Farbschema im Menü beim Namen rechts oben («Darstellung» und «Abmelden»), das Portal hat
+  keine Seite «Einstellungen».
+- Hell bleiben wie bisher: von Patchwork versendete Mails in der Ansicht und Exporte der Auswertungen (Bild, PDF).
+  Empfangene Mails erscheinen im dunklen Schema ohne Hintergrund- und Schriftfarben aus HTML-Attributen (`bgcolor`,
+  `<font color>`), damit sie lesbar bleiben (Farben aus `style` entfernt Patchwork schon immer).
+- Arbeitet ein Admin «als dieser Benutzer», gilt das Farbschema dieses Benutzers (wie Board oder Liste); eine Änderung
+  in dieser Zeit speichert es für ihn.
+- Technisch: `theme` in `users.preferences` (keine Migration), `GET/PUT /api/me/preferences` auch für Melder im Portal.
+  Am `<html>` steht das wirksame Schema als `data-theme` (`light` oder `dark`), gesetzt von `src/theme.ts` und schon vor
+  dem Start des Programms von einem kleinen Skript in `index.html` aus dem Speicher des Browsers (`patchwork.theme`),
+  damit nichts hell aufblitzt. Das Logo (`<img>`) folgt dem Schema der Seite. Diagramme zeichnen sich beim Wechsel neu.
+  Das Benutzermenü ist eine gemeinsame Komponente (`UserMenu`) für Kopfzeile und Portal.
 
 ## Auswertungen nach Störungen, Aufgaben und Alle; Zähler der Aufgaben (bestätigt am 27.10.2026)
 

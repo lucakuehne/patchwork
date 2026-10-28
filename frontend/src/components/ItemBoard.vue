@@ -167,13 +167,31 @@ function open(item: ItemSummary, event: MouseEvent) {
             @click="open(element, $event)"
             @auxclick.middle.prevent="open(element, $event)"
           >
+            <!-- Oben Nummer, Fälligkeit und Priorität; unten Melder, Beschreibung, Kommentare, Alter und Zuständig -->
             <div class="card-top">
               <span class="mono faint">{{ itemRef(element.number) }}</span>
+              <span class="spacer" />
+              <span
+                v-if="element.dueDate"
+                class="badge due"
+                :class="`due-${dueState(element.dueDate, status.closed)}`"
+                :title="dueTitle(element.dueDate, status.closed)"
+              >
+                <svg class="due-icon" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="2" y="3" width="12" height="11" rx="1.5" />
+                  <path d="M2 6.5h12M5.5 1.8v2.6M10.5 1.8v2.6" />
+                </svg>
+                {{ formatDay(element.dueDate) }}
+              </span>
               <span v-if="element.priority === 'high'" class="prio prio-high">Hoch</span>
               <span v-else-if="element.priority === 'low'" class="prio prio-low">Niedrig</span>
             </div>
             <div class="card-title">{{ element.title }}</div>
-            <div v-if="element.dueDate || element.descriptionPreview || element.commentCount" class="card-meta">
+            <!-- Fortschritt der Checklisten über die ganze Breite der Karte -->
+            <ChecklistProgress v-if="element.checklist" fill :done="element.checklist.done" :total="element.checklist.total" />
+            <div class="card-foot">
+              <span class="reporter faint" :title="element.reporter.email">{{ element.reporter.name }}</span>
+              <span class="spacer" />
               <span
                 v-if="element.descriptionPreview"
                 class="meta-icon"
@@ -192,24 +210,6 @@ function open(item: ItemSummary, event: MouseEvent) {
                 </svg>
                 {{ element.commentCount }}
               </span>
-              <span
-                v-if="element.dueDate"
-                class="badge due"
-                :class="`due-${dueState(element.dueDate, status.closed)}`"
-                :title="dueTitle(element.dueDate, status.closed)"
-              >
-                <svg class="due-icon" viewBox="0 0 16 16" aria-hidden="true">
-                  <rect x="2" y="3" width="12" height="11" rx="1.5" />
-                  <path d="M2 6.5h12M5.5 1.8v2.6M10.5 1.8v2.6" />
-                </svg>
-                {{ formatDay(element.dueDate) }}
-              </span>
-            </div>
-            <!-- Fortschritt der Checklisten über die ganze Breite der Karte -->
-            <ChecklistProgress v-if="element.checklist" fill :done="element.checklist.done" :total="element.checklist.total" />
-            <div class="card-foot">
-              <span class="faint" :title="element.reporter.email">{{ element.reporter.name }}</span>
-              <span class="spacer" />
               <span class="faint">{{ formatAge(element.createdAt) }}</span>
               <span v-if="element.assignee" class="avatar" :title="element.assignee.name">
                 {{ initials(element.assignee.name) }}
@@ -258,12 +258,6 @@ function open(item: ItemSummary, event: MouseEvent) {
   padding: 0 8px;
   font-size: 16px;
   line-height: 1;
-}
-.card-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 10px;
 }
 .meta-icon {
   display: inline-flex;
@@ -329,7 +323,8 @@ function open(item: ItemSummary, event: MouseEvent) {
 }
 .card-top {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
 }
 .card-title {
@@ -341,6 +336,17 @@ function open(item: ItemSummary, event: MouseEvent) {
   align-items: center;
   gap: 8px;
   font-size: 12px;
+}
+/* Lange Namen kürzen, damit Symbole, Alter und Zuständig in der Zeile bleiben */
+.card-foot > * {
+  flex-shrink: 0;
+}
+.card-foot > .reporter {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ghost {
   opacity: 0.4;

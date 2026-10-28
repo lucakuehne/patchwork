@@ -69,6 +69,20 @@ await step('vorgang', async () => {
   await page.goto(`${BASE}/v/1`);
   await page.locator('.timeline').waitFor();
   await shot('03-vorgang', true);
+  // «?» beim Typ erklärt Störung und Aufgabe (Darüberfahren und Tastatur)
+  const tip = page.locator('.side .type-label .help-text');
+  if (await tip.isVisible()) throw new Error('Erklärung zum Typ ohne Darüberfahren sichtbar');
+  await page.locator('.side .type-label .help-icon').hover();
+  await tip.waitFor({ state: 'visible' });
+  const text = await tip.innerText();
+  if (!text.includes('Störung: Etwas funktioniert nicht mehr') || !text.includes('Aufgabe: Etwas Neues')) throw new Error(`Erklärung zum Typ: ${text}`);
+  await page.locator('.side').screenshot({ path: `${OUT}/83-typ-erklaerung.png` });
+  console.log('Bild 83-typ-erklaerung');
+  await page.mouse.move(0, 0);
+  await tip.waitFor({ state: 'hidden' });
+  await page.locator('.side .type-label .help-icon').focus();
+  await tip.waitFor({ state: 'visible' });
+  await page.locator('.side .type-label .help-icon').blur();
 });
 
 await step('bild-einfuegen', async () => {
@@ -708,15 +722,20 @@ await step('aufgaben-neu', async () => {
   // Der Balken füllt die Breite der Karte
   const [barWidth, cardWidth] = await card.evaluate((el) => [el.querySelector('.checklist-progress').getBoundingClientRect().width, el.clientWidth]);
   if (barWidth < cardWidth - 40) throw new Error(`Fortschrittsbalken ${Math.round(barWidth)} px bei Karte ${cardWidth} px`);
-  if (!(await card.locator('.due.due-overdue').count())) throw new Error('Fälligkeit auf der Karte nicht als überfällig');
+  // Fälligkeit oben neben der Nummer, Symbole unten bei Melder und Zuständig, beide Zeilen ohne Umbruch
+  if (!(await card.locator('.card-top .due.due-overdue').count())) throw new Error('Fälligkeit nicht oben auf der Karte oder nicht als überfällig');
+  for (const row of ['.card-top', '.card-foot']) {
+    const height = await card.locator(row).evaluate((el) => el.getBoundingClientRect().height);
+    if (height > 28) throw new Error(`Karte: Zeile ${row} bricht um (${Math.round(height)} px)`);
+  }
   // Kommentare: die Notiz mit der Erwähnung
-  const comments = card.locator('.meta-icon[title$="Kommentar"], .meta-icon[title$="Kommentare"]');
+  const comments = card.locator('.card-foot .meta-icon[title$="Kommentar"], .card-foot .meta-icon[title$="Kommentare"]');
   if ((await comments.innerText()).trim() !== '1') throw new Error(`Kommentare auf der Karte: ${await comments.innerText()}`);
   await card.screenshot({ path: `${OUT}/38-karte.png` });
   console.log('Bild 38-karte');
   // Beschreibung: Symbol mit Vorschau als Text (Aufgabe aus dem Smoke-Test)
   const described = page.locator('.board-card', { hasText: 'Erwähnen' }).first();
-  const preview = await described.locator('.meta-icon[aria-label="Hat eine Beschreibung"]').getAttribute('title');
+  const preview = await described.locator('.card-foot .meta-icon[aria-label="Hat eine Beschreibung"]').getAttribute('title');
   if (preview !== 'Ablauf Zuerst sichern') throw new Error(`Vorschau der Beschreibung: ${preview}`);
   await described.screenshot({ path: `${OUT}/42-karte-beschreibung.png` });
   console.log('Bild 42-karte-beschreibung');
@@ -964,6 +983,96 @@ await step('bereiche', async () => {
   await api('PUT', '/settings/areas', { it: ['inbox', 'incident', 'task'] });
 });
 
+// Wirksames Farbschema (data-theme am <html>)
+const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
+// Pixel im Logo nahe dem hellen (#2f5bea, auch das Signet) bzw. dem dunklen Schriftzug (#6d8dff)
+const logoColors = async (selector) => {
+  const png = (await page.locator(selector).screenshot()).toString('base64');
+  return page.evaluate(async (data) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${data}`;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const px = ctx.getImageData(0, 0, img.width, img.height).data;
+    const near = (r, g, b) => {
+      let n = 0;
+      for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i] - r) + Math.abs(px[i + 1] - g) + Math.abs(px[i + 2] - b) < 12) n++;
+      return n;
+    };
+    return { light: near(0x2f, 0x5b, 0xea), dark: near(0x6d, 0x8d, 0xff) };
+  }, png);
+};
+
+await step('farbschema', async () => {
+  // Einstellungen → Darstellung: Standard «Automatisch»; «Dunkel» gilt auch bei hellem System, überall und nach dem
+  // Neuladen; «Hell» auch bei dunklem System; «Automatisch» folgt einem Wechsel des Systems sofort
+  const group = page.getByRole('group', { name: 'Farbschema' });
+  const choose = async (label) => {
+    const toasts = await page.locator('.toast', { hasText: 'Gespeichert' }).count();
+    await group.getByRole('button', { name: label, exact: true }).click();
+    await page.locator('.toast', { hasText: 'Gespeichert' }).nth(toasts).waitFor();
+  };
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto(`${BASE}/einstellungen`);
+  await page.getByRole('heading', { name: 'Darstellung' }).waitFor();
+  const active = (await group.locator('button.active').innerText()).trim();
+  if (active !== 'Automatisch') throw new Error(`Standard: ${active}`);
+  if ((await theme()) !== 'light') throw new Error('Automatisch bei hellem System nicht hell');
+  await choose('Dunkel');
+  if ((await theme()) !== 'dark') throw new Error('Dunkel nicht wirksam');
+  const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  if (background !== 'rgb(18, 21, 27)') throw new Error(`Hintergrund im dunklen Schema: ${background}`);
+  await shot('74-einstellungen-dunkel');
+  // Der Schriftzug im Logo folgt dem gewählten Schema, nicht dem System
+  const dark = await logoColors('.header .brand img.full');
+  if (dark.dark < 150) throw new Error(`Logo: Schriftzug nicht hell genug (${JSON.stringify(dark)})`);
+  await page.locator('header.header').screenshot({ path: `${OUT}/75-logo-dunkel-gewaehlt.png` });
+  console.log('Bild 75-logo-dunkel-gewaehlt');
+
+  // Rundgang im dunklen Schema
+  const pages = [
+    ['/eingang', 'nav.tabs', '76-dunkel-eingang', false],
+    ['/aufgaben', '.column', '77-dunkel-board', false],
+    ['/v/1', '.timeline', '78-dunkel-vorgang', true],
+    ['/auswertungen', 'canvas', '79-dunkel-auswertung', true],
+    ['/admin/status', '.vue-flow__node', '80-dunkel-status', true],
+  ];
+  for (const [path, ready, name, full] of pages) {
+    await page.goto(`${BASE}${path}`);
+    await page.locator(ready).first().waitFor();
+    if (path === '/auswertungen') await page.waitForTimeout(1200);
+    if ((await theme()) !== 'dark') throw new Error(`${path}: nicht dunkel`);
+    await shot(name, full);
+  }
+
+  // Schon vor dem Start des Programms dunkel (Skript in index.html): Programm blockiert, Schema trotzdem gesetzt
+  const before = problems.length;
+  await page.route('**/assets/*.js', (route) => route.abort());
+  await page.goto(`${BASE}/eingang`);
+  const early = await theme();
+  await page.unroute('**/assets/*.js');
+  if (early !== 'dark') throw new Error(`Vor dem Start: ${early}`);
+  // Die blockierten Dateien meldet der Browser in der Konsole; das ist hier erwartet
+  for (let i = problems.length - 1; i >= before; i--) if (problems[i].includes('Failed to load resource')) problems.splice(i, 1);
+
+  // «Hell» gilt auch bei dunklem System, «Automatisch» folgt dem System
+  await page.goto(`${BASE}/einstellungen`);
+  await page.getByRole('heading', { name: 'Darstellung' }).waitFor();
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await choose('Hell');
+  if ((await theme()) !== 'light') throw new Error('Hell bei dunklem System nicht hell');
+  const light = await logoColors('.header .brand img.full');
+  if (light.dark > 10) throw new Error(`Logo: Schriftzug im hellen Schema hell (${JSON.stringify(light)})`);
+  await choose('Automatisch');
+  if ((await theme()) !== 'dark') throw new Error('Automatisch bei dunklem System nicht dunkel');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+});
+
 await step('portal', async () => {
   const anna = (await api('GET', '/admin/users')).data.find((u) => u.email.startsWith('anna-'));
   await api('POST', '/auth/logout');
@@ -975,6 +1084,22 @@ await step('portal', async () => {
   await page.locator('.timeline').waitFor();
   if (!(await page.locator('.portal-header .brand img[src="/logo.svg"]').isVisible())) throw new Error('Portal: Logo fehlt');
   await shot('15-portal', true);
+  // Benutzermenü im Portal: Darstellung und Abmelden; «Dunkel» gilt sofort, im Konto gespeichert und danach auch auf
+  // der Anmeldeseite (in diesem Browser gemerkt)
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.locator('.portal-header .user-btn').click();
+  const group = page.getByRole('group', { name: 'Darstellung' });
+  if ((await group.locator('button.active').innerText()).trim() !== 'Automatisch') throw new Error('Portal: Standard nicht Automatisch');
+  const saved = page.waitForResponse((r) => r.url().endsWith('/api/me/preferences') && r.request().method() === 'PUT');
+  await group.getByRole('button', { name: 'Dunkel', exact: true }).click();
+  if ((await saved).status() !== 200) throw new Error('Portal: Farbschema nicht gespeichert');
+  if ((await theme()) !== 'dark') throw new Error('Portal: Dunkel nicht wirksam');
+  await shot('81-portal-dunkel');
+  await page.locator('.portal-header .menu').getByRole('button', { name: 'Abmelden' }).click();
+  await page.waitForURL(/\/login/);
+  await page.locator('h1.brand img').waitFor();
+  if ((await theme()) !== 'dark') throw new Error('Anmeldeseite: nicht dunkel');
+  await shot('82-anmeldung-dunkel');
 });
 
 await browser.close();

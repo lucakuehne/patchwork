@@ -1,5 +1,5 @@
-// Smoke-Test, Bereich «Einstellungen, Board der Störungen, Liste der Aufgaben, Vorgang im Fenster, zuletzt aktiv» (läuft über test/smoke.mjs)
-import { api, assert, BASE, cookie, createItem, detail, IVAN, loginAs, RUN, setSessionCookie, state, status, step } from './lib.mjs';
+// Smoke-Test, Bereich «Einstellungen, Farbschema, Board der Störungen, Liste der Aufgaben, Vorgang im Fenster, zuletzt aktiv» (läuft über test/smoke.mjs)
+import { ANNA, api, assert, BASE, cookie, createItem, detail, IVAN, loginAs, RUN, setSessionCookie, state, status, step } from './lib.mjs';
 
 let { statuses } = state;
 
@@ -8,6 +8,7 @@ await step('Einstellungen pro Benutzer: Standard, Zusammenführen, ungültige We
   const defaults = {
     layout: { incidents: 'list', tasks: 'board' },
     open: { inbox: 'modal', incident: 'modal', task: 'modal' },
+    theme: 'auto',
   };
   assert.deepEqual(await api('GET', '/me/preferences'), defaults);
   // Teiländerungen ergänzen den Rest
@@ -18,8 +19,14 @@ await step('Einstellungen pro Benutzer: Standard, Zusammenführen, ungültige We
   assert.deepEqual(await api('PUT', '/me/preferences', { open: { task: 'page' } }), {
     layout: { incidents: 'board', tasks: 'board' },
     open: { inbox: 'modal', incident: 'modal', task: 'page' },
+    theme: 'auto',
   });
   assert.equal((await api('GET', '/me/preferences')).open.task, 'page', 'gespeichert');
+  // Farbschema: bleibt bei anderen Änderungen
+  assert.equal((await api('PUT', '/me/preferences', { theme: 'dark' })).theme, 'dark');
+  const afterTheme = await api('PUT', '/me/preferences', { layout: { tasks: 'list' } });
+  assert.deepEqual([afterTheme.theme, afterTheme.open.task], ['dark', 'page'], 'Farbschema und übrige Werte bleiben');
+  await api('PUT', '/me/preferences', { theme: 'blue' }, { expect: [400] });
   await api('PUT', '/me/preferences', { layout: { incidents: 'grid' } }, { expect: [400] });
   await api('PUT', '/me/preferences', { open: { portal: 'modal' } }, { expect: [400] });
   await api('PUT', '/me/preferences', { colors: 'dark' }, { expect: [400] });
@@ -30,6 +37,17 @@ await step('Einstellungen pro Benutzer: Standard, Zusammenführen, ungültige We
   await loginAs('ada@test.local', 'geheim-geheim');
   // Zurück auf den Standard, damit die Browserprüfung davon ausgehen kann
   assert.deepEqual(await api('PUT', '/me/preferences', defaults), defaults);
+});
+
+await step('Farbschema auch für Melder im Portal, die übrigen Routen bleiben gesperrt', async () => {
+  await loginAs(ANNA, 'anna-passwort-1');
+  assert.equal((await api('GET', '/me/preferences')).theme, 'auto');
+  assert.equal((await api('PUT', '/me/preferences', { theme: 'dark' })).theme, 'dark');
+  assert.equal((await api('GET', '/me/preferences')).theme, 'dark', 'gespeichert');
+  await api('GET', '/users/staff', undefined, { expect: [403] });
+  // Zurück auf den Standard (Browserprüfung)
+  await api('PUT', '/me/preferences', { theme: 'auto' });
+  await loginAs('ada@test.local', 'geheim-geheim');
 });
 
 await step('Board der Störungen: offene und gelöste der letzten 14 Tage, nach Priorität und Alter', async () => {

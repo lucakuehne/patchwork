@@ -1,22 +1,27 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
 import AppLogo from '../../components/AppLogo.vue';
 import ImpersonationBanner from '../../components/ImpersonationBanner.vue';
 import TestModeBanner from '../../components/TestModeBanner.vue';
+import UserMenu from '../../components/UserMenu.vue';
 import { useStickyTop } from '../../composables';
 import { useSession } from '../../stores/session';
+import { useToast } from '../../stores/toast';
+import { THEMES } from '../../theme';
+import type { Theme } from '../../types';
 
 const session = useSession();
-const router = useRouter();
+const toast = useToast();
 const topBar = ref<HTMLElement | null>(null);
 useStickyTop(topBar);
 
-async function logout() {
+/** Farbschema im Benutzermenü (das Portal hat keine Seite «Einstellungen»), gespeichert im Konto */
+async function setTheme(theme: Theme) {
+  if (session.preferences.theme === theme) return;
   try {
-    await session.logout();
-  } finally {
-    await router.push({ name: 'login' });
+    await session.savePreferences({ theme });
+  } catch (err) {
+    toast.error(err);
   }
 }
 </script>
@@ -36,8 +41,23 @@ async function logout() {
         <RouterLink to="/portal/neu" class="nav-link" active-class="active">Neue Meldung</RouterLink>
       </nav>
       <div class="spacer" />
-      <span class="user muted">{{ session.user?.name }}</span>
-      <button class="btn btn-ghost btn-sm" type="button" @click="logout">Abmelden</button>
+      <UserMenu>
+        <div class="menu-theme">
+          <span class="menu-theme-label faint">Darstellung</span>
+          <div class="segmented" role="group" aria-label="Darstellung">
+            <button
+              v-for="o in THEMES"
+              :key="o.value"
+              type="button"
+              :class="{ active: session.preferences.theme === o.value }"
+              :aria-pressed="session.preferences.theme === o.value"
+              @click="setTheme(o.value)"
+            >
+              {{ o.label }}
+            </button>
+          </div>
+        </div>
+      </UserMenu>
     </header>
   </div>
   <div class="portal-page">
@@ -92,15 +112,23 @@ async function logout() {
   background: var(--accent-soft);
   color: var(--accent);
 }
+.menu-theme {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.menu-theme-label {
+  font-size: 12px;
+}
 .portal-page {
   max-width: 900px;
   margin: 0 auto;
   padding: 24px 16px 48px;
 }
 @media (max-width: 640px) {
-  .user {
-    display: none;
-  }
   .portal-header {
     gap: 8px;
     padding: 0 12px;

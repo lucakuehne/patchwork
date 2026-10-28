@@ -5,8 +5,10 @@ import { setUnauthorizedHandler } from './api';
 import { reloadOnUpdate } from './reload-on-update';
 import { router } from './router';
 import { useSession } from './stores/session';
+import { startTheme } from './theme';
 import './styles.css';
 
+startTheme();
 const app = createApp(App);
 app.use(createPinia());
 reloadOnUpdate(router);

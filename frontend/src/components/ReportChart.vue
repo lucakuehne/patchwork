@@ -2,8 +2,9 @@
 import type { Chart } from 'chart.js';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { drawChart, type ChartSpec } from '../charts';
+import { darkActive } from '../theme';
 
-/** Balkendiagramm; wird bei neuen Daten neu gezeichnet. */
+/** Balkendiagramm; wird bei neuen Daten und beim Wechsel des Farbschemas neu gezeichnet. */
 const props = defineProps<{ spec: ChartSpec; height: number }>();
 const canvas = ref<HTMLCanvasElement | null>(null);
 let chart: Chart<'bar'> | null = null;
@@ -14,6 +15,7 @@ function draw() {
 }
 onMounted(draw);
 watch(() => props.spec, draw);
+watch(darkActive, draw);
 onBeforeUnmount(() => chart?.destroy());
 </script>
 
