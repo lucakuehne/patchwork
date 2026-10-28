@@ -722,13 +722,21 @@ await step('aufgaben-neu', async () => {
   // Der Balken füllt die Breite der Karte
   const [barWidth, cardWidth] = await card.evaluate((el) => [el.querySelector('.checklist-progress').getBoundingClientRect().width, el.clientWidth]);
   if (barWidth < cardWidth - 40) throw new Error(`Fortschrittsbalken ${Math.round(barWidth)} px bei Karte ${cardWidth} px`);
-  // Fälligkeit oben neben der Nummer, Symbole unten bei Melder und Zuständig, beide Zeilen ohne Umbruch
-  if (!(await card.locator('.card-top .due.due-overdue').count())) throw new Error('Fälligkeit nicht oben auf der Karte oder nicht als überfällig');
+  // Alter oben ganz rechts, Fälligkeit unter dem Titel, Symbole unten bei Melder und Zuständig, Zeilen ohne Umbruch
+  if (!(await card.locator('.card-due .due.due-overdue').count())) throw new Error('Fälligkeit nicht unter dem Titel oder nicht als überfällig');
+  const [titleBottom, dueTop] = await card.evaluate((el) => [el.querySelector('.card-title').getBoundingClientRect().bottom, el.querySelector('.card-due').getBoundingClientRect().top]);
+  if (dueTop < titleBottom) throw new Error('Fälligkeit nicht unter dem Titel');
+  if (!/^(gerade eben|\d+ (Min\.|Std\.|Tage?))$/.test((await card.locator('.card-top .age').innerText()).trim())) throw new Error('Alter nicht oben auf der Karte');
+  const ageGap = await card.locator('.card-top').evaluate((el) => el.getBoundingClientRect().right - el.querySelector('.age').getBoundingClientRect().right);
+  if (Math.abs(ageGap) > 1) throw new Error(`Alter nicht ganz rechts (${Math.round(ageGap)} px Abstand)`);
+  if (/gerade eben|\d+ (Min\.|Std\.|Tag)/.test(await card.locator('.card-foot').innerText())) throw new Error('Alter noch unten auf der Karte');
+  if (!(await card.locator('.card-top .age').getAttribute('title')).startsWith('Erstellt am ')) throw new Error('Alter ohne Datum beim Darüberfahren');
   for (const row of ['.card-top', '.card-foot']) {
     const height = await card.locator(row).evaluate((el) => el.getBoundingClientRect().height);
     if (height > 28) throw new Error(`Karte: Zeile ${row} bricht um (${Math.round(height)} px)`);
   }
-  // Engster Fall: schmales Fenster (Spalten 260 px), Fälligkeit und «Niedrig»; Nummer und Datum bleiben auf einer Zeile
+  // Engster Fall: schmales Fenster (Spalten 260 px) mit «Niedrig»; Nummer, Priorität und Alter (ganz rechts) bleiben auf
+  // einer Zeile
   const cardNumber = Number((await card.locator('.card-top .number').innerText()).replace(/\D/g, ''));
   await api('PATCH', `/items/${cardNumber}`, { priority: 'low' });
   await page.setViewportSize({ width: 700, height: 950 });
@@ -738,10 +746,19 @@ await step('aufgaben-neu', async () => {
   if (columnWidth > 261) throw new Error(`Spalte im schmalen Fenster ${Math.round(columnWidth)} px statt 260 px`);
   const top = await card.locator('.card-top').evaluate((el) => {
     const rect = (sel) => el.querySelector(sel).getBoundingClientRect();
-    const [number, due, prio] = [rect('.number'), rect('.due'), rect('.prio')];
-    return { numberHeight: number.height, dueOffset: Math.abs(due.top + due.height / 2 - (number.top + number.height / 2)), overflow: prio.right - el.getBoundingClientRect().right };
+    const middle = (r) => r.top + r.height / 2;
+    const [row, number, age, prio] = [el.getBoundingClientRect(), rect('.number'), rect('.age'), rect('.prio')];
+    return {
+      numberHeight: number.height,
+      ageOffset: Math.abs(middle(age) - middle(number)),
+      prioOffset: Math.abs(middle(prio) - middle(number)),
+      prioBeforeAge: prio.right <= age.left,
+      overflow: age.right - row.right,
+    };
   });
-  if (top.numberHeight > 20 || top.dueOffset > 3 || top.overflow > 0.5) throw new Error(`Schmale Karte: Nummer und Datum nicht auf einer Zeile (${JSON.stringify(top)})`);
+  if (top.numberHeight > 20 || top.ageOffset > 3 || top.prioOffset > 3 || !top.prioBeforeAge || Math.abs(top.overflow) > 1) {
+    throw new Error(`Schmale Karte: Nummer, Priorität und Alter nicht auf einer Zeile (${JSON.stringify(top)})`);
+  }
   await card.screenshot({ path: `${OUT}/84-karte-schmal.png` });
   console.log('Bild 84-karte-schmal');
   await page.setViewportSize({ width: 1400, height: 950 });

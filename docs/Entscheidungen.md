@@ -233,11 +233,13 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - **Fortschritt der Checklisten** als schmaler Balken mit kleiner Zahl daneben («3/5»), auf den Board-Karten und in den Listen, statt «☑ 3/5». Auf den Board-Karten füllt der Balken die ganze Breite der Karte (gewünscht am 23.10.2026).
 - **Aufgabe in einer Spalte erstellen:** «+» im Kopf jeder offenen Spalte des Boards öffnet «Neue Aufgabe» mit diesem Status vorgewählt. Abgeschlossene Spalten haben kein «+».
 - **Board-Karte** (bestätigt am 21.10.2026): ein kleines Text-Symbol, wenn die Aufgabe eine Beschreibung hat, beim Darüberfahren die ersten Zeilen als Text. Dazu eine Sprechblase mit der Anzahl Kommentare: öffentliche Antworten (auch die des Melders) und interne Notizen, ohne Änderungen, automatische Mails und Abwesenheitsnotizen; bei 0 keine.
-  - Aufbau seit 28.10.2026 (gewünscht vom Benutzer, gilt für die Boards der Aufgaben und der Störungen): oben Nummer,
-    Fälligkeit und Priorität; darunter Titel und Fortschritt der Checklisten; unten Melder, die Symbole für Beschreibung
-    und Kommentare, Alter und Zuständig. Die eigene Zeile für Symbole und Fälligkeit entfällt, lange Namen des Melders
-    werden gekürzt. Die obere Zeile bricht nie um, auch nicht in der schmalsten Spalte (260 px) mit Fälligkeit und
-    Priorität (Korrektur vom 28.10.2026: dort brach die Nummer beim Bindestrich um).
+  - Aufbau seit 28.10.2026 (gewünscht vom Benutzer, gilt für die Boards der Aufgaben und der Störungen): oben links
+    die Nummer, rechts die Priorität und ganz rechts das Alter (beim Darüberfahren «Erstellt am …»); darunter der
+    Titel, die Fälligkeit in einer eigenen Zeile (nur wenn gesetzt) und der Fortschritt der Checklisten; unten Melder,
+    die Symbole für Beschreibung und Kommentare und Zuständig. Lange Namen des Melders werden gekürzt, die obere Zeile
+    bricht auch in der schmalsten Spalte (260 px) nicht um. Korrektur vom 28.10.2026: Mit dem Datum in der Zeile der
+    Nummer war das Alter («7 Tage») gemeint, nicht die Fälligkeit; die Fälligkeit steht wieder wie vorher unter dem
+    Titel, das Alter ganz rechts.
 - **Nach dem Erstellen einer Aufgabe** (bestätigt am 21.10.2026) bleibt man, wo man ist (z.B. auf dem Board, die Karte erscheint in ihrer Spalte), mit der Meldung «PW-123 erstellt» und «Öffnen». Gilt für alle neuen Aufgaben, auch über «+ Neu». Neue Störungen öffnen wie bisher.
 - **Erwähnen** (bestätigt am 21.10.2026): Mit «@» im Antwortfeld (öffentliche Antworten und interne Notizen, auch beim Bearbeiten einer Notiz) öffnet sich eine Auswahl der IT-Mitarbeitenden und Admins. Die Erwähnung erscheint in Patchwork hervorgehoben. Beim Melder (Mail und Portal) steht sie als gewöhnlicher Text «@Vorname Nachname». Die Erwähnten erhalten eine Mail «Erwähnt» mit dem Text und dem Link (Vorlage unter Verwaltung → Mail-Vorlagen, IT), nicht an sich selbst; beim Bearbeiten einer Notiz nur neu hinzugekommene Erwähnte.
 - **Stummschalten ausgeblendet** (bestätigt am 21.10.2026): Die Option «Benachrichtigungen für mich stummschalten» ist vorläufig ausgeblendet. Bestehende Stummschaltungen bleiben gespeichert, wirken aber nicht mehr: Alle erhalten wieder ihre Mails. Wird die Option später wieder eingeblendet, gelten sie wieder.

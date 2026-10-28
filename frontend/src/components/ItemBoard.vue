@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import { api } from '../api';
 import { useReloadAfterItemModal } from '../composables';
-import { dueState, formatAge, formatDay, initials, itemRef, plainPreview } from '../format';
+import { dueState, formatAge, formatDate, formatDay, initials, itemRef, plainPreview } from '../format';
 import { listParams, type ListFilterValues } from '../list-filters';
 import { itemHref, opensInBrowser, useOpenItem } from '../open-item';
 import { isCompleting } from '../status-flow';
@@ -167,27 +167,29 @@ function open(item: ItemSummary, event: MouseEvent) {
             @click="open(element, $event)"
             @auxclick.middle.prevent="open(element, $event)"
           >
-            <!-- Oben Nummer, Fälligkeit und Priorität; unten Melder, Beschreibung, Kommentare, Alter und Zuständig -->
+            <!-- Oben Nummer, Priorität und ganz rechts das Alter; unter dem Titel die Fälligkeit; unten Melder,
+                 Beschreibung, Kommentare und Zuständig -->
             <div class="card-top">
               <span class="mono faint number">{{ itemRef(element.number) }}</span>
-              <span class="top-right">
-                <span
-                  v-if="element.dueDate"
-                  class="badge due"
-                  :class="`due-${dueState(element.dueDate, status.closed)}`"
-                  :title="dueTitle(element.dueDate, status.closed)"
-                >
-                  <svg class="due-icon" viewBox="0 0 16 16" aria-hidden="true">
-                    <rect x="2" y="3" width="12" height="11" rx="1.5" />
-                    <path d="M2 6.5h12M5.5 1.8v2.6M10.5 1.8v2.6" />
-                  </svg>
-                  {{ formatDay(element.dueDate) }}
-                </span>
-                <span v-if="element.priority === 'high'" class="prio prio-high">Hoch</span>
-                <span v-else-if="element.priority === 'low'" class="prio prio-low">Niedrig</span>
-              </span>
+              <span class="spacer" />
+              <span v-if="element.priority === 'high'" class="prio prio-high">Hoch</span>
+              <span v-else-if="element.priority === 'low'" class="prio prio-low">Niedrig</span>
+              <span class="age faint" :title="`Erstellt am ${formatDate(element.createdAt)}`">{{ formatAge(element.createdAt) }}</span>
             </div>
             <div class="card-title">{{ element.title }}</div>
+            <div v-if="element.dueDate" class="card-due">
+              <span
+                class="badge due"
+                :class="`due-${dueState(element.dueDate, status.closed)}`"
+                :title="dueTitle(element.dueDate, status.closed)"
+              >
+                <svg class="due-icon" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="2" y="3" width="12" height="11" rx="1.5" />
+                  <path d="M2 6.5h12M5.5 1.8v2.6M10.5 1.8v2.6" />
+                </svg>
+                {{ formatDay(element.dueDate) }}
+              </span>
+            </div>
             <!-- Fortschritt der Checklisten über die ganze Breite der Karte -->
             <ChecklistProgress v-if="element.checklist" fill :done="element.checklist.done" :total="element.checklist.total" />
             <div class="card-foot">
@@ -211,7 +213,6 @@ function open(item: ItemSummary, event: MouseEvent) {
                 </svg>
                 {{ element.commentCount }}
               </span>
-              <span class="faint">{{ formatAge(element.createdAt) }}</span>
               <span v-if="element.assignee" class="avatar" :title="element.assignee.name">
                 {{ initials(element.assignee.name) }}
               </span>
@@ -322,27 +323,21 @@ function open(item: ItemSummary, event: MouseEvent) {
 .board-card.done .card-title {
   color: var(--text-muted);
 }
-/* Eine Zeile, auch in der schmalsten Spalte (260 px) mit vierstelliger Nummer, Fälligkeit und «Niedrig»; die Nummer
-   bricht sonst beim Bindestrich um */
+/* Links die Nummer, rechts Priorität und ganz rechts das Alter; passt auch in der schmalsten Spalte (260 px) auf eine
+   Zeile, die Nummer bricht nie beim Bindestrich um */
 .card-top {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 12px;
 }
-.number {
+.number,
+.age {
   flex-shrink: 0;
   white-space: nowrap;
 }
-.top-right {
+.card-due {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-.top-right .prio {
-  font-size: 12px;
 }
 .card-title {
   font-weight: 500;
@@ -354,7 +349,7 @@ function open(item: ItemSummary, event: MouseEvent) {
   gap: 8px;
   font-size: 12px;
 }
-/* Lange Namen kürzen, damit Symbole, Alter und Zuständig in der Zeile bleiben */
+/* Lange Namen kürzen, damit Symbole und Zuständig in der Zeile bleiben */
 .card-foot > * {
   flex-shrink: 0;
 }
