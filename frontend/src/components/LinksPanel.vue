@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { useDebounced } from '../composables';
 import { itemRef, TYPE_LABELS } from '../format';
+import { sameItem, type ItemKey } from '../item-ref';
 import { useToast } from '../stores/toast';
 import type { ItemLink as Link, ItemSummary, LinkRole } from '../types';
 import ItemLink from './ItemLink.vue';
@@ -10,7 +11,7 @@ import ModalDialog from './ModalDialog.vue';
 import StatusBadge from './StatusBadge.vue';
 
 /** Verknüpfungen eines Vorgangs (Seitenleiste). */
-const props = defineProps<{ number: number; links: Link[] }>();
+const props = defineProps<{ itemKey: ItemKey; links: Link[] }>();
 const emit = defineEmits<{ changed: [] }>();
 const toast = useToast();
 
@@ -45,7 +46,7 @@ watch(debounced, async (q) => {
   }
   try {
     const data = await api.get<{ items: ItemSummary[] }>(`/items?view=search&q=${encodeURIComponent(q.trim())}&limit=10`);
-    results.value = data.items.filter((i) => i.number !== props.number);
+    results.value = data.items.filter((i) => !sameItem(i, props.itemKey));
   } catch (err) {
     toast.error(err);
   }
@@ -63,7 +64,7 @@ async function link(other: ItemSummary) {
   busy.value = true;
   error.value = '';
   try {
-    await api.post(`/items/${props.number}/links`, { role: role.value, otherNumber: other.number });
+    await api.post(`/items/${itemRef(props.itemKey)}/links`, { role: role.value, other: itemRef(other) });
     open.value = false;
     emit('changed');
   } catch (err) {
@@ -75,7 +76,7 @@ async function link(other: ItemSummary) {
 
 async function unlink(l: Link) {
   try {
-    await api.delete(`/items/${props.number}/links/${l.id}`);
+    await api.delete(`/items/${itemRef(props.itemKey)}/links/${l.id}`);
     emit('changed');
   } catch (err) {
     toast.error(err);
@@ -95,10 +96,10 @@ async function unlink(l: Link) {
       <div class="other">
         <!-- Vorgang ausserhalb der eigenen Bereiche: nur die Nummer, ohne Link -->
         <span v-if="l.other.hidden" class="other-title faint" title="Kein Zugriff auf diesen Bereich">
-          <span class="mono">{{ itemRef(l.other.number) }}</span>
+          <span class="mono">{{ itemRef(l.other) }}</span>
         </span>
-        <ItemLink v-else :number="l.other.number" :type="l.other.type" class="other-title" :title="l.other.title">
-          <span class="mono">{{ itemRef(l.other.number) }}</span> {{ l.other.title }}
+        <ItemLink v-else :item-key="l.other" :type="l.other.type" class="other-title" :title="l.other.title">
+          <span class="mono">{{ itemRef(l.other) }}</span> {{ l.other.title }}
         </ItemLink>
         <StatusBadge v-if="l.other.status" :status="{ id: '', ...l.other.status }" />
       </div>
@@ -107,11 +108,11 @@ async function unlink(l: Link) {
     <span v-if="!links.length" class="faint small">Keine</span>
   </div>
 
-  <ModalDialog v-if="open" :title="`${itemRef(number)} verknüpfen`" @close="open = false">
+  <ModalDialog v-if="open" :title="`${itemRef(itemKey)} verknüpfen`" @close="open = false">
     <div class="field">
       <label for="link-role">Art</label>
       <select id="link-role" v-model="role" class="select">
-        <option v-for="(sentence, key) in ROLE_SENTENCES" :key="key" :value="key">{{ itemRef(number) }} {{ sentence }} …</option>
+        <option v-for="(sentence, key) in ROLE_SENTENCES" :key="key" :value="key">{{ itemRef(itemKey) }} {{ sentence }} …</option>
       </select>
       <p v-if="role === 'duplicateOf' || role === 'hasDuplicate'" class="faint small hint">
         Das Duplikat wird geschlossen und zum Original umgeleitet: Sein Melder und seine Beteiligten erhalten einen Hinweis
@@ -124,7 +125,7 @@ async function unlink(l: Link) {
     </div>
     <div class="results">
       <button v-for="r in results" :key="r.id" type="button" class="result" :disabled="busy" @click="link(r)">
-        <span class="mono muted">{{ itemRef(r.number) }}</span>
+        <span class="mono muted">{{ itemRef(r) }}</span>
         <span class="result-title">{{ r.title }}</span>
         <span class="faint small">{{ r.type ? TYPE_LABELS[r.type] : 'Eingang' }}</span>
       </button>

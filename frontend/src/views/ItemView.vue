@@ -8,6 +8,7 @@ import HelpTip from '../components/HelpTip.vue';
 import ItemDescription from '../components/ItemDescription.vue';
 import LinksPanel from '../components/LinksPanel.vue';
 import PersonSearch from '../components/PersonSearch.vue';
+import type { ItemKey } from '../item-ref';
 import { manualStatusChoices, moveItem } from '../status-move';
 import RejectDialog from '../components/RejectDialog.vue';
 import StatusBadge from '../components/StatusBadge.vue';
@@ -23,7 +24,10 @@ import { groupTimeline, type TimelineBlock } from '../timeline';
 import type { ItemDetail, ItemType, PersonPick, Priority, User } from '../types';
 
 /** «embedded»: im Fenster über einer Ansicht (Einstellung «Fenster»), ohne Seitenrand */
-const props = defineProps<{ number: number; embedded?: boolean }>();
+/** «itemKey» null: ungültige Kennung in der Adresse (zeigt «nicht gefunden») */
+const props = defineProps<{ itemKey: ItemKey | null; embedded?: boolean }>();
+/** Kennung für Anzeige und Schnittstelle, z.B. «PW-123» */
+const refText = computed(() => (props.itemKey ? itemRef(props.itemKey) : ''));
 const session = useSession();
 const toast = useToast();
 
@@ -64,17 +68,22 @@ let loadSeq = 0;
 
 /** «background»: Nachladen, solange eine Mail unterwegs ist; Fehler dabei ohne Meldung */
 async function load(background = false) {
-  const number = props.number;
+  const current = refText.value;
   const seq = ++loadSeq;
   window.clearTimeout(followTimer);
   if (!background) followUps = 0;
+  if (!current) {
+    item.value = null;
+    notFound.value = true;
+    return;
+  }
   try {
-    const loaded = await api.get<ItemDetail>(`/items/${number}`, { background });
+    const loaded = await api.get<ItemDetail>(`/items/${current}`, { background });
     if (unmounted || seq !== loadSeq) return;
     item.value = loaded;
     notFound.value = false;
     forbidden.value = '';
-    document.title = `${itemRef(number)} ${loaded.title} – ${session.appName}`;
+    document.title = `${current} ${loaded.title} – ${session.appName}`;
   } catch (err) {
     if (unmounted || seq !== loadSeq) return;
     // Im Hintergrund ohne Meldung; das Nachladen versucht es weiter (begrenzt)
@@ -89,7 +98,7 @@ async function load(background = false) {
   }
   followSending();
 }
-watch(() => props.number, () => load(), { immediate: true });
+watch(refText, () => load(), { immediate: true });
 
 /** Führt eine Änderung aus und lädt danach den Vorgang neu. */
 async function run(action: () => Promise<unknown>, success?: string) {
@@ -141,7 +150,7 @@ const selectedMailboxId = computed(
 const typeChangeTo = ref<ItemType | null>(null);
 function setType(type: ItemType) {
   if (type === 'task' || (item.value?.type && item.value.status)) typeChangeTo.value = type;
-  else void run(() => api.post(`/items/${props.number}/type`, { type }), `Typ ist jetzt «${TYPE_LABELS[type]}»`);
+  else void run(() => api.post(`/items/${refText.value}/type`, { type }), `Typ ist jetzt «${TYPE_LABELS[type]}»`);
 }
 function onTypeChanged() {
   const type = typeChangeTo.value;
@@ -149,11 +158,11 @@ function onTypeChanged() {
   void run(async () => undefined, type ? `Typ ist jetzt «${TYPE_LABELS[type]}»` : undefined);
 }
 // Bei offenen Checklisten-Punkten fragt moveItem nach; bei Abbruch wird neu geladen (Auswahl springt zurück)
-const setStatus = (statusId: string) => run(() => moveItem(props.number, { statusId }));
-const patch = (body: Record<string, unknown>) => run(() => api.patch(`/items/${props.number}`, body));
+const setStatus = (statusId: string) => run(() => moveItem(props.itemKey!, { statusId }));
+const patch = (body: Record<string, unknown>) => run(() => api.patch(`/items/${refText.value}`, body));
 const setDiscarded = (discarded: boolean) =>
-  run(() => api.post(`/items/${props.number}/discard`, { discarded }), discarded ? 'Verworfen' : 'Wiederhergestellt');
-const setMuted = (muted: boolean) => run(() => api.put(`/items/${props.number}/mute`, { muted }));
+  run(() => api.post(`/items/${refText.value}/discard`, { discarded }), discarded ? 'Verworfen' : 'Wiederhergestellt');
+const setMuted = (muted: boolean) => run(() => api.put(`/items/${refText.value}/mute`, { muted }));
 /** Stummschalten ist vorläufig ausgeblendet und wirkt nicht (Entscheid vom 21.10.2026, Backend: MUTES_ACTIVE) */
 const MUTE_OPTION = false;
 
@@ -167,9 +176,9 @@ const involvedEmails = computed(() =>
 );
 const addParticipant = (person: PersonPick) =>
   run(() =>
-    api.post(`/items/${props.number}/participants`, { email: person.email, ...(person.name ? { name: person.name } : {}) }),
+    api.post(`/items/${refText.value}/participants`, { email: person.email, ...(person.name ? { name: person.name } : {}) }),
   );
-const removeParticipant = (user: User) => run(() => api.delete(`/items/${props.number}/participants/${user.id}`));
+const removeParticipant = (user: User) => run(() => api.delete(`/items/${refText.value}/participants/${user.id}`));
 
 function startTitle() {
   titleDraft.value = item.value?.title ?? '';
@@ -189,13 +198,13 @@ function onRejected() {
 
 <template>
   <div :class="embedded ? 'embedded' : 'page'">
-    <div v-if="notFound" class="empty">Vorgang {{ itemRef(number) }} wurde nicht gefunden.</div>
-    <div v-else-if="forbidden" class="empty">{{ itemRef(number) }} ist für dich gesperrt: {{ forbidden }}.</div>
+    <div v-if="notFound" class="empty">Vorgang {{ refText }} wurde nicht gefunden.</div>
+    <div v-else-if="forbidden" class="empty">{{ refText }} ist für dich gesperrt: {{ forbidden }}.</div>
 
     <div v-else-if="item" class="layout">
       <div class="main stack">
         <div class="title-row">
-          <span class="mono muted ref">{{ itemRef(item.number) }}</span>
+          <span class="mono muted ref">{{ itemRef(item) }}</span>
           <span v-if="item.type" class="badge" :class="`type-${item.type}`">{{ TYPE_LABELS[item.type] }}</span>
           <StatusBadge :status="item.status" />
           <span v-if="item.discarded" class="badge st-red">Verworfen</span>
@@ -206,11 +215,17 @@ function onRejected() {
           <button class="btn" type="button" @click="editingTitle = false">Abbrechen</button>
         </div>
         <h1 v-else class="title" title="Klicken zum Bearbeiten" @click="startTitle">{{ item.title }}</h1>
+        <!-- Aus HelpSpot übernommen: ursprünglicher Status und Melder laut HelpSpot -->
+        <div v-if="item.helpspot" class="helpspot-origin faint">
+          Aus HelpSpot übernommen · Status in HelpSpot «{{ item.helpspot.status }}»<template v-if="item.helpspot.reporterName">
+            · Melder laut HelpSpot: {{ item.helpspot.reporterName }}</template
+          >
+        </div>
 
         <!-- Aufgaben: Beschreibung zuoberst, darunter die Checklisten -->
         <template v-if="item.type === 'task'">
           <ItemDescription :item="item" label="Beschreibung" :busy="busy" :save="saveDescription" @changed="load()" />
-          <ChecklistsPanel :number="item.number" :checklists="item.checklists" @changed="load" />
+          <ChecklistsPanel :item-key="item" :checklists="item.checklists" @changed="load" />
           <!-- Abgrenzung zwischen Aufgabe (Beschreibung, Checklisten) und Antworten mit Verlauf -->
           <div class="section-divider" role="separator"><span>Verlauf</span></div>
         </template>
@@ -221,8 +236,8 @@ function onRejected() {
         <!-- Neuestes zuoberst; sonst die ursprüngliche Meldung als ältester Eintrag zuunterst -->
         <div class="timeline">
           <template v-for="block in timeline" :key="blockKey(block)">
-            <TimelineMessage v-if="block.kind === 'message'" :entry="block.entry" :item-number="item.number" @changed="load" />
-            <TimelineMail v-else-if="block.kind === 'mail'" :mail="block.mail" :item-number="item.number" />
+            <TimelineMessage v-if="block.kind === 'message'" :entry="block.entry" :item-key="item" @changed="load" />
+            <TimelineMail v-else-if="block.kind === 'mail'" :mail="block.mail" :item-key="item" />
             <TimelineEvents v-else :entries="block.entries" />
           </template>
         </div>
@@ -392,7 +407,7 @@ function onRejected() {
           <PersonSearch floating placeholder="Person hinzufügen (Name, Benutzername, E-Mail)" :exclude="involvedEmails" @pick="addParticipant" />
         </div>
 
-        <LinksPanel :number="item.number" :links="item.links" @changed="load" />
+        <LinksPanel :item-key="item" :links="item.links" @changed="load" />
 
         <div class="field">
           <label for="item-mailbox">Antwort-Postfach</label>
@@ -424,10 +439,10 @@ function onRejected() {
       </aside>
     </div>
 
-    <RejectDialog v-if="rejectOpen && item" :number="item.number" :title="item.title" @close="rejectOpen = false" @done="onRejected" />
+    <RejectDialog v-if="rejectOpen && item" :item-key="item" :title="item.title" @close="rejectOpen = false" @done="onRejected" />
     <TypeChangeDialog
       v-if="typeChangeTo && item"
-      :number="item.number"
+      :item-key="item"
       :type="item.type"
       :status="item.status"
       :target-type="typeChangeTo"
@@ -438,6 +453,10 @@ function onRejected() {
 </template>
 
 <style scoped>
+.helpspot-origin {
+  font-size: 13px;
+  margin-top: -6px;
+}
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;

@@ -5,6 +5,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import {
   attachments,
+  helpspotTickets,
   checklistItems,
   checklists,
   entries,
@@ -41,7 +42,8 @@ import { duplicateRedirect } from './duplicates';
 import { imageRefs, replaceImages, TEXT_IMAGE_TYPES } from './inline-images';
 import { mentionedIds } from './mentions';
 import { noteEditRefusal, noteTimeRefusal } from './note-rules';
-import { annotateReferences, referencedNumbers } from './references';
+import { byKey, HELPSPOT_PREFIX, itemRef, type ItemKey } from './item-ref';
+import { annotateReferences, referencedKeys, referenceMeta } from './references';
 import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
 import type { RuleRun } from '../rules/rules.service';
 import { areaCondition, AreasService, type Area } from '../settings/areas';
@@ -180,8 +182,8 @@ export class ItemsService {
     };
   }
 
-  async detail(number: number, viewer: User) {
-    const item = await this.byNumber(number);
+  async detail(key: ItemKey, viewer: User) {
+    const item = await this.byKey(key);
     const [status, reporter, creator, assignee, mailbox, channel] = await Promise.all([
       item.statusId ? this.statuses.get(item.statusId) : null,
       this.users.getById(item.reporterId),
@@ -282,6 +284,7 @@ export class ItemsService {
 
     return {
       id: item.id,
+      prefix: item.prefix,
       number: item.number,
       type: item.type,
       title: item.title,
@@ -303,6 +306,8 @@ export class ItemsService {
       creator: toPublicUser(creator),
       assignee: assignee && toPublicUser(assignee),
       mailbox,
+      /** Aus HelpSpot übernommen: Status und Melder laut HelpSpot, sonst null */
+      helpspot: item.prefix === HELPSPOT_PREFIX ? await this.helpspotInfo(item.id) : null,
       muted: muteRows.length > 0,
       originalMessageId: originalOfItem,
       participants: participantRows.map((r) => toPublicUser(r.user)),
@@ -349,17 +354,29 @@ export class ItemsService {
    * Vorgänge, auf die der Verlauf verweist: ihr Typ (für «Seite oder Fenster») und welche der Betrachter nicht sehen
    * darf (Bereiche je Rolle).
    */
-  private async references(viewer: User, metas: Entry['meta'][]): Promise<{ hidden: Set<number>; types: Map<number, ItemType | null> }> {
-    const numbers = referencedNumbers(metas);
-    if (numbers.length === 0) return { hidden: new Set(), types: new Map() };
+  private async references(viewer: User, metas: Entry['meta'][]): Promise<{ hidden: Set<string>; types: Map<string, ItemType | null> }> {
+    const keys = referencedKeys(metas);
+    if (keys.length === 0) return { hidden: new Set(), types: new Map() };
     const [limit, rows] = await Promise.all([
       this.areas.limit(viewer),
-      this.db.select({ number: items.number, type: items.type }).from(items).where(inArray(items.number, numbers)),
+      this.db
+        .select({ prefix: items.prefix, number: items.number, type: items.type })
+        .from(items)
+        .where(or(...keys.map(byKey))),
     ]);
     return {
-      hidden: new Set(limit ? rows.filter((r) => !limit.includes(r.type ?? 'inbox')).map((r) => r.number) : []),
-      types: new Map(rows.map((r) => [r.number, r.type])),
+      hidden: new Set(limit ? rows.filter((r) => !limit.includes(r.type ?? 'inbox')).map(itemRef) : []),
+      types: new Map(rows.map((r) => [itemRef(r), r.type])),
     };
+  }
+
+  private async helpspotInfo(itemId: string): Promise<{ status: string; reporterName: string } | null> {
+    const [row] = await this.db
+      .select({ status: helpspotTickets.status, reporterName: helpspotTickets.reporterName })
+      .from(helpspotTickets)
+      .where(eq(helpspotTickets.itemId, itemId))
+      .limit(1);
+    return row ?? null;
   }
 
   /** Namen der Benutzer zu Mail-Adressen (für die Empfänger im Verlauf). */
@@ -370,8 +387,8 @@ export class ItemsService {
     return new Map(rows.map((r) => [r.email, r.name]));
   }
 
-  async byNumber(number: number, tx: Tx = this.db): Promise<Item> {
-    const [item] = await tx.select().from(items).where(eq(items.number, number)).limit(1);
+  async byKey(key: ItemKey, tx: Tx = this.db): Promise<Item> {
+    const [item] = await tx.select().from(items).where(byKey(key)).limit(1);
     if (!item) throw new NotFoundException('Vorgang nicht gefunden');
     return item;
   }
@@ -442,7 +459,7 @@ export class ItemsService {
 
   async update(
     actor: User,
-    number: number,
+    key: ItemKey,
     patch: {
       title?: string;
       description?: string;
@@ -457,7 +474,7 @@ export class ItemsService {
   ): Promise<void> {
     const pending: Pending = [];
     await this.db.transaction(async (tx) => {
-      const item = await this.lock(tx, number);
+      const item = await this.lock(tx, key);
       const changes: Partial<typeof items.$inferInsert> = {};
       const log: Record<string, unknown>[] = [];
 
@@ -529,9 +546,9 @@ export class ItemsService {
    * Status im neuen Typ: der gewählte («statusId») oder der Vorschlag nach der Rolle des bisherigen Status, aus dem
    * Eingang «Neuer Vorgang erhält». Als automatischer Wechsel prüft der Typwechsel den Ablauf nicht.
    */
-  async setType(actor: User, number: number, type: ItemType, statusId?: string | null): Promise<void> {
+  async setType(actor: User, key: ItemKey, type: ItemType, statusId?: string | null): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const item = await this.lock(tx, number);
+      const item = await this.lock(tx, key);
       if (item.type === type && !item.discarded) return;
       const [all, targets] = await Promise.all([this.statuses.list(tx), this.statuses.targets(tx)]);
       const current = item.statusId ? all.find((s) => s.id === item.statusId) : undefined;
@@ -563,8 +580,8 @@ export class ItemsService {
     });
   }
 
-  async setStatus(actor: User, number: number, statusId: string, force = false): Promise<void> {
-    await this.move(actor, number, statusId, null, null, force);
+  async setStatus(actor: User, key: ItemKey, statusId: string, force = false): Promise<void> {
+    await this.move(actor, key, statusId, null, null, force);
   }
 
   /**
@@ -576,7 +593,7 @@ export class ItemsService {
    */
   async move(
     actor: User,
-    number: number,
+    key: ItemKey,
     statusId: string,
     beforeId: string | null,
     afterId: string | null,
@@ -584,7 +601,7 @@ export class ItemsService {
   ): Promise<void> {
     const pending: Pending = [];
     await this.db.transaction(async (tx) => {
-      const item = await this.lock(tx, number);
+      const item = await this.lock(tx, key);
       if (!item.type) throw new BadRequestException('Bitte zuerst einen Typ zuweisen');
       const [all, targets] = await Promise.all([this.statuses.list(tx), this.statuses.targets(tx)]);
       const target = moveTarget(all, targets[item.type], item.type, statusId);
@@ -642,7 +659,7 @@ export class ItemsService {
     for (const { item } of fixed) {
       await this.addEntry(tx, item.id, actor.id, 'change', '', {
         field: 'fixCompleted',
-        otherNumber: fixing.number,
+        ...referenceMeta('other', fixing),
         otherTitle: fixing.title,
       });
       await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, item.id));
@@ -664,10 +681,10 @@ export class ItemsService {
    * Ablehnen mit Begründung: in den Status «Ablehnen führt in» des Typs. Ohne dieses Ziel, aus dem Ablehnen-Status
    * selbst und bei eingeschränktem Ablauf ohne Pfeil in den Ablehnen-Status nicht möglich (siehe rejectTarget).
    */
-  async reject(actor: User, number: number, reason: string, notify: boolean): Promise<void> {
+  async reject(actor: User, key: ItemKey, reason: string, notify: boolean): Promise<void> {
     const pending: Pending = [];
     await this.db.transaction(async (tx) => {
-      const item = await this.lock(tx, number);
+      const item = await this.lock(tx, key);
       if (!item.type) throw new BadRequestException('Bitte zuerst einen Typ zuweisen');
       const current = item.statusId ? await this.statuses.get(item.statusId, tx) : undefined;
       const target = await this.statuses.rejectTarget(item.type, current, tx);
@@ -689,9 +706,9 @@ export class ItemsService {
   }
 
   /** Vorgang im Eingang verwerfen (Spam, Newsletter) bzw. wiederherstellen. */
-  async setDiscarded(actor: User, number: number, discarded: boolean): Promise<void> {
+  async setDiscarded(actor: User, key: ItemKey, discarded: boolean): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const item = await this.lock(tx, number);
+      const item = await this.lock(tx, key);
       if (item.type) throw new BadRequestException('Nur Vorgänge ohne Typ können verworfen werden');
       if (item.discarded === discarded) return;
       await tx
@@ -708,7 +725,7 @@ export class ItemsService {
    */
   async comment(
     actor: User,
-    number: number,
+    key: ItemKey,
     kind: 'reply' | 'note',
     body: string,
     files: UploadedFile[],
@@ -718,7 +735,7 @@ export class ItemsService {
     const author = asUserId && asUserId !== actor.id ? await this.onBehalfAuthor(actor, asUserId) : actor;
     const pending: Pending = [];
     await this.db.transaction(async (tx) => {
-      const item = await this.lock(tx, number);
+      const item = await this.lock(tx, key);
       if (kind === 'reply' && !(await this.mailboxes.forSending(item.mailboxId, tx))) {
         const hasRecipients =
           item.reporterId !== author.id ||
@@ -801,13 +818,13 @@ export class ItemsService {
     });
   }
 
-  async addParticipant(actor: User, number: number, email: string, name?: string): Promise<void> {
+  async addParticipant(actor: User, key: ItemKey, email: string, name?: string): Promise<void> {
     const own = await this.mailboxes.ownAddresses();
     if (own.has(email.toLowerCase())) throw new BadRequestException('Eigene Postfächer können nicht beteiligt werden');
     // Vor- und Nachname einer neuen Person aus dem AD, vor der Transaktion (Abfrage übers Netz)
     const directory = await this.users.directoryNames([email]);
     await this.db.transaction(async (tx) => {
-      const item = await this.lock(tx, number);
+      const item = await this.lock(tx, key);
       const user = await this.users.findOrCreateContact(email, name, tx, directory);
       if (user.id === item.reporterId) throw new BadRequestException('Diese Person ist bereits Melder');
       const inserted = await tx
@@ -821,9 +838,9 @@ export class ItemsService {
     });
   }
 
-  async removeParticipant(actor: User, number: number, userId: string): Promise<void> {
+  async removeParticipant(actor: User, key: ItemKey, userId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const item = await this.lock(tx, number);
+      const item = await this.lock(tx, key);
       const removed = await tx
         .delete(participants)
         .where(and(eq(participants.itemId, item.id), eq(participants.userId, userId)))
@@ -835,8 +852,8 @@ export class ItemsService {
     });
   }
 
-  async setMuted(actor: User, number: number, muted: boolean): Promise<void> {
-    const item = await this.byNumber(number);
+  async setMuted(actor: User, key: ItemKey, muted: boolean): Promise<void> {
+    const item = await this.byKey(key);
     if (muted) await this.db.insert(mutes).values({ userId: actor.id, itemId: item.id }).onConflictDoNothing();
     else await this.db.delete(mutes).where(and(eq(mutes.userId, actor.id), eq(mutes.itemId, item.id)));
   }
@@ -880,17 +897,17 @@ export class ItemsService {
    * Antwort des Melders im Portal. Wirkt wie eine Antwort per Mail: holt den Vorgang aus dem Wartet-Status bzw.
    * aus einem abgeschlossenen Status (ausser dem Ablehnen-Status) zurück und informiert den Zuständigen.
    */
-  async portalReply(reporter: User, number: number, body: string, files: UploadedFile[], rules?: RuleRun): Promise<void> {
+  async portalReply(reporter: User, key: ItemKey, body: string, files: UploadedFile[], rules?: RuleRun): Promise<void> {
     if (!body.trim() && files.length === 0) throw new BadRequestException('Der Text ist leer');
     let updated: Item | undefined;
     let text = body;
     await this.db.transaction(async (tx) => {
-      const item = await this.lock(tx, number);
-      if (item.reporterId !== reporter.id || item.discarded) throw new NotFoundException('Vorgang nicht gefunden');
+      const item = await this.lock(tx, key);
+      if (item.reporterId !== reporter.id || item.discarded || item.prefix === HELPSPOT_PREFIX) throw new NotFoundException('Vorgang nicht gefunden');
       const duplicateOf = await duplicateRedirect(tx, item);
       if (duplicateOf) {
         throw new BadRequestException(
-          `Diese Meldung wird unter PW-${duplicateOf.number} weiterbearbeitet. Bitte antworte auf die zugehörige Mail.`,
+          `Diese Meldung wird unter ${itemRef(duplicateOf)} weiterbearbeitet. Bitte antworte auf die zugehörige Mail.`,
         );
       }
       const entry = await this.addEntry(tx, item.id, reporter.id, 'reply', body, { source: 'portal' });
@@ -1079,8 +1096,8 @@ export class ItemsService {
   }
 
   /** Sperrt den Vorgang für die Dauer der Transaktion. */
-  private async lock(tx: Tx, number: number): Promise<Item> {
-    const [item] = await tx.select().from(items).where(eq(items.number, number)).for('update').limit(1);
+  private async lock(tx: Tx, key: ItemKey): Promise<Item> {
+    const [item] = await tx.select().from(items).where(byKey(key)).for('update').limit(1);
     if (!item) throw new NotFoundException('Vorgang nicht gefunden');
     return item;
   }
@@ -1146,6 +1163,7 @@ export class ItemsService {
 
   private toSummary(r: {
     id: string;
+    prefix: string;
     number: number;
     type: ItemType | null;
     title: string;
@@ -1172,6 +1190,7 @@ export class ItemsService {
   }) {
     return {
       id: r.id,
+      prefix: r.prefix,
       number: r.number,
       type: r.type,
       title: r.title,

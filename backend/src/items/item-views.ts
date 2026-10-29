@@ -10,6 +10,7 @@ import {
   users,
   type StatusTargetKind,
 } from '../db/schema';
+import { byKey, parseItemRef } from './item-ref';
 
 export const VIEWS = [
   'inbox',
@@ -30,6 +31,7 @@ export const assigneeUser = alias(users, 'assignee');
 /** Spalten für Listenansichten. */
 export const summaryColumns = {
   id: items.id,
+  prefix: items.prefix,
   number: items.number,
   type: items.type,
   title: items.title,
@@ -87,8 +89,12 @@ export function searchCondition(query: string): SQL | undefined {
   if (!q) return undefined;
   const conditions: SQL[] = [];
 
-  const numberMatch = q.match(/^(?:pw-?)?(\d{1,9})$/i);
-  if (numberMatch) conditions.push(eq(items.number, Number(numberMatch[1])));
+  // «PW-123» bzw. «HS-17223» genau diesen Vorgang, eine Zahl allein jeden Präfix
+  if (/^\d{1,9}$/.test(q)) conditions.push(eq(items.number, Number(q)));
+  else {
+    const key = parseItemRef(q);
+    if (key) conditions.push(byKey(key));
+  }
 
   const tokens = q
     .split(/\s+/)
@@ -192,7 +198,8 @@ export type SortField = (typeof SORT_FIELDS)[number];
 export function sortOrder(field: SortField, dir: 'asc' | 'desc'): SQL[] {
   const by = (column: SQL | AnyColumn) => sql`${column} ${sql.raw(dir)} nulls last`;
   const key: Record<SortField, SQL> = {
-    number: by(items.number),
+    // Nach Präfix, dann Nummer (PW-… und HS-… getrennt)
+    number: sql`${items.prefix} ${sql.raw(dir)}, ${items.number} ${sql.raw(dir)}`,
     title: by(sql`lower(${items.title})`),
     status: by(statuses.position),
     // Reihenfolge der Aufzählung: hoch, normal, niedrig

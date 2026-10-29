@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { formatDateTime } from '../format';
+import { itemRef, type ItemKey } from '../item-ref';
 import { renderOwnMailHtml } from '../markdown';
 import { OUTGOING_STATUS } from '../outgoing';
 import type { OutgoingStatus, SentMail } from '../types';
@@ -13,7 +14,7 @@ import ModalDialog from './ModalDialog.vue';
  * Status und Empfängern, darunter die Mail, so wie sie ohne Testbetrieb versendet wird.
  */
 const props = defineProps<{
-  number: number;
+  itemKey: ItemKey;
   mailId: string;
   /** Status laut Verlauf: Ändert er sich (z.B. von «wird versendet» auf versendet), lädt die Ansicht neu */
   status?: OutgoingStatus;
@@ -22,11 +23,11 @@ const emit = defineEmits<{ close: [] }>();
 
 const mail = ref<SentMail | null>(null);
 const error = ref('');
-const base = `/api/items/${props.number}/mails/${props.mailId}`;
+const base = `/api/items/${itemRef(props.itemKey)}/mails/${props.mailId}`;
 
 async function load() {
   try {
-    mail.value = await api.get<SentMail>(`/items/${props.number}/mails/${props.mailId}`);
+    mail.value = await api.get<SentMail>(`/items/${itemRef(props.itemKey)}/mails/${props.mailId}`);
     error.value = '';
   } catch (err) {
     error.value = errorMessage(err);

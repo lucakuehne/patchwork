@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { api, errorMessage } from '../api';
 import { itemRef, TYPE_LABELS } from '../format';
+import type { ItemKey } from '../item-ref';
 import { suggestTypeChangeStatus } from '../status-flow';
 import { typeChangeChoices } from '../status-move';
 import { useSession } from '../stores/session';
@@ -13,7 +14,7 @@ import ModalDialog from './ModalDialog.vue';
  * Ablehnen-Status (seit 23.10.2026). Zur Störung vorbelegt nach der Rolle des bisherigen Status (Start → Start,
  * Wartet → Wartet, Ablehnen → Ablehnen, sonst «nach Antwort» bzw. Schliessen).
  */
-const props = defineProps<{ number: number; type: ItemType | null; status: StatusRef | null; targetType: ItemType }>();
+const props = defineProps<{ itemKey: ItemKey; type: ItemType | null; status: StatusRef | null; targetType: ItemType }>();
 const emit = defineEmits<{ close: []; done: [] }>();
 const session = useSession();
 
@@ -33,7 +34,7 @@ async function submit() {
   saving.value = true;
   error.value = '';
   try {
-    await api.post(`/items/${props.number}/type`, { type: props.targetType, statusId: statusId.value });
+    await api.post(`/items/${itemRef(props.itemKey)}/type`, { type: props.targetType, statusId: statusId.value });
     emit('done');
   } catch (err) {
     error.value = errorMessage(err);
@@ -44,7 +45,7 @@ async function submit() {
 </script>
 
 <template>
-  <ModalDialog :title="`${itemRef(number)} wird ${targetType === 'task' ? 'zur Aufgabe' : 'zur Störung'}`" @close="emit('close')">
+  <ModalDialog :title="`${itemRef(itemKey)} wird ${targetType === 'task' ? 'zur Aufgabe' : 'zur Störung'}`" @close="emit('close')">
     <p class="muted intro">
       <template v-if="type && status">Bisher {{ TYPE_LABELS[type] }} im Status «{{ status.label }}». </template>
       Welchen Status erhält der Vorgang als {{ TYPE_LABELS[targetType] }}?

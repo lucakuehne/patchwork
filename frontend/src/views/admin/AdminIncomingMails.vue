@@ -182,8 +182,8 @@ const sender = (m: IncomingMail) => (m.fromName ? `${m.fromName} <${m.fromAddres
             <td>{{ sender(m) }}</td>
             <td>{{ m.subject }}</td>
             <td class="nowrap">
-              <ItemLink v-if="m.item" :number="m.item.number" :type="m.item.type" :title="m.item.title" @click.stop>
-                {{ itemRef(m.item.number) }}
+              <ItemLink v-if="m.item" :item-key="m.item" :type="m.item.type" :title="m.item.title" @click.stop>
+                {{ itemRef(m.item) }}
               </ItemLink>
               <span v-else class="faint">–</span>
             </td>
@@ -226,7 +226,7 @@ const sender = (m: IncomingMail) => (m.fromName ? `${m.fromName} <${m.fromAddres
         <template v-if="open.item">
           <dt>Vorgang</dt>
           <dd>
-            <ItemLink :number="open.item.number" :type="open.item.type">{{ itemRef(open.item.number) }} {{ open.item.title }}</ItemLink>
+            <ItemLink :item-key="open.item" :type="open.item.type">{{ itemRef(open.item) }} {{ open.item.title }}</ItemLink>
           </dd>
         </template>
       </dl>

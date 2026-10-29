@@ -3,7 +3,8 @@ import { and, eq, isNull, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import { attachments, entries, items, links, participants, statuses, users, type Item } from '../db/schema';
-import { itemRef } from '../mail/mail-content';
+import { byKey, itemRef, type ItemKey } from './item-ref';
+import { referenceMeta } from './references';
 import { replaceImages } from './inline-images';
 import { NotificationsService } from '../mail/notifications.service';
 import { areaOf, type Area } from '../settings/areas';
@@ -53,6 +54,9 @@ export function roleOf(link: { fromId: string; kind: 'relates' | 'fixes' | 'dupl
 
 const otherItem = alias(items, 'other');
 
+/** Reihenfolge von Kennungen: zuerst der Präfix, dann die Nummer */
+const compareKeys = (a: ItemKey, b: ItemKey) => a.prefix.localeCompare(b.prefix) || a.number - b.number;
+
 @Injectable()
 export class LinksService {
   constructor(
@@ -70,7 +74,7 @@ export class LinksService {
     const rows = await this.db
       .select({
         link: links,
-        other: { id: otherItem.id, number: otherItem.number, title: otherItem.title, type: otherItem.type },
+        other: { id: otherItem.id, prefix: otherItem.prefix, number: otherItem.number, title: otherItem.title, type: otherItem.type },
         status: { label: statuses.label, closed: statuses.closed, color: statuses.color },
       })
       .from(links)
@@ -91,22 +95,23 @@ export class LinksService {
           role: roleOf(r.link, itemId),
           createdAt: r.link.createdAt,
           other: hidden
-            ? { id: r.other.id, number: r.other.number, title: '', type: null, status: null, hidden: true }
+            ? { id: r.other.id, prefix: r.other.prefix, number: r.other.number, title: '', type: null, status: null, hidden: true }
             : { ...r.other, status: r.status?.label ? r.status : null, hidden: false },
         };
       })
-      .sort((a, b) => LINK_ROLES.indexOf(a.role) - LINK_ROLES.indexOf(b.role) || a.other.number - b.other.number);
+      .sort((a, b) => LINK_ROLES.indexOf(a.role) - LINK_ROLES.indexOf(b.role) || compareKeys(a.other, b.other));
   }
 
-  async add(actorId: string, number: number, role: LinkRole, otherNumber: number): Promise<void> {
-    if (number === otherNumber) throw new BadRequestException('Ein Vorgang kann nicht mit sich selbst verknüpft werden');
+  async add(actorId: string, key: ItemKey, role: LinkRole, otherKey: ItemKey): Promise<void> {
+    if (itemRef(key) === itemRef(otherKey)) throw new BadRequestException('Ein Vorgang kann nicht mit sich selbst verknüpft werden');
     const pending: (() => Promise<void>)[] = [];
     await this.db.transaction(async (tx) => {
-      // Immer in aufsteigender Nummernfolge sperren, damit sich gleichzeitige Verknüpfungen nicht blockieren
-      const first = await this.lockByNumber(tx, Math.min(number, otherNumber));
-      const second = await this.lockByNumber(tx, Math.max(number, otherNumber));
-      const self = first.number === number ? first : second;
-      const other = first.number === number ? second : first;
+      // Immer in derselben Reihenfolge sperren (Präfix, dann Nummer), damit sich gleichzeitige Verknüpfungen nicht blockieren
+      const [low, high] = compareKeys(key, otherKey) < 0 ? [key, otherKey] : [otherKey, key];
+      const first = await this.lockByKey(tx, low);
+      const second = await this.lockByKey(tx, high);
+      const self = low === key ? first : second;
+      const other = low === key ? second : first;
       const stored = toStoredLink(role, self.id, other.id);
 
       const existing = await tx
@@ -166,7 +171,7 @@ export class LinksService {
           duplicate.reporterId,
           'reply',
           duplicate.description,
-          { source: 'merge', mergedFrom: duplicate.number, mergedTitle: duplicate.title },
+          { source: 'merge', ...referenceMeta('mergedFrom', duplicate), mergedTitle: duplicate.title },
           { bodyHtml: duplicate.descriptionHtml },
         );
         if (files.length > 0) {
@@ -204,7 +209,7 @@ export class LinksService {
       await this.items.addEntry(tx, original.id, actorId, 'change', '', {
         field: 'participantAdded',
         to: person?.name ?? '',
-        viaDuplicate: duplicate.number,
+        ...referenceMeta('viaDuplicate', duplicate),
       });
     }
 
@@ -231,7 +236,7 @@ export class LinksService {
         .where(eq(items.id, duplicate.id));
       await this.items.addEntry(tx, duplicate.id, actorId, 'status', '', {
         ...statusMeta(current, target),
-        duplicateOf: original.number,
+        ...referenceMeta('duplicateOf', original),
         merged,
       });
     }
@@ -239,9 +244,9 @@ export class LinksService {
     return [() => this.notifications.duplicateRedirected(original, duplicate, merged, actorId)];
   }
 
-  async remove(actorId: string, number: number, linkId: string): Promise<void> {
+  async remove(actorId: string, key: ItemKey, linkId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const self = await this.lockByNumber(tx, number);
+      const self = await this.lockByKey(tx, key);
       const [link] = await tx
         .select()
         .from(links)
@@ -285,7 +290,7 @@ export class LinksService {
    * «wird dort weiterbearbeitet» nichts mehr, und der Melder bekäme keine Updates.
    */
   private async assertOpenOriginal(tx: Tx, original: Item) {
-    const ref = `${itemRef(original.number)} «${original.title}»`;
+    const ref = `${itemRef(original)} «${original.title}»`;
     if (original.discarded) throw new BadRequestException(`${ref} ist verworfen und kann nicht Original eines Duplikats sein`);
     if (!original.statusId) return;
     const status = await this.statuses.get(original.statusId, tx);
@@ -317,22 +322,22 @@ export class LinksService {
       field,
       role: roleFromSelf,
       roleLabel: LINK_ROLE_LABELS[roleFromSelf],
-      otherNumber: other.number,
+      ...referenceMeta('other', other),
       otherTitle: other.title,
     });
     await this.items.addEntry(tx, other.id, actorId, 'change', '', {
       field,
       role: mirror[roleFromSelf],
       roleLabel: LINK_ROLE_LABELS[mirror[roleFromSelf]],
-      otherNumber: self.number,
+      ...referenceMeta('other', self),
       otherTitle: self.title,
     });
     await tx.update(items).set({ updatedAt: now }).where(or(eq(items.id, self.id), eq(items.id, other.id)));
   }
 
-  private async lockByNumber(tx: Tx, number: number): Promise<Item> {
-    const [item] = await tx.select().from(items).where(eq(items.number, number)).for('update').limit(1);
-    if (!item) throw new NotFoundException(`Vorgang PW-${number} nicht gefunden`);
+  private async lockByKey(tx: Tx, key: ItemKey): Promise<Item> {
+    const [item] = await tx.select().from(items).where(byKey(key)).for('update').limit(1);
+    if (!item) throw new NotFoundException(`Vorgang ${itemRef(key)} nicht gefunden`);
     return item;
   }
 }

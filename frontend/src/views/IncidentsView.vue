@@ -8,6 +8,7 @@ import ListFilters from '../components/ListFilters.vue';
 import MineToggle from '../components/MineToggle.vue';
 import PagedList from '../components/PagedList.vue';
 import { useListFilters, useListSort, useMineFilter, useReloadAfterItemModal } from '../composables';
+import type { ItemKey } from '../item-ref';
 import { listParams } from '../list-filters';
 import { useOpenItem } from '../open-item';
 import { useSession } from '../stores/session';
@@ -33,9 +34,9 @@ function createIn(statusId?: string) {
   newStatusId.value = statusId;
   newOpen.value = true;
 }
-function onCreated(number: number) {
+function onCreated(created: ItemKey) {
   newOpen.value = false;
-  openItem(number, 'incident');
+  openItem(created, 'incident');
 }
 const mine = useMineFilter('incidents');
 const items = ref<ItemSummary[]>([]);

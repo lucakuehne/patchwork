@@ -1,7 +1,6 @@
 import type { ItemType, Priority, Role } from './types';
 
-export const NUMBER_PREFIX = 'PW';
-export const itemRef = (n: number) => `${NUMBER_PREFIX}-${n}`;
+export { itemRef } from './item-ref';
 
 export const TYPE_LABELS: Record<ItemType, string> = { incident: 'Störung', task: 'Aufgabe' };
 /** Leitfrage je Typ: beim Erfassen und als Erklärung beim Feld «Typ» eines Vorgangs */

@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
 import { items, type ItemType, type User, type UserRole } from '../db/schema';
+import { byKey, type ItemKey } from '../items/item-ref';
 import { SettingsService } from './settings.service';
 
 /**
@@ -74,11 +75,11 @@ export class AreasService {
     if (!(await this.canSee(user, type))) throw noAccess(type);
   }
 
-  /** Vorgang über seine Nummer; einen unbekannten meldet später die Route selbst («nicht gefunden») */
-  async assertNumber(user: Pick<User, 'role'>, number: number): Promise<void> {
+  /** Vorgang über seine Kennung; einen unbekannten meldet später die Route selbst («nicht gefunden») */
+  async assertKey(user: Pick<User, 'role'>, key: ItemKey): Promise<void> {
     const limit = await this.limit(user);
-    if (!limit || !Number.isInteger(number)) return;
-    const [row] = await this.db.select({ type: items.type }).from(items).where(eq(items.number, number)).limit(1);
+    if (!limit) return;
+    const [row] = await this.db.select({ type: items.type }).from(items).where(byKey(key)).limit(1);
     if (row && !limit.includes(areaOf(row.type))) throw noAccess(row.type);
   }
 

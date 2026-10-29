@@ -36,8 +36,8 @@ const session = useSession();
 const openItem = useOpenItem();
 // Klick öffnet je nach Einstellung als Seite oder Fenster; Ctrl+Klick bzw. mittlere Taste in einem neuen Tab
 function open(item: ItemSummary, event: MouseEvent) {
-  if (opensInBrowser(event)) window.open(itemHref(item.number), '_blank');
-  else openItem(item.number, item.type);
+  if (opensInBrowser(event)) window.open(itemHref(item), '_blank');
+  else openItem(item, item.type);
 }
 // In der Liste nur das Symbol, die Bezeichnung beim Darüberfahren
 const channelProps = (item: ItemSummary) => {
@@ -66,7 +66,7 @@ const channelProps = (item: ItemSummary) => {
       </thead>
       <tbody>
         <tr v-for="item in props.items" :key="item.id" class="clickable" @click="open(item, $event)" @auxclick.middle.prevent="open(item, $event)">
-          <td class="mono nowrap muted">{{ itemRef(item.number) }}</td>
+          <td class="mono nowrap muted">{{ itemRef(item) }}</td>
           <td class="title-cell">
             {{ item.title }}
             <ChecklistProgress v-if="item.checklist" class="progress-badge" :done="item.checklist.done" :total="item.checklist.total" />

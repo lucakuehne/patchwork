@@ -5,6 +5,7 @@ import { simpleParser } from 'mailparser';
 import { AdminOnly } from '../auth/auth.decorators';
 import { InjectDb, type Db } from '../db/db.module';
 import { items, outgoingMails, type ItemType, type OutgoingMailRow } from '../db/schema';
+import { DEFAULT_PREFIX } from '../items/item-ref';
 import { StorageService } from '../storage/storage.service';
 import { MailSenderService } from './mail-sender.service';
 import { disposition, mailAttachmentPreview, mailView, sendMailAttachment } from './mail-view';
@@ -27,21 +28,21 @@ export class OutgoingMailsController {
   async list(@Query('status') status?: string) {
     const wanted = (status ?? '').split(',').filter((s): s is Status => (STATUSES as readonly string[]).includes(s));
     const rows = await this.db
-      .select({ mail: outgoingMails, number: items.number, title: items.title, type: items.type })
+      .select({ mail: outgoingMails, prefix: items.prefix, number: items.number, title: items.title, type: items.type })
       .from(outgoingMails)
       .leftJoin(items, eq(items.id, outgoingMails.itemId))
       .where(wanted.length ? inArray(outgoingMails.status, wanted) : undefined)
       .orderBy(desc(outgoingMails.createdAt))
       .limit(500);
-    return rows.map(({ mail, number, title, type }) => this.summary(mail, number, title, type));
+    return rows.map(({ mail, prefix, number, title, type }) => this.summary(mail, prefix, number, title, type));
   }
 
   @Get(':id')
   async detail(@Param('id', ParseUUIDPipe) id: string) {
-    const { mail, number, title, type } = await this.get(id);
+    const { mail, prefix, number, title, type } = await this.get(id);
     // Eigenes HTML; eingebettete Bilder («cid:») zeigen auf die Anhänge der gespeicherten Mail
     const view = await mailView(await this.read(mail), (index) => `/api/admin/outgoing-mails/${mail.id}/attachments/${index}`, false);
-    return { ...this.summary(mail, number, title, type), ...view };
+    return { ...this.summary(mail, prefix, number, title, type), ...view };
   }
 
   /** Die vollständige Mail, so wie sie ohne Testbetrieb versendet wird. */
@@ -105,7 +106,7 @@ export class OutgoingMailsController {
 
   private async get(id: string) {
     const [row] = await this.db
-      .select({ mail: outgoingMails, number: items.number, title: items.title, type: items.type })
+      .select({ mail: outgoingMails, prefix: items.prefix, number: items.number, title: items.title, type: items.type })
       .from(outgoingMails)
       .leftJoin(items, eq(items.id, outgoingMails.itemId))
       .where(eq(outgoingMails.id, id))
@@ -115,7 +116,7 @@ export class OutgoingMailsController {
   }
 
   /** «item» null: Mail ohne Vorgang (Willkommens-Mail) */
-  private summary(mail: OutgoingMailRow, number: number | null, title: string | null, type: ItemType | null) {
+  private summary(mail: OutgoingMailRow, prefix: string | null, number: number | null, title: string | null, type: ItemType | null) {
     return {
       id: mail.id,
       createdAt: mail.createdAt,
@@ -134,7 +135,7 @@ export class OutgoingMailsController {
       attempts: mail.attempts,
       reply: !!mail.entryId,
       template: mail.template,
-      item: number !== null ? { number, title: title ?? '', type } : null,
+      item: number !== null ? { prefix: prefix ?? DEFAULT_PREFIX, number, title: title ?? '', type } : null,
     };
   }
 }

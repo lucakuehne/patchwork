@@ -5,7 +5,8 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
 ## Umfang MVP
 
 - Zwei Typen mit Typwechsel, Eingang, Tabs mit Liste und Board, E-Mail rein und raus, Login (lokal, LDAP/AD).
-- **Kein Import** aus HelpSpot oder Wekan.
+- **Kein Import** aus HelpSpot oder Wekan. Am 29.10.2026 für HelpSpot geändert: Import ist umgesetzt, siehe «Import
+  aus HelpSpot».
 - Patchwork bleibt vorerst privat (keine Lizenzdatei).
 
 ## Prioritäten
@@ -259,8 +260,104 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - **Status «Offen» entfällt** (ersetzt die Entscheidung vom 21.10.2026): Aufgaben in «Offen» kommen nach «Backlog», «Backlog» wird wieder Start-Status, «Offen» wird gelöscht, auch aus den Standardstatus neuer Installationen.
 - Umgesetzt am 23.10.2026, technisch:
   - Migration 0030: Aufgaben, Ziele, Pfeile und zeitgesteuerte Regeln von «Offen» gehen auf das Backlog (fehlt es, auf den ersten übrigen offenen Status ausser dem Wartet-Status), dann wird «Offen» gelöscht. Bestehende Regeln mit «Typ: Aufgabe» erhalten den Start-Status der Aufgaben.
-  - Bereiche: Einstellung `areas` (`{ it: [...] }`). Der AuthGuard prüft jede Route mit `:number`; Anhänge, Notizen und Checklisten (über ihre ID), Listen, Zähler, Suche, Verknüpfungen und aus anderen Vorgängen kopierte Bilder prüfen selbst. Mails an die IT laufen über eine Stelle, die ohne Zugriff nichts versendet; Beteiligte ohne Zugriff fallen aus dem CC.
+  - Bereiche: Einstellung `areas` (`{ it: [...] }`). Der AuthGuard prüft jede Route mit `:number` (seit 29.10.2026 `:ref`, die Kennung); Anhänge, Notizen und Checklisten (über ihre ID), Listen, Zähler, Suche, Verknüpfungen und aus anderen Vorgängen kopierte Bilder prüfen selbst. Mails an die IT laufen über eine Stelle, die ohne Zugriff nichts versendet; Beteiligte ohne Zugriff fallen aus dem CC.
   - Gesperrte Vorgänge antworten mit 403 «Kein Zugriff auf den Bereich …», die Oberfläche zeigt «PW-… ist für Sie gesperrt».
+
+## Import aus HelpSpot (umgesetzt am 29.10.2026)
+
+Alte HelpSpot-Tickets werden oft als Wissensquelle gebraucht; mit dem Import lässt sich HelpSpot nach dem Umstieg
+abschalten.
+
+- Bestätigt: Die Tickets werden **normale, abgeschlossene Vorgänge** in Patchwork, sofern sich das sauber umsetzen lässt;
+  sonst ein eigener, nur lesbarer Bereich «HelpSpot-Archiv». Ein statisches Archiv ausserhalb von Patchwork kommt nicht
+  in Frage.
+- Bestätigt: Alle Tickets mit Verlauf und Anhängen, ohne Papierkorb und Spam. Sichtbar nur für IT und Admins, nicht für
+  Melder im Portal. Interne Notizen aus HelpSpot werden übernommen und bleiben intern.
+- Technisch: Quelle ist die Web Services API von HelpSpot (`private.request.get` mit Verlauf, öffentlich/intern und
+  Anhängen, `private.document.get` für die Dateien, `private.request.getChanged` für Nachträge). Beim Import lösen keine
+  Regeln, Benachrichtigungen oder Mails aus. Der API-Schlüssel kommt nicht ins Repo.
+- Auswertung vom 29.10.2026 (nur lesend über die API): rund 5'400 Tickets (Nummern 12400–18233, seit 2021), 23 offen;
+  Status fast alle «Problem Solved»; Pflichtfeld «Type» mit Incident (rund 80 %), Changes, Project oder leer; Kategorien
+  durchgehend gesetzt, übrige Zusatzfelder praktisch leer; im Mittel 6 Einträge und ein Anhang pro Ticket, Anhänge
+  total rund 0,5 GB; Betreff der Mails «… - Ticket:{12345}»; die API bremst (HTTP 429), der erste Import dauert
+  deshalb einige Stunden.
+- Bestätigt am 29.10.2026:
+  - Die HelpSpot-Nummer ist durchsuchbar (zu den Nummern siehe unten).
+  - «Alle Tickets werden Störungen» ist ersetzt durch die Zuordnung der Typen (unten).
+  - Importierte Vorgänge zählen in den Auswertungen nicht mit.
+  - Einträge ehemaliger Mitarbeitender zeigen den Namen aus HelpSpot, ohne Konto in Patchwork; Mitarbeitende mit Konto
+    werden über die E-Mail-Adresse zugeordnet.
+  - Seite «HelpSpot-Import» in der Verwaltung (nur Admins) mit Adresse und API-Schlüssel (verschlüsselt), Import,
+    Fortschritt und Ergebnis. Sie bleibt dauerhaft (gehört zum Funktionsumfang): Import jederzeit wiederholbar,
+    bereits importierte Tickets werden aktualisiert statt doppelt angelegt, Verlauf der Importe.
+- Bestätigt am 29.10.2026: **Zuordnung der Status** auf der Seite «HelpSpot-Import»: jeder HelpSpot-Status bekommt einen
+  Status der Störungen, vorgefüllt (geschlossene auf den Schliessen-Status, «kein Problem» o.ä. auf den Ablehnen-Status,
+  offene auf den Start-Status); geschlossene Tickets nur auf abgeschlossene Status, offene nur auf offene. Der
+  ursprüngliche HelpSpot-Status bleibt als Angabe im Vorgang.
+- Bestätigt am 29.10.2026: **Zuordnung der Typen** auf der Seite «HelpSpot-Import»: jeder Wert des HelpSpot-Felds «Type»
+  bekommt Störung oder Aufgabe (vorgefüllt: Incident und leer → Störung, Changes und Project → Aufgabe); die
+  Zuordnung der Status gilt je Typ.
+- Bestätigt am 29.10.2026: **Zuordnung der Meldewege** («Eröffnet über» in HelpSpot), vorgefüllt: Mail → Meldeweg der
+  Mails, Telefon → «Telefon».
+- Bestätigt am 29.10.2026: Kategorien und Zusatzfelder aus HelpSpot werden nicht übernommen. Bekommt Patchwork später
+  Kategorien, wird das Nachtragen neu überlegt.
+- Bestätigt am 29.10.2026: **Nummern mit Präfix HS** – ein importiertes Ticket behält seine HelpSpot-Nummer mit dem
+  Präfix «HS» (Ticket 17223 → HS-17223), neue Vorgänge bleiben «PW-…».
+- Bestätigt am 29.10.2026 (nach dem Einwand, ein gemeinsamer Zahlenraum kreuze sich bei vielen Tickets): **Präfix und
+  Nummer bilden zusammen die Kennung**, jeder Präfix hat seinen eigenen Nummernkreis (PW-17223
+  und HS-17223 können nebeneinander bestehen). Adressen und Programmierschnittstelle enthalten die volle Kennung
+  (`/items/PW-123`, `/items/HS-17223`, Fenster `?item=HS-17223`); Links ohne Präfix (`/items/123`, `/v/123`,
+  `?item=123`) gelten als PW und funktionieren weiter. Betreff ([HS-17223]), Links im Text, Suche (auch nur «17223»)
+  und die Zuordnung von Antworten ([HS-17223] oder «Ticket:{17223}») arbeiten mit der vollen Kennung. Umsetzung als
+  eigener Schritt vor dem Import.
+  - Technisch (umgesetzt am 29.10.2026): Spalte `items.prefix` (Standard «PW»), eindeutig ist «Präfix + Nummer»
+    (Migration 0037); die Sequenz der Nummer zählt für PW. Routen `items/:ref` mit der Kennung (ohne Präfix PW). Verweise
+    in `entries.meta` speichern zur Nummer den Präfix (`otherPrefix`, `mergedFromPrefix`, `duplicateOfPrefix`,
+    `viaDuplicatePrefix`), ältere ohne Präfix gelten als PW. Kennungen im Text werden in der Oberfläche zu Links (nicht im
+    Portal, nicht in Code oder bestehenden Links); ein Klick öffnet den Vorgang als Seite.
+- Bestätigt am 29.10.2026: Die Rohdaten jedes Tickets werden beim Import unsichtbar mitgespeichert (wenige MB), damit
+  sich nach dem Abschalten von HelpSpot noch etwas nachtragen lässt (z.B. Kategorien).
+- Für den Umstieg: Während der Parallelphase entstehen aus denselben Mails Vorgänge in beiden Systemen; der Import
+  erkennt sie über die Message-ID der ersten Mail.
+- Bestätigt am 29.10.2026: **Offene HelpSpot-Tickets** werden am Stichtag mit dem letzten Import als offene Vorgänge
+  übernommen (Status nach Zuordnung, Zuständige übernommen); vorher möglichst viele in HelpSpot abschliessen. HelpSpot
+  holt ab dem Stichtag keine Mails mehr ab. Antworten auf alte HelpSpot-Tickets landen im importierten Vorgang, auch bei
+  geschlossenen, die dann wie gewohnt wieder öffnen. Beim Import keine Mails «Zugewiesen»; zeitgesteuerte Regeln
+  zählen für importierte offene Vorgänge ab dem Import.
+- Umgesetzt am 29.10.2026 (Verwaltung → HelpSpot-Import):
+  - Verbindung (Adresse, API-Schlüssel verschlüsselt), «Verbindung prüfen und Werte laden» zählt Status (mit
+    offen/geschlossen), Werte von «Type» und «Eröffnet über»; die Zuordnungen zeigen je Wert die Anzahl Tickets.
+  - Der Import läuft im Hintergrund in Patchwork, gebremst auf etwa eine Anfrage pro Sekunde, bei HTTP 429 wartet er
+    und versucht es erneut. Fortschritt und Verlauf der Läufe stehen auf der Seite. Ein Neustart von Patchwork bricht
+    einen Lauf ab; der nächste holt alles seit dem letzten vollständigen Lauf.
+  - Priorität: «Urgent» in HelpSpot → Hoch. Zeiten in der Zeitzone Zürich, auf die Minute. Ein Vorgang, der seit dem
+    letzten Import in Patchwork geändert wurde, behält seine Angaben; neue Einträge aus HelpSpot kommen trotzdem dazu.
+  - Technisch: Tabellen `helpspot_tickets` (Rohdaten, Status und Melder laut HelpSpot, Message-ID der ersten Mail) und
+    `helpspot_import_runs`, `entries.external_id` («hs:<Eintrag>») und `attachments.external_id` («hs-doc:<Anhang>»)
+    gegen Doppelte (Migration 0038).
+  - Bestätigt am 29.10.2026: Melder ohne E-Mail-Adresse in HelpSpot (rund 2 %, v.a. Anrufe) erhalten den gemeinsamen Kontakt
+    «Ohne E-Mail (HelpSpot)»; der Name laut HelpSpot steht im Vorgang («Melder laut HelpSpot: …»).
+  - Bestätigt am 29.10.2026: Einträge von Personen ohne Konto in Patchwork (ehemalige Mitarbeitende, Beteiligte) zeigen den
+    Namen aus HelpSpot; Antworten des Melders gehören seinem Kontakt. Änderungen aus HelpSpot («Request Changed»)
+    erscheinen als graue Zeile «in HelpSpot geändert: …». Im Vorgang steht «Aus HelpSpot übernommen · Status in
+    HelpSpot «…»», Einträge tragen «aus HelpSpot» und lassen sich nicht bearbeiten.
+  - Bestätigt am 29.10.2026: Mails an Melder zu HS-Vorgängen ohne Link-Zeile zum Portal, weil das Portal sie nicht zeigt.
+- **Umstieg von HelpSpot** (bestätigt am 29.10.2026):
+  - Vorbereitung: Import bauen und prüfen; Probeimport in der Produktion mit allen geschlossenen Tickets (läuft einige
+    Stunden im Hintergrund). Kein automatisches Nachziehen (bestätigt am 29.10.2026): «Importieren» holt bei jedem Lauf nur, was sich seit dem
+    letzten geändert hat, und lässt sich jederzeit von Hand starten. Offene HelpSpot-Tickets möglichst abschliessen.
+  - Mit dem Probeimport wird der Mail-Abruf in Patchwork ausgeschaltet; bis zum Stichtag kommen keine Mails in Patchwork
+    an (auch keine Antworten auf Mails von Patchwork). Deshalb braucht es keinen Schalter: Antworten mit
+    «Ticket:{12345}» ordnet Patchwork immer dem HS-Vorgang zu.
+  - Stichtag (an einem Morgen, Datum noch offen, Admin anwesend): 1. In HelpSpot den Mail-Abruf ausschalten. 2. Die
+    Regel im Postfach löschen, die nach «Inbox-Patchwork» kopiert; in Patchwork den Posteingang wählen, «Mails abholen
+    ab» = Stichtag, Abruf wieder einschalten. 3. Letzter Import mit den offenen Tickets. 4. Kopien aus der Parallelphase
+    bereinigen. 5. Testbetrieb in allen Blöcken auf «an alle». 6. Kontrolle: Testmail, Antwort auf ein altes Ticket,
+    Mail an einen Melder. Das Portal bleibt aus und kommt später.
+  - Kopien aus der Parallelphase (dieselbe erste Mail in Patchwork und HelpSpot, erkannt über die Message-ID): beim
+    Stichtag ohne Mails geschlossen bzw. verworfen und mit dem HS-Vorgang verknüpft.
+  - Danach: HelpSpot etwa eine Woche nur noch lesbar (ohne Mail-Abruf), dann abschalten; Sicherung der
+    HelpSpot-Datenbank aufbewahren.
 
 ## Testbetrieb je Typ, im Namen anderer antworten, Backlog im Board (bestätigt am 28.10.2026)
 
@@ -292,7 +389,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   E-Mail nicht anmelden können.
 - **Englische Adressen** (gewünscht am 28.10.2026): Pfade und Query-Parameter der Oberfläche sind englisch, z.B.
   `/inbox`, `/incidents`, `/incidents/resolved`, `/tasks`, `/tasks/done`, `/tasks/rejected`, `/search`, `/settings`,
-  `/setup`, `/reports`, `/items/123` (bisher `/v/123`), `/portal/new`, `/portal/items/123`, `/admin/general`,
+  `/setup`, `/reports`, `/items/PW-123` (bisher `/v/123`), `/portal/new`, `/portal/items/PW-123`, `/admin/general`,
   `/admin/users`, `/admin/mailboxes`, `/admin/incoming-mails`, `/admin/outgoing-mails`, `/admin/mail-templates`,
   `/admin/statuses`, `/admin/channels`, `/admin/rules`, `/admin/checklist-templates`, `/admin/snippets`; Parameter
   `?item=` (Fenster), `?next=` (nach der Anmeldung), `?result=`, `?origin=` und `?status=` mit englischen Werten. Links in
@@ -408,7 +505,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   Gespeichert pro Benutzer. Die Wahl gilt überall in Patchwork (Listen, Board, Suche, Verknüpfungen, Verweise im Verlauf,
   «Öffnen» in Meldungen), jeweils nach dem Typ des Vorgangs; Links aus Mails öffnen immer als Seite. Solange das Fenster
   (oder ein anderer Dialog) offen ist, scrollt die Seite dahinter nicht mit. Ctrl+Klick bzw. die mittlere Maustaste öffnen wie gewohnt einen neuen Browser-Tab.
-- Technisch (entschieden am 27.10.2026): Das Fenster steht in der Adresse (`?vorgang=123`, seit 28.10.2026 `?item=123`), «Zurück» im Browser schliesst
+- Technisch (entschieden am 27.10.2026): Das Fenster steht in der Adresse (`?vorgang=123`, seit 28.10.2026 `?item=123`, seit 29.10.2026 `?item=PW-123`), «Zurück» im Browser schliesst
   es, Neuladen öffnet es wieder. Im Fenster gibt es «Als Seite öffnen». Ein Link auf einen anderen Vorgang öffnet diesen je
   nach Wahl wieder im Fenster (ersetzt den Inhalt, «Zurück» führt zum vorherigen) oder als Seite. Nach dem Schliessen lädt
   die Liste bzw. das Board neu. Einstellungen in der Spalte `users.preferences`. Die Navigation der Aufgaben heisst

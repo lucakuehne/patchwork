@@ -20,6 +20,8 @@ import { CurrentUser, PortalRoute } from '../auth/auth.decorators';
 import { appConfig } from '../config';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
+import type { ItemKey } from '../items/item-ref';
+import { ItemRefPipe } from '../items/item-ref.pipe';
 import { ItemsService, type UploadedFile } from '../items/items.service';
 import { RulesService } from '../rules/rules.service';
 import { buildPreview, nestedAttachment, sendFile } from '../storage/attachment-preview';
@@ -58,9 +60,9 @@ export class PortalController {
     return this.portal.list(user, query.state);
   }
 
-  @Get('items/:number')
-  detail(@Param('number', ParseIntPipe) number: number, @CurrentUser() user: User) {
-    return this.portal.detail(user, number);
+  @Get('items/:ref')
+  detail(@Param('ref', ItemRefPipe) key: ItemKey, @CurrentUser() user: User) {
+    return this.portal.detail(user, key);
   }
 
   @Post('items')
@@ -82,25 +84,25 @@ export class PortalController {
       files ?? [],
       run,
     );
-    return { number: item.number };
+    return { prefix: item.prefix, number: item.number };
   }
 
-  @Post('items/:number/replies')
+  @Post('items/:ref/replies')
   @HttpCode(204)
   @UseInterceptors(uploads())
   async reply(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(replySchema)) body: z.infer<typeof replySchema>,
     @UploadedFiles() files: UploadedFile[] | undefined,
     @CurrentUser() user: User,
   ) {
     // Regeln nur für eigene Vorgänge prüfen; fremde lehnt portalReply ab
-    const target = await this.items.byNumber(number).catch(() => null);
+    const target = await this.items.byKey(key).catch(() => null);
     const run =
       target && target.reporterId === user.id
         ? await this.rules.prepare('portal_reply', { sender: user.email, subject: target.title, body: body.body, mailboxId: null })
         : undefined;
-    await this.items.portalReply(user, number, body.body, files ?? [], run);
+    await this.items.portalReply(user, key, body.body, files ?? [], run);
   }
 
   @Get('attachments/:id')

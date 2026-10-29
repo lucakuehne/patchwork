@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { PRIORITY_LABELS } from '../format';
+import type { ItemKey } from '../item-ref';
 import { manualStatusChoices } from '../status-move';
 import { useSession } from '../stores/session';
 import type { ItemType, Priority, User } from '../types';
@@ -16,7 +17,7 @@ import UserPicker from './UserPicker.vue';
  * «initialStatusId»: vorgewählter Status, z.B. aus einer Spalte des Boards.
  */
 const props = defineProps<{ initialType?: ItemType; fixedType?: ItemType; initialStatusId?: string }>();
-const emit = defineEmits<{ close: []; created: [number: number, type: ItemType] }>();
+const emit = defineEmits<{ close: []; created: [item: ItemKey, type: ItemType] }>();
 const session = useSession();
 
 // Nur Typen, deren Bereich der Benutzer sieht (Bereiche je Rolle)
@@ -83,8 +84,8 @@ async function save() {
     if (type.value === 'task' && dueDate.value) form.append('dueDate', dueDate.value);
     form.append('channelId', channelId.value);
     for (const f of files.value) form.append('files', f, f.name);
-    const result = await api.post<{ number: number }>('/items', form);
-    emit('created', result.number, type.value);
+    const result = await api.post<ItemKey>('/items', form);
+    emit('created', result, type.value);
   } catch (err) {
     error.value = errorMessage(err);
   } finally {

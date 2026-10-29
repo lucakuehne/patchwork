@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { formatDateTime } from '../format';
+import type { ItemKey } from '../item-ref';
 import { deliveryMark } from '../outgoing';
 import { mailRecipientsText } from '../timeline';
 import type { ItemMail } from '../types';
@@ -10,7 +11,7 @@ import SentMailDialog from './SentMailDialog.vue';
  * Automatische Mail an Melder und Beteiligte als kurze graue Zeile im Verlauf, z.B. «Mail «Erledigt» an Anna Muster»;
  * eine Marke nur bei Abweichungen (nicht versendet, Fehler). «ansehen» zeigt die Mail.
  */
-const props = defineProps<{ mail: ItemMail; itemNumber: number }>();
+const props = defineProps<{ mail: ItemMail; itemKey: ItemKey }>();
 
 const open = ref(false);
 const recipients = computed(() => mailRecipientsText(props.mail));
@@ -33,7 +34,7 @@ const mark = computed(() =>
     <button class="link-btn small" type="button" @click="open = true">ansehen</button>
     <span class="spacer" />
     <span class="time">{{ formatDateTime(mail.createdAt) }}</span>
-    <SentMailDialog v-if="open" :number="itemNumber" :mail-id="mail.id" :status="mail.status" @close="open = false" />
+    <SentMailDialog v-if="open" :item-key="itemKey" :mail-id="mail.id" :status="mail.status" @close="open = false" />
   </div>
 </template>
 

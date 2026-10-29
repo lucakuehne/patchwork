@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
-import { settings } from '../db/schema';
+import { settings, type ItemType } from '../db/schema';
 import type { AreaSettings } from './areas';
 
 export interface GeneralSettings {
@@ -117,6 +117,33 @@ export interface ChannelDefaults {
   task: string | null;
 }
 
+/** Übersicht über die Werte in HelpSpot, Grundlage der Zuordnungen auf der Seite «HelpSpot-Import» */
+export interface HelpSpotAnalysis {
+  at: string;
+  total: number;
+  /** Status mit offen/geschlossen und Anzahl Tickets */
+  statuses: { status: string; open: boolean; count: number }[];
+  /** Werte des Felds «Type» ('' = leer) */
+  types: { value: string; count: number }[];
+  /** Werte von «Eröffnet über» */
+  openedVia: { value: string; count: number }[];
+}
+
+/** Import aus HelpSpot (Entscheid vom 29.10.2026) */
+export interface HelpSpotSettings {
+  /** Adresse von HelpSpot ohne /api */
+  url: string;
+  /** API-Schlüssel, mit APP_SECRET verschlüsselt */
+  apiKeyEnc: string | null;
+  /** Wert des Felds «Type» → Typ in Patchwork ('' = leer); fehlende nach Vorschlag */
+  types: Record<string, ItemType>;
+  /** statusKey(Typ, Status, offen) → Status in Patchwork; fehlende nach Vorschlag */
+  statuses: Record<string, string>;
+  /** «Eröffnet über» → Meldeweg (null = keiner); fehlende nach Vorschlag */
+  channels: Record<string, string | null>;
+  analysis: HelpSpotAnalysis | null;
+}
+
 interface SettingsMap {
   general: GeneralSettings;
   channelDefaults: ChannelDefaults;
@@ -129,6 +156,7 @@ interface SettingsMap {
   mailTemplates: MailTemplateOverrides;
   userNames: UserNamesSettings;
   areas: AreaSettings;
+  helpspot: HelpSpotSettings;
 }
 
 const DEFAULTS: SettingsMap = {
@@ -147,6 +175,7 @@ const DEFAULTS: SettingsMap = {
   userNames: { directorySyncedAt: null },
   // Ohne Einstellung sieht die IT alle Bereiche (Entscheid vom 23.10.2026)
   areas: { it: ['inbox', 'incident', 'task'] },
+  helpspot: { url: '', apiKeyEnc: null, types: {}, statuses: {}, channels: {}, analysis: null },
 };
 
 @Injectable()

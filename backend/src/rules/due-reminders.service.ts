@@ -4,6 +4,7 @@ import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
 import { items, statuses } from '../db/schema';
 import { NotificationsService } from '../mail/notifications.service';
+import { itemRef } from '../items/item-ref';
 
 /**
  * Mail bei Fälligkeit: am Fälligkeitstag ab 07:00 (Zeitzone der Anwendung) einmal pro Fälligkeitsdatum an den
@@ -47,7 +48,7 @@ export class DueRemindersService {
       try {
         if (await this.notifications.dueReminder(item)) reminded++;
       } catch (err) {
-        this.logger.error(`Mail bei Fälligkeit für PW-${item.number} fehlgeschlagen: ${(err as Error).message}`);
+        this.logger.error(`Mail bei Fälligkeit für ${itemRef(item)} fehlgeschlagen: ${(err as Error).message}`);
       }
     }
     return { reminded };

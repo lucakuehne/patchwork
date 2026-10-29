@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { api, errorMessage } from '../api';
 import { formatDateTime } from '../format';
 import { incomingResultText } from '../incoming';
+import { itemRef, type ItemKey } from '../item-ref';
 import { renderMailHtml } from '../markdown';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
@@ -15,7 +16,9 @@ import SimulateMailDialog from './SimulateMailDialog.vue';
  * Originalmail einer eingehenden Nachricht ansehen; die .eml-Datei lässt sich von hier herunterladen. Im Testbetrieb
  * erzeugen Admins daraus eine simulierte Mail («simulated» nach dem Simulieren, z.B. um den Vorgang neu zu laden).
  */
-const props = defineProps<{ number: number; messageId: string }>();
+const props = defineProps<{ itemKey: ItemKey; messageId: string }>();
+/** Kennung des Vorgangs in den Adressen, z.B. «PW-12» */
+const itemPath = itemRef(props.itemKey);
 const emit = defineEmits<{ close: []; simulated: [] }>();
 const session = useSession();
 const toast = useToast();
@@ -28,7 +31,7 @@ const draft = ref<SimulationDraft | null>(null);
 
 onMounted(async () => {
   try {
-    mail.value = await api.get<MailView>(`/items/${props.number}/original/view${query}`);
+    mail.value = await api.get<MailView>(`/items/${itemPath}/original/view${query}`);
   } catch (err) {
     error.value = errorMessage(err);
   }
@@ -74,12 +77,12 @@ function simulated(result: IncomingMail) {
       <pre v-else class="mail-body mail-text">{{ mail.text }}</pre>
       <MailAttachmentList
         :attachments="mail.attachments"
-        :path="(index) => `/api/items/${number}/original/attachments/${index}`"
+        :path="(index) => `/api/items/${itemPath}/original/attachments/${index}`"
         :query="query"
       />
     </template>
     <template #footer>
-      <a class="btn" :href="`/api/items/${number}/original${query}`">Als .eml herunterladen</a>
+      <a class="btn" :href="`/api/items/${itemPath}/original${query}`">Als .eml herunterladen</a>
       <button v-if="canSimulate && mail" class="btn" type="button" @click="simulate">Als simulierte Mail …</button>
       <button class="btn btn-primary" type="button" @click="emit('close')">Schliessen</button>
     </template>

@@ -58,7 +58,7 @@ await step('Bereiche je Rolle: IT nur mit Aufgaben, gesperrte Vorgänge, Verweis
   assert.deepEqual(await api('GET', '/settings/areas'), { it: ['inbox', 'incident', 'task'] }, 'Standard: alle');
   assert.match((await api('PUT', '/settings/areas', { it: [] }, { expect: [400] })).message, /mindestens einen Bereich/);
   const task = await createItem({ type: 'task', title: `Bereiche ${RUN}` });
-  await api('POST', `/items/${task}/links`, { role: 'relates', otherNumber: itemNo });
+  await api('POST', `/items/${task}/links`, { role: 'relates', other: itemNo });
   const incidentFile = (await detail(itemNo)).attachments[0].id;
   await api('PUT', '/settings/areas', { it: ['task', 'task'] });
   assert.deepEqual(await api('GET', '/settings/areas'), { it: ['task'] });
@@ -86,7 +86,7 @@ await step('Bereiche je Rolle: IT nur mit Aufgaben, gesperrte Vorgänge, Verweis
   assert.deepEqual([visible.links[0].other.number, visible.links[0].other.title, visible.links[0].other.hidden], [itemNo, '', true]);
   const linked = visible.entries.find((e) => e.meta?.field === 'linkAdded');
   assert.deepEqual([linked.meta.refHidden, linked.meta.otherTitle], [true, undefined]);
-  await api('POST', `/items/${task}/links`, { role: 'fixes', otherNumber: itemNo }, { expect: [403] });
+  await api('POST', `/items/${task}/links`, { role: 'fixes', other: itemNo }, { expect: [403] });
   await loginAs('ada@test.local', 'geheim-geheim');
   // Admins sehen alles mit Titel
   assert.equal((await detail(task)).links[0].other.title, 'VPN verbindet nicht');

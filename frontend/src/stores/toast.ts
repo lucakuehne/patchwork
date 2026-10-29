@@ -8,7 +8,7 @@ export interface Toast {
   kind: 'success' | 'error';
   text: string;
   /** Link in der Meldung, z.B. «Öffnen» zum neu erstellten Vorgang */
-  link?: { text: string; to: string; item?: { number: number; type: ItemType | null } };
+  link?: { text: string; to: string; item?: { prefix: string; number: number; type: ItemType | null } };
 }
 
 export const useToast = defineStore('toast', () => {

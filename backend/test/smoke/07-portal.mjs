@@ -149,7 +149,7 @@ await step('Portal: neue Meldung landet mit Vorschlag im Eingang, Bestätigung m
   assert.equal(d.description, 'Seit heute\nflackert er.');
   assert.equal(d.attachments.length, 1);
   const mail = await waitForMail(ANNA, (m) => m.subject === `[PW-${portalItem}] Bildschirm flackert`, 'Bestätigung Portal');
-  assert.match(mail.source, new RegExp(`/portal/items/${portalItem}`));
+  assert.match(mail.source, new RegExp(`/portal/items/PW-${portalItem}\\b`));
 
   await loginAs('ada@test.local', 'geheim-geheim');
   const inboxItem = (await api('GET', '/items?view=inbox')).items.find((i) => i.number === portalItem);
@@ -196,7 +196,7 @@ await step('Portal: fremde Vorgänge bleiben unsichtbar', async () => {
 
 await step('Portal: Duplikate zeigen den Hinweis aufs Original, keine Antwort möglich', async () => {
   const bobsDuplicate = await api('GET', `/portal/items/${dupOther}`);
-  assert.deepEqual(bobsDuplicate.duplicateOf, { number: dupOriginal, title: 'Drucker 3. OG', accessible: false });
+  assert.deepEqual(bobsDuplicate.duplicateOf, { prefix: 'PW', number: dupOriginal, title: 'Drucker 3. OG', accessible: false });
   await api('GET', `/portal/items/${dupOriginal}`, undefined, { expect: [404] });
   await loginAs(ANNA, 'anna-passwort-1');
   const annasDuplicate = await api('GET', `/portal/items/${dupSame}`);

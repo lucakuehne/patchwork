@@ -194,6 +194,7 @@ describe('groupTimeline', () => {
   it('Verweis auf einen anderen Vorgang mit seinem Typ, gesperrte ohne Titel', () => {
     const link = (meta: Record<string, unknown>) => eventPart(entry(1, { kind: 'change', meta })).link;
     expect(link({ role: 'relates', otherNumber: 12, otherTitle: 'Drucker', refType: 'task' })).toEqual({
+      prefix: 'PW',
       number: 12,
       type: 'task',
       hidden: false,
@@ -202,13 +203,20 @@ describe('groupTimeline', () => {
     expect(link({ role: 'relates', otherNumber: 12, otherTitle: 'Drucker', refType: null })?.type).toBeNull();
     expect(link({ role: 'relates', otherNumber: 12, otherTitle: 'Drucker' })?.type).toBeUndefined();
     expect(link({ role: 'relates', otherNumber: 12, refHidden: true })).toEqual({
+      prefix: 'PW',
       number: 12,
       type: undefined,
       hidden: true,
       text: 'PW-12',
     });
     const duplicate = eventPart(entry(1, { kind: 'status', meta: { from: 'Neu', to: 'Duplikat', duplicateOf: 5, refType: 'incident' } }));
-    expect(duplicate.link).toEqual({ number: 5, type: 'incident', hidden: false, text: 'Original PW-5' });
+    expect(duplicate.link).toEqual({ prefix: 'PW', number: 5, type: 'incident', hidden: false, text: 'Original PW-5' });
+    // Seit 29.10.2026 mit Präfix, z.B. aus HelpSpot übernommene Vorgänge
+    expect(link({ role: 'relates', otherNumber: 17223, otherPrefix: 'HS', otherTitle: 'Alt' })).toMatchObject({
+      prefix: 'HS',
+      number: 17223,
+      text: 'HS-17223 «Alt»',
+    });
   });
 
   it('Listenpunkte in der Karte ohne Artikel und gross geschrieben', () => {

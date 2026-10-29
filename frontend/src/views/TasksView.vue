@@ -9,7 +9,9 @@ import MineToggle from '../components/MineToggle.vue';
 import TasksNav from '../components/TasksNav.vue';
 import { useListFilters, useListSort, useMineFilter, useReloadAfterItemModal } from '../composables';
 import { itemRef } from '../format';
+import type { ItemKey } from '../item-ref';
 import { listParams } from '../list-filters';
+import { itemHref } from '../open-item';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import type { ItemSummary } from '../types';
@@ -56,9 +58,9 @@ function createIn(statusId?: string) {
 }
 
 // Die neue Aufgabe erscheint in ihrer Spalte bzw. der Liste; geöffnet wird sie über die Meldung
-function onCreated(number: number) {
+function onCreated(created: ItemKey) {
   newOpen.value = false;
-  toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/items/${number}`, item: { number, type: 'task' } });
+  toast.success(`${itemRef(created)} erstellt`, { text: 'Öffnen', to: itemHref(created), item: { ...created, type: 'task' } });
   if (asBoard.value) void board.value?.reload();
   else void load();
   void session.refreshCounts();

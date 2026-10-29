@@ -55,15 +55,15 @@ let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, t
 
 await step('Verknüpfungen: beidseitig sichtbar, Timeline, keine Doppelten', async () => {
   const a = await createItem({ type: 'task', title: 'Verknüpfung A' });
-  await api('POST', `/items/${a}/links`, { role: 'relates', otherNumber: task });
+  await api('POST', `/items/${a}/links`, { role: 'relates', other: task });
   const da = await detail(a);
   const dt = await detail(task);
   assert.equal(da.links[0].role, 'relates');
   assert.equal(dt.links[0].role, 'relates');
   assert.equal(dt.links[0].other.number, a);
   assert.equal(dt.entries.at(-1).meta.field, 'linkAdded');
-  await api('POST', `/items/${task}/links`, { role: 'fixes', otherNumber: a }, { expect: [409] });
-  await api('POST', `/items/${a}/links`, { role: 'relates', otherNumber: a }, { expect: [400] });
+  await api('POST', `/items/${task}/links`, { role: 'fixes', other: a }, { expect: [409] });
+  await api('POST', `/items/${a}/links`, { role: 'relates', other: a }, { expect: [400] });
   await api('DELETE', `/items/${a}/links/${da.links[0].id}`);
   assert.equal((await detail(task)).links.length, 0);
   assert.equal((await detail(task)).entries.at(-1).meta.field, 'linkRemoved');
@@ -72,7 +72,7 @@ await step('Verknüpfungen: beidseitig sichtbar, Timeline, keine Doppelten', asy
 await step('Behebende Aufgabe erledigt: Eintrag und Mail an Zuständigen der Störung', async () => {
   const incident = await createItem({ type: 'incident', title: 'Drucker 2. OG', assigneeId: ivan.id });
   const fix = await createItem({ type: 'task', title: 'Toner bestellen' });
-  await api('POST', `/items/${fix}/links`, { role: 'fixes', otherNumber: incident });
+  await api('POST', `/items/${fix}/links`, { role: 'fixes', other: incident });
   assert.equal((await detail(incident)).links[0].role, 'fixedBy');
   await api('POST', `/items/${fix}/move`, { statusId: status('task', 'done').id });
   const d = await detail(incident);
@@ -88,10 +88,10 @@ await step('Duplikate: keine Ketten', async () => {
     await createItem({ type: 'incident', title: 'Dup Y' }),
     await createItem({ type: 'incident', title: 'Dup Z' }),
   ];
-  await api('POST', `/items/${x}/links`, { role: 'duplicateOf', otherNumber: y });
-  await api('POST', `/items/${y}/links`, { role: 'duplicateOf', otherNumber: z }, { expect: [400] });
-  await api('POST', `/items/${z}/links`, { role: 'duplicateOf', otherNumber: x }, { expect: [400] });
-  await api('POST', `/items/${x}/links`, { role: 'duplicateOf', otherNumber: z }, { expect: [400, 409] });
+  await api('POST', `/items/${x}/links`, { role: 'duplicateOf', other: y });
+  await api('POST', `/items/${y}/links`, { role: 'duplicateOf', other: z }, { expect: [400] });
+  await api('POST', `/items/${z}/links`, { role: 'duplicateOf', other: x }, { expect: [400] });
+  await api('POST', `/items/${x}/links`, { role: 'duplicateOf', other: z }, { expect: [400, 409] });
   assert.equal((await detail(y)).links[0].role, 'hasDuplicate');
 });
 
@@ -113,7 +113,7 @@ await step('Duplikat vom gleichen Melder: zusammengeführt, Hinweis-Mail, Antwor
   dupSame = await inboxNumber('Nochmals Drucker');
   const confirmation = await waitForMail(ANNA, (m) => m.subject === `[PW-${dupSame}] Nochmals Drucker`, 'Bestätigung');
 
-  await api('POST', `/items/${dupSame}/links`, { role: 'duplicateOf', otherNumber: dupOriginal });
+  await api('POST', `/items/${dupSame}/links`, { role: 'duplicateOf', other: dupOriginal });
   const dup = await detail(dupSame);
   assert.equal(dup.type, 'incident', 'Typ vom Original übernommen');
   assert.deepEqual([dup.status.label, dup.status.closed], ['Gelöst', true], '«Automatisch schliessen in»');
@@ -154,7 +154,7 @@ await step('Duplikat von anderem Melder: umgeleitet, Melder und CC werden Beteil
   await poll();
   dupOther = await inboxNumber('Drucker 3. OG streikt');
   // diesmal aus Sicht des Originals verknüpft
-  await api('POST', `/items/${dupOriginal}/links`, { role: 'hasDuplicate', otherNumber: dupOther });
+  await api('POST', `/items/${dupOriginal}/links`, { role: 'hasDuplicate', other: dupOther });
   const dup = await detail(dupOther);
   assert.deepEqual([dup.status.label, dup.status.closed], ['Gelöst', true]);
   assert.equal(dup.entries.at(-1).meta.merged, false);
@@ -168,7 +168,7 @@ await step('Duplikat von anderem Melder: umgeleitet, Melder und CC werden Beteil
   );
   assert.deepEqual(redirect.to, [BOB]);
   assert.deepEqual(redirect.cc, [CARLA]);
-  assert.match(redirect.text, new RegExp(`/portal/items/${dupOther}\\b`));
+  assert.match(redirect.text, new RegExp(`/portal/items/PW-${dupOther}\\b`));
   // Im Verlauf beim Original und beim Duplikat; ansehen geht unter beiden Nummern, unter anderen nicht
   const inOriginal = (await detail(dupOriginal)).mails.find((m) => m.template === 'duplicateRedirected');
   const inDuplicate = (await detail(dupOther)).mails.find((m) => m.template === 'duplicateRedirected');
@@ -203,9 +203,9 @@ await step('Duplikat: Original muss offen sein und einer der beiden einen Typ ha
   await poll();
   const one = await inboxNumber('Eingang eins');
   const two = await inboxNumber('Eingang zwei');
-  await api('POST', `/items/${two}/links`, { role: 'duplicateOf', otherNumber: one }, { expect: [400] });
+  await api('POST', `/items/${two}/links`, { role: 'duplicateOf', other: one }, { expect: [400] });
   assert.equal((await detail(t1)).status.closed, true);
-  const closed = await api('POST', `/items/${one}/links`, { role: 'duplicateOf', otherNumber: t1 }, { expect: [400] });
+  const closed = await api('POST', `/items/${one}/links`, { role: 'duplicateOf', other: t1 }, { expect: [400] });
   assert.match(closed.message, /bereits abgeschlossen/);
   assert.equal((await detail(one)).links.length, 0);
   for (const n of [one, two]) await api('POST', `/items/${n}/discard`, { discarded: true });

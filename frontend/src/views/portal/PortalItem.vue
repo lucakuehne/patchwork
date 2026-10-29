@@ -5,13 +5,16 @@ import AttachmentList from '../../components/AttachmentList.vue';
 import FilePicker from '../../components/FilePicker.vue';
 import MarkdownEditor from '../../components/MarkdownEditor.vue';
 import { formatDateTime, initials, itemRef } from '../../format';
+import type { ItemKey } from '../../item-ref';
 import { renderMailHtml, renderMarkdown } from '../../markdown';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
 import type { PortalItemDetail } from '../../types';
 import PortalStatusBadge from './PortalStatusBadge.vue';
 
-const props = defineProps<{ number: number }>();
+/** «itemKey» null: ungültige Kennung in der Adresse */
+const props = defineProps<{ itemKey: ItemKey | null }>();
+const refText = computed(() => (props.itemKey ? itemRef(props.itemKey) : ''));
 const session = useSession();
 const toast = useToast();
 
@@ -24,16 +27,20 @@ const uploading = ref(false);
 const error = ref('');
 
 async function load() {
+  if (!refText.value) {
+    notFound.value = true;
+    return;
+  }
   try {
-    item.value = await api.get<PortalItemDetail>(`/portal/items/${props.number}`);
+    item.value = await api.get<PortalItemDetail>(`/portal/items/${refText.value}`);
     notFound.value = false;
-    document.title = `${itemRef(props.number)} ${item.value.title} – ${session.appName}`;
+    document.title = `${refText.value} ${item.value.title} – ${session.appName}`;
   } catch (err) {
     if ((err as { status?: number }).status === 404) notFound.value = true;
     else toast.error(err);
   }
 }
-watch(() => props.number, load, { immediate: true });
+watch(refText, load, { immediate: true });
 
 const entriesNewestFirst = computed(() => (item.value ? [...item.value.entries].reverse() : []));
 const descriptionHtml = computed(() => {
@@ -52,7 +59,7 @@ async function send() {
     const form = new FormData();
     form.append('body', body.value);
     for (const f of files.value) form.append('files', f, f.name);
-    await api.post(`/portal/items/${props.number}/replies`, form);
+    await api.post(`/portal/items/${refText.value}/replies`, form);
     body.value = '';
     files.value = [];
     toast.success('Deine Antwort wurde gesendet.');
@@ -66,22 +73,22 @@ async function send() {
 </script>
 
 <template>
-  <div v-if="notFound" class="card empty">Meldung {{ itemRef(number) }} wurde nicht gefunden.</div>
+  <div v-if="notFound" class="card empty">Meldung {{ refText }} wurde nicht gefunden.</div>
 
   <div v-else-if="item" class="stack">
     <RouterLink to="/portal" class="back">← Meine Vorgänge</RouterLink>
     <div class="row">
-      <span class="mono muted">{{ itemRef(item.number) }}</span>
+      <span class="mono muted">{{ itemRef(item) }}</span>
       <PortalStatusBadge :status="item.status" />
     </div>
     <h1 class="title">{{ item.title }}</h1>
 
     <div v-if="item.duplicateOf" class="card duplicate">
       Diese Meldung betrifft dasselbe wie
-      <RouterLink v-if="item.duplicateOf.accessible" :to="`/portal/items/${item.duplicateOf.number}`">
-        {{ itemRef(item.duplicateOf.number) }} «{{ item.duplicateOf.title }}»
+      <RouterLink v-if="item.duplicateOf.accessible" :to="`/portal/items/${itemRef(item.duplicateOf)}`">
+        {{ itemRef(item.duplicateOf) }} «{{ item.duplicateOf.title }}»
       </RouterLink>
-      <template v-else>{{ itemRef(item.duplicateOf.number) }} «{{ item.duplicateOf.title }}»</template>
+      <template v-else>{{ itemRef(item.duplicateOf) }} «{{ item.duplicateOf.title }}»</template>
       und wird dort weiterbearbeitet.
       <template v-if="!item.duplicateOf.accessible">Du erhältst die Updates per Mail.</template>
     </div>

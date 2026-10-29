@@ -1,10 +1,12 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import { z } from 'zod';
 import { AdminOnly, CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
 import { AreasService } from '../settings/areas';
 import { ChecklistsService } from './checklists.service';
+import { ItemRefPipe } from './item-ref.pipe';
+import type { ItemKey } from './item-ref';
 
 const titleSchema = z.object({ title: z.string().trim().min(1, 'Titel fehlt').max(200) });
 const textSchema = z.object({ text: z.string().trim().min(1, 'Text fehlt').max(1000) });
@@ -20,7 +22,7 @@ const templateSchema = z.object({
 const fromTemplateSchema = z.object({ templateId: z.uuid() });
 
 /**
- * Checklisten gibt es nur bei Aufgaben: Routen über die Nummer prüft der AuthGuard, die über die ID der Checkliste
+ * Checklisten gibt es nur bei Aufgaben: Routen über die Kennung prüft der AuthGuard, die über die ID der Checkliste
  * bzw. des Punkts verlangen den Bereich «Aufgaben» (Bereiche je Rolle).
  */
 @Controller()
@@ -30,25 +32,25 @@ export class ChecklistsController {
     private readonly areas: AreasService,
   ) {}
 
-  @Post('items/:number/checklists')
+  @Post('items/:ref/checklists')
   @HttpCode(204)
-  async create(@Param('number', ParseIntPipe) number: number, @Body(new ZodPipe(titleSchema)) body: { title: string }) {
-    await this.checklists.create(number, body.title);
+  async create(@Param('ref', ItemRefPipe) key: ItemKey, @Body(new ZodPipe(titleSchema)) body: { title: string }) {
+    await this.checklists.create(key, body.title);
   }
 
-  @Post('items/:number/checklists/from-template')
+  @Post('items/:ref/checklists/from-template')
   @HttpCode(204)
   async fromTemplate(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(fromTemplateSchema)) body: { templateId: string },
   ) {
-    await this.checklists.insertTemplate(number, body.templateId);
+    await this.checklists.insertTemplate(key, body.templateId);
   }
 
-  @Put('items/:number/checklists/order')
+  @Put('items/:ref/checklists/order')
   @HttpCode(204)
-  async reorder(@Param('number', ParseIntPipe) number: number, @Body(new ZodPipe(orderSchema)) body: { ids: string[] }) {
-    await this.checklists.reorder(number, body.ids);
+  async reorder(@Param('ref', ItemRefPipe) key: ItemKey, @Body(new ZodPipe(orderSchema)) body: { ids: string[] }) {
+    await this.checklists.reorder(key, body.ids);
   }
 
   @Patch('checklists/:id')

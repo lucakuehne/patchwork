@@ -28,6 +28,8 @@ const AREAS = [
   '14-preview',
   '15-areas-https',
   '16-preferences-views',
+  '17-item-refs',
+  '18-helpspot-import',
 ];
 
 for (const area of AREAS) await import(`./smoke/${area}.mjs`);

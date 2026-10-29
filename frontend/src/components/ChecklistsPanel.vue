@@ -3,12 +3,13 @@ import { computed, ref } from 'vue';
 import draggable from 'vuedraggable';
 import { api } from '../api';
 import { formatDateTime } from '../format';
+import { itemRef, type ItemKey } from '../item-ref';
 import { useConfirm } from '../stores/confirm';
 import { useToast } from '../stores/toast';
 import type { Checklist, ChecklistEntry, ChecklistTemplate } from '../types';
 
 /** Checklisten einer Aufgabe: abhaken, ergänzen, sortieren, Vorlagen einfügen. */
-const props = defineProps<{ number: number; checklists: Checklist[] }>();
+const props = defineProps<{ itemKey: ItemKey; checklists: Checklist[] }>();
 const emit = defineEmits<{ changed: [] }>();
 const toast = useToast();
 const confirm = useConfirm();
@@ -49,7 +50,7 @@ function createChecklist() {
   const title = newTitle.value.trim();
   if (!title) return;
   void run(async () => {
-    await api.post(`/items/${props.number}/checklists`, { title });
+    await api.post(`/items/${itemRef(props.itemKey)}/checklists`, { title });
     newTitle.value = '';
     adding.value = false;
   });
@@ -68,7 +69,7 @@ async function openTemplates() {
 
 function insertTemplate(t: ChecklistTemplate) {
   templatesOpen.value = false;
-  void run(() => api.post(`/items/${props.number}/checklists/from-template`, { templateId: t.id }));
+  void run(() => api.post(`/items/${itemRef(props.itemKey)}/checklists/from-template`, { templateId: t.id }));
 }
 
 function startTitle(c: Checklist) {

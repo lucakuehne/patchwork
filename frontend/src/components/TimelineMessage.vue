@@ -2,11 +2,12 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { formatDateTime, itemRef } from '../format';
+import { DEFAULT_PREFIX, type ItemKey } from '../item-ref';
 import { renderMailHtml, renderMarkdown } from '../markdown';
 import { deliveryMark } from '../outgoing';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
-import { NOTE_EDIT_MINUTES } from '../timeline';
+import { authorName, NOTE_EDIT_MINUTES } from '../timeline';
 import type { Entry } from '../types';
 import AttachmentList from './AttachmentList.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
@@ -19,13 +20,13 @@ import TimelineHead from './TimelineHead.vue';
  * Öffentliche Antwort oder interne Notiz in der Timeline. Eigene Notizen lassen sich kurz nach dem Erfassen bearbeiten,
  * Admins können die Zeit interner Notizen anpassen.
  */
-const props = defineProps<{ entry: Entry; itemNumber: number }>();
+const props = defineProps<{ entry: Entry; itemKey: ItemKey }>();
 const emit = defineEmits<{ changed: [] }>();
 const session = useSession();
 const toast = useToast();
 
 const meta = computed(() => (props.entry.meta ?? {}) as Record<string, unknown>);
-const author = computed(() => props.entry.author?.name ?? 'System');
+const author = computed(() => authorName(props.entry) ?? 'System');
 const fromMail = computed(() => meta.value.source === 'mail');
 // Versand der Antwort, nur bei Abweichungen: Testbetrieb, Fehler, noch unterwegs
 const deliveryBadge = computed(() => (props.entry.delivery ? deliveryMark(props.entry.delivery) : null));
@@ -37,13 +38,14 @@ const html = computed(() => {
 
 // Art des Eintrags: «Öffentlich» oder «Intern», dahinter, woher er kommt
 const label = computed(() => {
+  if (meta.value.source === 'helpspot') return props.entry.kind === 'note' ? 'Intern · aus HelpSpot' : 'Öffentlich · aus HelpSpot';
   if (props.entry.kind === 'note') {
     if (meta.value.external) return 'Intern · Mail von nicht beteiligter Person';
     return fromMail.value ? 'Intern · per Mail' : 'Intern';
   }
   if (meta.value.automated) return 'Öffentlich · automatische Mail';
   if (meta.value.source === 'merge') {
-    const from = itemRef(Number(meta.value.mergedFrom));
+    const from = itemRef({ prefix: String(meta.value.mergedFromPrefix ?? DEFAULT_PREFIX), number: Number(meta.value.mergedFrom) });
     // Gesperrter Vorgang (Bereiche je Rolle): nur die Nummer
     if (meta.value.refHidden) return `Öffentlich · zusammengeführt aus ${from}`;
     return `Öffentlich · zusammengeführt aus ${from} «${String(meta.value.mergedTitle ?? '')}»`;
@@ -132,7 +134,7 @@ async function save() {
     <TimelineHead
       :name="author"
       :name-title="entry.recordedBy ? `erfasst von ${entry.recordedBy}` : undefined"
-      :system="!entry.author"
+      :system="!authorName(entry)"
       :kind="label"
       :icon="entry.kind === 'note' ? 'internal' : 'public'"
       :time="entry.createdAt"
@@ -178,14 +180,14 @@ async function save() {
     </template>
     <OriginalMailDialog
       v-if="showOriginal && entry.originalMessageId"
-      :number="itemNumber"
+      :item-key="itemKey"
       :message-id="entry.originalMessageId"
       @close="showOriginal = false"
       @simulated="emit('changed')"
     />
     <SentMailDialog
       v-if="showSent && entry.mailId"
-      :number="itemNumber"
+      :item-key="itemKey"
       :mail-id="entry.mailId"
       :status="entry.delivery?.status ?? 'sent'"
       @close="showSent = false"

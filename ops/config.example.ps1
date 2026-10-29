@@ -9,3 +9,7 @@ $ProductionStackId = 1
 $PublicUrl = 'https://patchwork.example.local'
 # Access Token von Portainer (Benutzer → My account → Access tokens), eine Zeile
 $TokenFile = Join-Path $PSScriptRoot '..\deploy\portainer-token.txt'
+# Optional, nur zum Auswerten vor dem Import: HelpSpot (Adresse ohne /api) und API-Schlüssel eines Kontos, das alle
+# Tickets lesen darf (HelpSpot: Profil → API-Token; Admin → Settings → Web Services API muss die Private API erlauben)
+$HelpSpotUrl = 'https://helpspot.example.local'
+$HelpSpotKey = ''

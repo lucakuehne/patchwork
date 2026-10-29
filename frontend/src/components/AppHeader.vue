@@ -62,7 +62,7 @@ watch(
     <div class="spacer" />
 
     <form class="search" role="search" @submit.prevent="submitSearch">
-      <input v-model="search" class="input" type="search" placeholder="Suchen (Text oder PW-Nummer)" />
+      <input v-model="search" class="input" type="search" placeholder="Suchen (Text oder Nummer)" />
     </form>
 
     <UserMenu>

@@ -66,7 +66,7 @@ await step('eingang', async () => {
 });
 
 await step('vorgang', async () => {
-  await page.goto(`${BASE}/items/1`);
+  await page.goto(`${BASE}/items/PW-1`);
   await page.locator('.timeline').waitFor();
   await shot('03-vorgang', true);
   // «?» beim Typ erklärt Störung und Aufgabe (Darüberfahren und Tastatur)
@@ -124,7 +124,7 @@ await step('originalmail', async () => {
 });
 
 await step('mails-im-verlauf', async () => {
-  await page.goto(`${BASE}/items/1`);
+  await page.goto(`${BASE}/items/PW-1`);
   const line = page.locator('.timeline .mail-line').filter({ hasText: 'Eingangsbestätigung' }).first();
   await line.waitFor();
   const text = (await line.innerText()).replace(/\s+/g, ' ');
@@ -166,7 +166,7 @@ await step('mails-im-verlauf', async () => {
 
 await step('notiz-zeit', async () => {
   // Admin setzt eine interne Notiz auf gestern 09:30; sie zeigt «Zeit angepasst» mit der ursprünglichen Zeit
-  await page.goto(`${BASE}/items/1`);
+  await page.goto(`${BASE}/items/PW-1`);
   await page.locator('.timeline').waitFor();
   await page.getByRole('button', { name: 'Intern', exact: true }).click();
   await page.locator('.composer .ProseMirror').click();
@@ -199,7 +199,7 @@ await step('notiz-zeit', async () => {
 
 await step('im-namen', async () => {
   // Admin schreibt eine interne Notiz im Namen von Ivan: Autor Ivan, beim Darüberfahren «erfasst von Ada Admin»
-  await page.goto(`${BASE}/items/1`);
+  await page.goto(`${BASE}/items/PW-1`);
   await page.locator('.timeline').waitFor();
   await page.getByRole('button', { name: 'Intern', exact: true }).click();
   const as = page.locator('.composer select[aria-label="Im Namen von"]');
@@ -221,9 +221,31 @@ await step('im-namen', async () => {
   console.log('Bild 86-im-namen-verlauf');
 });
 
+await step('kennung-im-text', async () => {
+  // «PW-1» im Text wird zum Link; ein Klick öffnet den Vorgang in der App, ohne die Seite neu zu laden
+  const other = (await api('GET', '/items?view=incidents')).data.items.find((i) => i.number !== 1);
+  await page.goto(`${BASE}/items/${other.prefix}-${other.number}`);
+  await page.locator('.timeline').waitFor();
+  await page.getByRole('button', { name: 'Intern', exact: true }).click();
+  await page.locator('.composer .ProseMirror').click();
+  await page.keyboard.type('Gleiche Ursache wie PW-1');
+  await page.getByRole('button', { name: 'Notiz speichern' }).click();
+  const note = page.locator('.timeline .message.note', { hasText: 'Gleiche Ursache wie PW-1' }).first();
+  const link = note.locator('a.item-ref', { hasText: 'PW-1' });
+  await link.waitFor();
+  if ((await link.getAttribute('target')) !== null) throw new Error('Link auf einen Vorgang öffnet einen neuen Tab');
+  await note.screenshot({ path: `${OUT}/88-kennung-im-text.png` });
+  console.log('Bild 88-kennung-im-text');
+  await page.evaluate(() => (window.__sameDocument = true));
+  await link.click();
+  await page.waitForURL((url) => url.pathname === '/items/PW-1');
+  if (!(await page.evaluate(() => window.__sameDocument === true))) throw new Error('Klick auf den Link lädt die Seite neu');
+  await page.locator('.timeline').waitFor();
+});
+
 await step('vorschau', async () => {
   // Anhänge der Antwort «Mit Anhängen …» aus dem Smoke-Test öffnen sich im Fenster statt als Download
-  await page.goto(`${BASE}/items/1`);
+  await page.goto(`${BASE}/items/PW-1`);
   const message = page.locator('.timeline .message.reply', { hasText: 'Mit Anhängen' }).first();
   await message.waitFor();
   await message.screenshot({ path: `${OUT}/44-anhaenge.png` });
@@ -278,7 +300,7 @@ await step('vorschau', async () => {
   const inbox = (await api('GET', '/items?view=inbox')).data.items;
   const withImage = inbox.find((i) => i.title.startsWith('Bild im Span'));
   if (!withImage) throw new Error('Vorgang «Bild im Span» fehlt');
-  await page.goto(`${BASE}/items/${withImage.number}`);
+  await page.goto(`${BASE}/items/${withImage.prefix}-${withImage.number}`);
   const shown = page.locator('section.original .prose img');
   await shown.waitFor();
   await page.waitForFunction((img) => img.complete && img.naturalWidth > 0, await shown.elementHandle());
@@ -334,8 +356,11 @@ await step('alte-adressen', async () => {
   // Frühere deutsche Adressen (Lesezeichen, Links in versendeten Mails) führen auf die englischen
   const cases = [
     ['/eingang', '/inbox', ''],
-    ['/aufgaben?vorgang=1', '/tasks', '?item=1'],
-    ['/v/1', '/items/1', ''],
+    ['/aufgaben?vorgang=1', '/tasks', '?item=PW-1'],
+    ['/tasks?item=1', '/tasks', '?item=PW-1'],
+    ['/v/1', '/items/PW-1', ''],
+    ['/items/1', '/items/PW-1', ''],
+    ['/portal/v/1', '/items/PW-1', ''],
     ['/admin/ausgehende-mails?status=nicht-versendet', '/admin/outgoing-mails', '?status=withheld'],
     ['/admin/eingehende-mails?ergebnis=fehler&herkunft=simuliert', '/admin/incoming-mails', '?result=failed&origin=simulated'],
     ['/admin/status', '/admin/statuses', ''],
@@ -515,8 +540,8 @@ await step('status', async () => {
 
 await step('typwechsel', async () => {
   const tasks = (await api('GET', '/items?view=board')).data.items;
-  const task = tasks.find((t) => t.status) ?? tasks[0];
-  await page.goto(`${BASE}/items/${task.number}`);
+  const task = tasks.find((t) => t.prefix === 'PW' && t.status) ?? tasks[0];
+  await page.goto(`${BASE}/items/${task.prefix}-${task.number}`);
   await page.locator('.type-switch').waitFor();
   await page.locator('.type-switch').getByRole('button', { name: 'Störung' }).click();
   await page.locator('#type-change-status').waitFor();
@@ -528,7 +553,7 @@ await step('typwechsel', async () => {
   // Zur Aufgabe: Status-Dialog ohne Vorauswahl und ohne Ablehnen-Status, erst nach der Wahl wird der Typ gesetzt
   const statuses = (await api('GET', '/statuses')).data;
   const incident = (await api('GET', '/items?view=incidents')).data.items[0];
-  await page.goto(`${BASE}/items/${incident.number}`);
+  await page.goto(`${BASE}/items/${incident.prefix}-${incident.number}`);
   await page.locator('.type-switch').getByRole('button', { name: 'Aufgabe' }).click();
   const select = page.locator('#type-change-status');
   await select.waitFor();
@@ -641,7 +666,7 @@ await step('als-benutzer', async () => {
   const ivan = (await api('GET', '/admin/users')).data.find((u) => u.email.startsWith('ivan-'));
   // Ein zweiter Tab mit einem Vorgang: Er muss den Wechsel bemerken und neu laden
   const other = await context.newPage();
-  await other.goto(`${BASE}/items/1`);
+  await other.goto(`${BASE}/items/PW-1`);
   await other.locator('.timeline').waitFor();
   await page.goto(`${BASE}/admin/users`);
   await page.locator('tbody tr', { hasText: ivan.email }).click();
@@ -660,7 +685,7 @@ await step('als-benutzer', async () => {
   console.log('Zweiter Tab zeigt den Balken');
   await other.close();
   // Balken und Kopfzeile kleben beim Scrollen oben
-  await page.goto(`${BASE}/items/1`);
+  await page.goto(`${BASE}/items/PW-1`);
   await page.locator('.timeline').waitFor();
   await page.mouse.wheel(0, 2500);
   await page.waitForTimeout(500);
@@ -726,10 +751,10 @@ await step('aufgaben-neu', async () => {
   console.log('Bild 40-erstellt-meldung');
   // «Öffnen» zeigt die Aufgabe im Fenster (Standard); weiter geht es auf ihrer Seite
   await created.getByRole('link', { name: 'Öffnen' }).click();
-  await page.waitForURL(/\/tasks\?item=\d+$/);
-  const number = Number(new URL(page.url()).searchParams.get('item'));
+  await page.waitForURL(/\/tasks\?item=PW-\d+$/);
+  const number = Number(new URL(page.url()).searchParams.get('item').replace(/^PW-/, ''));
   await page.locator('.dialog.huge .composer').waitFor();
-  await page.goto(`${BASE}/items/${number}`);
+  await page.goto(`${BASE}/items/PW-${number}`);
 
   // Aufgabe: Antwortfeld standardmässig «Intern», Fälligkeit überfällig in der Seitenleiste
   await page.locator('.composer').waitFor();
@@ -889,7 +914,7 @@ await step('fenster', async () => {
   await card.waitFor();
   const ref = (await card.locator('.card-top .mono').innerText()).trim();
   await card.click();
-  await page.waitForURL(/\/tasks\?item=\d+$/);
+  await page.waitForURL(/\/tasks\?item=PW-\d+$/);
   const dialog = page.locator('.dialog.huge');
   await dialog.locator('.timeline').waitFor();
   if (!(await dialog.locator('.head h2').innerText()).includes(ref)) throw new Error('Fenster zeigt einen anderen Vorgang');
@@ -924,13 +949,13 @@ await step('fenster', async () => {
   await page.reload();
   await dialog.locator('.timeline').waitFor();
   await dialog.getByRole('link', { name: 'Als Seite öffnen' }).click();
-  await page.waitForURL(/\/items\/\d+$/);
+  await page.waitForURL(/\/items\/PW-\d+$/);
   await page.locator('.timeline').waitFor();
   if (await page.locator('.dialog.huge').count()) throw new Error('Fenster nach «Als Seite öffnen» noch offen');
   // Die Einstellung gilt je Typ: Störungen öffnen jetzt als Seite
   await page.goto(`${BASE}/incidents`);
   await page.locator('table.table tbody tr').first().click();
-  await page.waitForURL(/\/items\/\d+$/);
+  await page.waitForURL(/\/items\/PW-\d+$/);
   // Nach dem Schliessen scrollt die Seite wieder
   await page.goto(`${BASE}/tasks`);
   await card.click();
@@ -974,11 +999,11 @@ await step('testbetrieb-je-typ', async () => {
   if ((await api('GET', '/settings/mail')).data.general.staff !== 'all') throw new Error('Generell nicht gespeichert');
   // Antwortfeld: Vermerk nach dem Block des Vorgangs (Störung ja, Aufgabe nein)
   const incident = (await api('GET', '/items?view=incidents')).data.items[0];
-  await page.goto(`${BASE}/items/${incident.number}`);
+  await page.goto(`${BASE}/items/${incident.prefix}-${incident.number}`);
   await page.getByRole('button', { name: 'Öffentlich', exact: true }).click();
   await page.locator('.composer .test-mode').waitFor();
   const task = (await api('GET', '/items?view=tasks')).data.items[0];
-  await page.goto(`${BASE}/items/${task.number}`);
+  await page.goto(`${BASE}/items/${task.prefix}-${task.number}`);
   await page.getByRole('button', { name: 'Öffentlich', exact: true }).click();
   await page.locator('.composer .faint.small').first().waitFor();
   if (await page.locator('.composer .test-mode').count()) throw new Error('Vermerk zum Testbetrieb bei einer Aufgabe, obwohl Aufgaben an alle gehen');
@@ -1007,7 +1032,7 @@ await step('simulieren', async () => {
   const inbox = (await api('GET', '/items?view=inbox')).data.items.filter((i) => i.source === 'mail' && !i.discarded);
   const real = inbox[0];
   if (!real) throw new Error('Keine echte Mail im Eingang');
-  await page.goto(`${BASE}/items/${real.number}`);
+  await page.goto(`${BASE}/items/${real.prefix}-${real.number}`);
   await page.locator('section.original').getByRole('button', { name: 'Originalmail' }).click();
   await page.getByRole('button', { name: 'Als simulierte Mail …' }).click();
   await page.locator('#sim-subject').waitFor();
@@ -1024,6 +1049,27 @@ await step('simulieren', async () => {
   await page.locator('.badge', { hasText: 'Verworfen' }).waitFor();
   const live = { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] };
   await api('PUT', '/settings/mail', { general: live, incident: live, task: live });
+});
+
+await step('helpspot-import', async () => {
+  // Seite «HelpSpot-Import» mit den Daten aus dem Smoke-Test (nachgebauter HelpSpot, zwei übernommene Tickets)
+  await page.goto(`${BASE}/admin/helpspot`);
+  await page.getByRole('heading', { name: 'HelpSpot-Import', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Zuordnungen' }).waitFor();
+  if ((await page.locator('tr[data-hs-type="Changes"] select').inputValue()) !== 'task') throw new Error('Changes nicht als Aufgabe zugeordnet');
+  if (!(await page.locator('table.runs tbody tr').count())) throw new Error('Verlauf der Importe fehlt');
+  if ((await page.locator('#hs-key').inputValue()) !== '') throw new Error('Schlüssel im Feld sichtbar');
+  await shot('89-helpspot-import', true);
+  // Übernommener Vorgang: Hinweis auf HelpSpot, Einträge «aus HelpSpot»
+  await page.goto(`${BASE}/items/HS-12401`);
+  await page.locator('.helpspot-origin').waitFor();
+  if (!(await page.locator('.helpspot-origin').innerText()).includes('Problem Solved')) throw new Error('Status aus HelpSpot fehlt');
+  await page.locator('.timeline .message', { hasText: 'Öffentlich · aus HelpSpot' }).first().waitFor();
+  await page.locator('.timeline .message', { hasText: 'Intern · aus HelpSpot' }).first().waitFor();
+  if (await page.locator('.timeline .message.note').getByRole('button', { name: 'Bearbeiten' }).count()) {
+    throw new Error('Übernommene Notiz lässt sich bearbeiten');
+  }
+  await shot('90-helpspot-vorgang', true);
 });
 
 await step('auswertung', async () => {
@@ -1104,7 +1150,7 @@ await step('bereiche', async () => {
   await page.goto(`${BASE}/inbox`);
   await page.waitForURL(/\/tasks$/);
   const before = problems.length;
-  await page.goto(`${BASE}/items/${incident.number}`);
+  await page.goto(`${BASE}/items/${incident.prefix}-${incident.number}`);
   await page.locator('.empty', { hasText: 'gesperrt' }).waitFor();
   await shot('53-gesperrt');
   // Die Antwort 403 des gesperrten Vorgangs meldet der Browser in der Konsole; sie ist hier erwartet
@@ -1168,7 +1214,7 @@ await step('farbschema', async () => {
   const pages = [
     ['/inbox', 'nav.tabs', '76-dunkel-eingang', false],
     ['/tasks', '.column', '77-dunkel-board', false],
-    ['/items/1', '.timeline', '78-dunkel-vorgang', true],
+    ['/items/PW-1', '.timeline', '78-dunkel-vorgang', true],
     ['/reports', 'canvas', '79-dunkel-auswertung', true],
     ['/admin/statuses', '.vue-flow__node', '80-dunkel-status', true],
   ];
@@ -1211,7 +1257,7 @@ await step('portal', async () => {
   await page.locator('h1.brand img[src="/logo.svg"]').waitFor();
   await shot('71-anmeldung');
   await login(anna.email, 'anna-passwort-1');
-  await page.goto(`${BASE}/portal/items/1`);
+  await page.goto(`${BASE}/portal/items/PW-1`);
   await page.locator('.timeline').waitFor();
   if (!(await page.locator('.portal-header .brand img[src="/logo.svg"]').isVisible())) throw new Error('Portal: Logo fehlt');
   await shot('15-portal', true);

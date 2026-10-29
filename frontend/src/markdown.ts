@@ -3,9 +3,9 @@ import { markdownToHtml, type ImageContext } from './markdown-html';
 
 export { imageRef, imagesInText, imageUrl, type ImageContext } from './markdown-html';
 
-// Links in neuem Tab öffnen
+// Links in neuem Tab öffnen, ausser Links auf Vorgänge («PW-123» im Text, siehe markdown-html.ts)
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-  if (node.tagName === 'A') {
+  if (node.tagName === 'A' && !node.hasAttribute('data-item-ref')) {
     node.setAttribute('target', '_blank');
     node.setAttribute('rel', 'noopener noreferrer nofollow');
   }

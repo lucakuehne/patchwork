@@ -1,7 +1,7 @@
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { EMPTY_FILTERS, type ListFilterValues, type ListSort } from './list-filters';
-import { modalNumber } from './open-item';
+import { modalKey } from './open-item';
 import type { ReportScope } from './types';
 
 /**
@@ -106,7 +106,7 @@ export function useListSort(key: string): Ref<ListSort | null> {
 export function useReloadAfterItemModal(reload: () => unknown) {
   const route = useRoute();
   watch(
-    () => modalNumber(route.query),
+    () => modalKey(route.query),
     (now, before) => {
       if (before !== null && now === null) void reload();
     },

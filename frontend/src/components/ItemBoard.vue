@@ -94,7 +94,7 @@ async function onChange(statusId: string, event: ChangeEvent) {
     : {};
   try {
     // Bei offenen Checklisten-Punkten fragt moveItem nach; bei Abbruch springt die Karte zurück
-    const moved = await moveItem(change.element.number, { statusId, ...neighbours });
+    const moved = await moveItem(change.element, { statusId, ...neighbours });
     if (!moved) {
       await load();
       return;
@@ -105,7 +105,7 @@ async function onChange(statusId: string, event: ChangeEvent) {
       const from = change.element.status;
       change.element.status = { id: status.id, label: status.label, closed: status.closed, color: status.color };
       if (isCompleting(session.statusTargets[props.type], from, status)) {
-        toast.success(`${itemRef(change.element.number)} ${props.type === 'task' ? 'erledigt' : 'gelöst'}`);
+        toast.success(`${itemRef(change.element)} ${props.type === 'task' ? 'erledigt' : 'gelöst'}`);
       }
     }
     if (!manualOrder.value) await load();
@@ -118,8 +118,8 @@ async function onChange(statusId: string, event: ChangeEvent) {
 
 // Klick öffnet je nach Einstellung als Seite oder Fenster; Ctrl+Klick bzw. mittlere Taste in einem neuen Tab
 function open(item: ItemSummary, event: MouseEvent) {
-  if (opensInBrowser(event)) window.open(itemHref(item.number), '_blank');
-  else openItem(item.number, props.type);
+  if (opensInBrowser(event)) window.open(itemHref(item), '_blank');
+  else openItem(item, props.type);
 }
 </script>
 
@@ -172,7 +172,7 @@ function open(item: ItemSummary, event: MouseEvent) {
             <!-- Oben Nummer, Priorität und ganz rechts das Alter; unter dem Titel die Fälligkeit; unten Melder,
                  Beschreibung, Kommentare und Zuständig -->
             <div class="card-top">
-              <span class="mono faint number">{{ itemRef(element.number) }}</span>
+              <span class="mono faint number">{{ itemRef(element) }}</span>
               <span class="spacer" />
               <span v-if="element.priority === 'high'" class="prio prio-high">Hoch</span>
               <span v-else-if="element.priority === 'low'" class="prio prio-low">Niedrig</span>

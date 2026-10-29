@@ -10,6 +10,8 @@ import { SessionService } from './auth/session.service';
 import { AlertsController } from './common/alerts.controller';
 import { HealthController } from './common/health.controller';
 import { DbModule } from './db/db.module';
+import { HelpSpotController } from './helpspot/helpspot.controller';
+import { HelpSpotImportService } from './helpspot/helpspot-import.service';
 import { ChecklistsController } from './items/checklists.controller';
 import { ChecklistsService } from './items/checklists.service';
 import { ItemsController } from './items/items.controller';
@@ -83,6 +85,7 @@ import { UsersService } from './users/users.service';
     TlsController,
     UploadsController,
     PublicImagesController,
+    HelpSpotController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
@@ -119,6 +122,7 @@ import { UsersService } from './users/users.service';
     ReportsService,
     TlsService,
     UploadsService,
+    HelpSpotImportService,
   ],
 })
 export class AppModule {}

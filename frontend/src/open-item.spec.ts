@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { itemHref, modalNumber, opensInBrowser } from './open-item';
+import { itemHref, modalKey, opensInBrowser } from './open-item';
 
 describe('Vorgang öffnen', () => {
-  it('liest die Nummer des Fensters aus der Adresse', () => {
-    expect(modalNumber({ item: '42' })).toBe(42);
-    expect(modalNumber({ item: ['7', '8'] })).toBe(7);
-    expect(modalNumber({})).toBeNull();
-    expect(modalNumber({ item: 'abc' })).toBeNull();
-    expect(modalNumber({ item: '0' })).toBeNull();
-    expect(modalNumber({ item: '1.5' })).toBeNull();
+  it('liest die Kennung des Fensters aus der Adresse, ohne Präfix gilt PW', () => {
+    expect(modalKey({ item: 'PW-42' })).toEqual({ prefix: 'PW', number: 42 });
+    expect(modalKey({ item: 'HS-17223' })).toEqual({ prefix: 'HS', number: 17223 });
+    expect(modalKey({ item: '42' })).toEqual({ prefix: 'PW', number: 42 });
+    expect(modalKey({ item: ['PW-7', 'PW-8'] })).toEqual({ prefix: 'PW', number: 7 });
+    expect(modalKey({})).toBeNull();
+    expect(modalKey({ item: 'abc' })).toBeNull();
+    expect(modalKey({ item: '0' })).toBeNull();
+    expect(modalKey({ item: '1.5' })).toBeNull();
   });
 
   it('überlässt Ctrl/Cmd/Shift-Klick und die mittlere Taste dem Browser', () => {
@@ -22,6 +24,7 @@ describe('Vorgang öffnen', () => {
   });
 
   it('verweist auf die Seite des Vorgangs', () => {
-    expect(itemHref(123)).toBe('/items/123');
+    expect(itemHref({ prefix: 'PW', number: 123 })).toBe('/items/PW-123');
+    expect(itemHref({ prefix: 'HS', number: 17223 })).toBe('/items/HS-17223');
   });
 });

@@ -162,6 +162,8 @@ export interface StatusRef {
 
 export interface ItemSummary {
   id: string;
+  /** Kennung: Präfix und Nummer (PW-123, aus HelpSpot HS-17223) */
+  prefix: string;
   number: number;
   type: ItemType | null;
   title: string;
@@ -203,6 +205,7 @@ export interface ItemLink {
   createdAt: string;
   other: {
     id: string;
+    prefix: string;
     number: number;
     title: string;
     type: ItemType | null;
@@ -244,6 +247,7 @@ export interface PortalStatus {
 }
 
 export interface PortalItemSummary {
+  prefix: string;
   number: number;
   title: string;
   createdAt: string;
@@ -253,10 +257,11 @@ export interface PortalItemSummary {
 }
 
 export interface PortalItemDetail {
+  prefix: string;
   number: number;
   title: string;
   /** Vorgang wurde als Duplikat geschlossen; «accessible»: Original ist ebenfalls eigener Vorgang */
-  duplicateOf: { number: number; title: string; accessible: boolean } | null;
+  duplicateOf: { prefix: string; number: number; title: string; accessible: boolean } | null;
   description: string;
   descriptionHtml: string | null;
   /** Im Testbetrieb aus einer simulierten Mail entstanden */
@@ -356,6 +361,7 @@ export interface SentMail {
 
 export interface ItemDetail {
   id: string;
+  prefix: string;
   number: number;
   type: ItemType | null;
   title: string;
@@ -381,6 +387,8 @@ export interface ItemDetail {
   checklists: Checklist[];
   assignee: User | null;
   mailbox: { id: string; name: string; address: string } | null;
+  /** Aus HelpSpot übernommen (HS-…): Status und Melder laut HelpSpot, sonst null */
+  helpspot: { status: string; reporterName: string } | null;
   muted: boolean;
   originalMessageId: string | null;
   participants: User[];
@@ -528,7 +536,7 @@ export interface OutgoingMail {
   /** Fehlgeschlagen, aber von einem Admin als erledigt markiert */
   dismissedAt: string | null;
   /** null = Mail ohne Vorgang (Willkommens-Mail) */
-  item: { number: number; title: string; type: ItemType | null } | null;
+  item: { prefix: string; number: number; title: string; type: ItemType | null } | null;
 }
 
 export interface OutgoingMailDetail extends OutgoingMail {
@@ -554,7 +562,7 @@ export interface SimulationDraft {
   text: string;
   attachments: { index: number; filename: string; contentType: string; size: number }[];
   /** Vorgang im Eingang, den die echte Mail erzeugt hat und der sich verwerfen lässt */
-  discardable: { number: number; title: string } | null;
+  discardable: { prefix: string; number: number; title: string } | null;
 }
 
 /** Gespeicherte Mail zum Anschauen (z.B. Originalmail einer Nachricht) */
@@ -590,7 +598,7 @@ export interface IncomingMail {
   simulated: boolean;
   /** Name des Admins, der die Mail simuliert hat */
   simulatedBy: string | null;
-  item: { number: number; title: string; type: ItemType | null } | null;
+  item: { prefix: string; number: number; title: string; type: ItemType | null } | null;
 }
 
 export interface IncomingMailDetail extends IncomingMail {
@@ -684,6 +692,7 @@ export interface Rule {
 }
 
 export interface RulePreviewHit {
+  prefix: string;
   number: number;
   title: string;
   kind: 'new' | 'reply' | 'due';
@@ -737,9 +746,9 @@ export interface Report {
   };
   oldest: {
     total: number;
-    items: { number: number; title: string; type: ItemType | null; status: string | null; assignee: string | null; createdAt: string }[];
+    items: { prefix: string; number: number; title: string; type: ItemType | null; status: string | null; assignee: string | null; createdAt: string }[];
   };
-  overdue: { total: number; items: { number: number; title: string; status: string; assignee: string | null; dueDate: string }[] };
+  overdue: { total: number; items: { prefix: string; number: number; title: string; status: string; assignee: string | null; dueDate: string }[] };
   resolution: DurationStats & { byPriority: (DurationStats & { priority: Priority })[] };
   firstReply: DurationStats;
   cycleTime: DurationStats;
@@ -747,4 +756,51 @@ export interface Report {
   topReporters: { name: string; email: string; count: number }[];
   /** Neue Vorgänge im Zeitraum nach Meldeweg; label null = ohne Angabe, type null = Eingang */
   byChannel: { label: string | null; icon: ChannelIcon | null; type: ItemType | null; count: number }[];
+}
+
+/** Übersicht über die Werte in HelpSpot (Verwaltung → HelpSpot-Import) */
+export interface HelpSpotAnalysis {
+  at: string;
+  total: number;
+  statuses: { status: string; open: boolean; count: number }[];
+  types: { value: string; count: number }[];
+  openedVia: { value: string; count: number }[];
+}
+
+export interface HelpSpotImportRun {
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  status: 'running' | 'done' | 'failed';
+  since: string | null;
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: { number: number; message: string }[];
+  error: string | null;
+}
+
+export interface HelpSpotView {
+  url: string;
+  hasApiKey: boolean;
+  analysis: HelpSpotAnalysis | null;
+  /** Zuordnungen für alle Werte der Übersicht (gespeichert oder vorgeschlagen) */
+  mappings: {
+    types: Record<string, ItemType>;
+    /** «Typ|Status|open» bzw. «…|closed» → Status in Patchwork */
+    statuses: Record<string, string | null>;
+    channels: Record<string, string | null>;
+  };
+  runs: HelpSpotImportRun[];
+  /** Bereits übernommene Tickets */
+  imported: number;
+}
+
+/** Vorgang, den Patchwork in der Parallelphase aus derselben Mail angelegt hat wie HelpSpot sein Ticket */
+export interface HelpSpotCopy {
+  copy: { id: string; prefix: string; number: number; title: string; type: ItemType | null; discarded: boolean; status: { label: string; closed: boolean } | null };
+  original: { id: string; prefix: string; number: number; title: string };
 }

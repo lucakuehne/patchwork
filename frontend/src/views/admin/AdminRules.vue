@@ -504,8 +504,8 @@ async function runPreview() {
       <div v-if="preview" class="preview">
         <div class="label">{{ timed ? 'Vorschau: Vorgänge, bei denen die Regel jetzt greifen würde' : 'Vorschau: Treffer der letzten 30 Tage' }}</div>
         <div v-if="!preview.hits.length" class="faint small">Keine Treffer.</div>
-        <div v-for="h in preview.hits" :key="`${h.kind}-${h.number}-${h.at}`" class="hit small">
-          <RouterLink :to="`/items/${h.number}`" target="_blank" class="mono">{{ itemRef(h.number) }}</RouterLink>
+        <div v-for="h in preview.hits" :key="`${h.kind}-${itemRef(h)}-${h.at}`" class="hit small">
+          <RouterLink :to="`/items/${itemRef(h)}`" target="_blank" class="mono">{{ itemRef(h) }}</RouterLink>
           <span class="hit-title">{{ h.title }}</span>
           <span class="faint">
             {{ h.kind === 'new' ? 'neu' : h.kind === 'reply' ? 'Antwort' : 'im Status seit' }} · {{ h.sender }} · {{ formatDateTime(h.at) }}

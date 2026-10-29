@@ -78,7 +78,7 @@ await step('Board der Störungen: offene und gelöste der letzten 14 Tage, nach 
   const db = new pg.Client({ connectionString: process.env.SMOKE_DATABASE_URL });
   await db.connect();
   try {
-    await db.query(`update items set closed_at = now() - interval '15 days' where number = $1`, [solved]);
+    await db.query(`update items set closed_at = now() - interval '15 days' where prefix = 'PW' and number = $1`, [solved]);
     const after = (await api('GET', '/items?view=incidents-board')).items;
     assert.ok(!after.some((i) => i.number === solved), 'vor mehr als 14 Tagen gelöst');
   } finally {
@@ -108,7 +108,7 @@ await step('Liste der offenen Aufgaben: nach Status, dann wie im Board', async (
 await step('Typ verwiesener Vorgänge (Fenster oder Seite): Verlauf und Mail-Protokolle', async () => {
   const incident = await createItem({ type: 'incident', title: `Verweis Störung ${RUN}` });
   const task = await createItem({ type: 'task', title: `Verweis Aufgabe ${RUN}` });
-  await api('POST', `/items/${incident}/links`, { role: 'relates', otherNumber: task });
+  await api('POST', `/items/${incident}/links`, { role: 'relates', other: task });
   const entry = (await detail(incident)).entries.find((e) => e.meta?.otherNumber === task);
   assert.equal(entry.meta.refType, 'task');
   const back = (await detail(task)).entries.find((e) => e.meta?.otherNumber === incident);

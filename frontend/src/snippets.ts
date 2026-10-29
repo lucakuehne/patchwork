@@ -16,6 +16,7 @@ export const SNIPPET_PLACEHOLDERS = [
 export type SnippetPerson = { firstName: string; lastName: string } | null;
 
 export interface SnippetValues {
+  prefix: string;
   number: number;
   title: string;
   reporter: SnippetPerson;
@@ -31,7 +32,7 @@ export function fillSnippet(body: string, values: SnippetValues): string {
     [`${prefix} nachname`]: p?.lastName ?? '',
   });
   const map: Record<string, string> = {
-    nummer: itemRef(values.number),
+    nummer: itemRef(values),
     titel: values.title,
     ...person('melder', values.reporter),
     ...person('zuständig', values.assignee),

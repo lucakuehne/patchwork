@@ -23,6 +23,7 @@ import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
 import { incomingMails, incomingResult, items, mailboxes, users, type IncomingResult, type User } from '../db/schema';
+import { itemRefSchema } from '../items/item-ref';
 import type { UploadedFile } from '../items/items.service';
 import { StorageService } from '../storage/storage.service';
 import { MailFetcherService } from './mail-fetcher.service';
@@ -48,7 +49,8 @@ const simulateSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   /** Als Antwort auf diesen Vorgang (Nummer) */
-  replyToItem: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().int().positive().optional()),
+  /** Kennung des Vorgangs («PW-12», «HS-17223» oder nur «12»), auf den die Mail antwortet */
+  replyToItem: z.preprocess((v) => (v === '' ? undefined : v), itemRefSchema.optional()),
   /** Aus dieser echten Mail erzeugt; Anhänge daraus als Liste von Indizes («0,2») */
   originalId: z.uuid().optional(),
   originalAttachments: z
@@ -176,7 +178,7 @@ export class IncomingMailsController {
     const rows = await this.db
       .select({
         mail: incomingMails,
-        item: { number: items.number, title: items.title, type: items.type },
+        item: { prefix: items.prefix, number: items.number, title: items.title, type: items.type },
         mailbox: { id: mailboxes.id, name: mailboxes.name, address: mailboxes.address },
         simulatedBy: users.name,
       })

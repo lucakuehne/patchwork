@@ -2,10 +2,11 @@
 import { ref } from 'vue';
 import { api, errorMessage } from '../api';
 import { itemRef } from '../format';
+import type { ItemKey } from '../item-ref';
 import MarkdownEditor from './MarkdownEditor.vue';
 import ModalDialog from './ModalDialog.vue';
 
-const props = defineProps<{ number: number; title: string }>();
+const props = defineProps<{ itemKey: ItemKey; title: string }>();
 const emit = defineEmits<{ close: []; done: [] }>();
 
 const reason = ref('');
@@ -22,7 +23,7 @@ async function submit() {
   saving.value = true;
   error.value = '';
   try {
-    await api.post(`/items/${props.number}/reject`, { reason: reason.value, notify: notify.value });
+    await api.post(`/items/${itemRef(props.itemKey)}/reject`, { reason: reason.value, notify: notify.value });
     emit('done');
   } catch (err) {
     error.value = errorMessage(err);
@@ -33,7 +34,7 @@ async function submit() {
 </script>
 
 <template>
-  <ModalDialog :title="`${itemRef(number)} ablehnen`" @close="emit('close')">
+  <ModalDialog :title="`${itemRef(itemKey)} ablehnen`" @close="emit('close')">
     <p class="muted" style="margin: 0">{{ title }}</p>
     <div class="field">
       <span class="label">Begründung</span>

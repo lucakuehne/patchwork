@@ -1,4 +1,5 @@
 import { itemRef } from './format';
+import { DEFAULT_PREFIX } from './item-ref';
 import type { Entry, ItemMail, ItemType } from './types';
 
 /** Änderungen derselben Person, die höchstens so weit auseinanderliegen, erscheinen als eine Zeile. */
@@ -19,7 +20,7 @@ export interface EventPart {
    * Verweis auf einen anderen Vorgang. «type»: sein Typ für «als Seite oder Fenster öffnen» (undefined = unbekannt);
    * «hidden»: ausserhalb der eigenen Bereiche, nur die Nummer ohne Link.
    */
-  link: { number: number; type?: ItemType | null; hidden: boolean; text: string } | null;
+  link: { prefix: string; number: number; type?: ItemType | null; hidden: boolean; text: string } | null;
 }
 
 const isMessage = (e: Entry) => e.kind === 'reply' || e.kind === 'note';
@@ -154,7 +155,7 @@ function groupEntries(newestFirst: Entry[]): TimelineBlock[] {
       previous &&
       groupable(previous) &&
       groupable(entry) &&
-      (previous.author?.id ?? null) === (entry.author?.id ?? null) &&
+      authorKey(previous) === authorKey(entry) &&
       new Date(previous.createdAt).getTime() - new Date(entry.createdAt).getTime() <= GROUP_GAP_MS
     ) {
       (last as { entries: Entry[] }).entries.push(entry);
@@ -175,17 +176,32 @@ const q = (v: unknown) => (v === null || v === undefined || v === '' ? '–' : `
 const refType = (value: unknown): ItemType | null | undefined =>
   value === null || value === 'incident' || value === 'task' ? value : undefined;
 
-/** Verweis auf einen anderen Vorgang (Verknüpfungen, Duplikat); gesperrte («refHidden») nur mit Nummer, ohne Link */
+/**
+ * Name des Autors: Benutzer in Patchwork oder, bei aus HelpSpot übernommenen Einträgen ohne Konto, der Name aus HelpSpot;
+ * null = System
+ */
+export function authorName(e: Entry): string | null {
+  return e.author?.name ?? (typeof e.meta?.authorName === 'string' ? e.meta.authorName : null);
+}
+
+const authorKey = (e: Entry) => e.author?.id ?? (typeof e.meta?.authorName === 'string' ? `name:${e.meta.authorName}` : null);
+
+/** Präfix eines gespeicherten Verweises; ältere Einträge ohne Präfix verweisen auf PW */
+const prefixOf = (value: unknown) => (typeof value === 'string' && value ? value : DEFAULT_PREFIX);
+
+/** Verweis auf einen anderen Vorgang (Verknüpfungen, Duplikat); gesperrte («refHidden») nur mit Kennung, ohne Link */
 function otherLink(e: Entry): EventPart['link'] {
   const m = e.meta ?? {};
   const hidden = m.refHidden === true;
   const type = refType(m.refType);
   if (typeof m.otherNumber === 'number') {
-    const text = hidden ? itemRef(m.otherNumber) : `${itemRef(m.otherNumber)} «${String(m.otherTitle ?? '')}»`;
-    return { number: m.otherNumber, type, hidden, text };
+    const key = { prefix: prefixOf(m.otherPrefix), number: m.otherNumber };
+    const text = hidden ? itemRef(key) : `${itemRef(key)} «${String(m.otherTitle ?? '')}»`;
+    return { ...key, type, hidden, text };
   }
   if (e.kind === 'status' && typeof m.duplicateOf === 'number') {
-    return { number: m.duplicateOf, type, hidden, text: `Original ${itemRef(m.duplicateOf)}` };
+    const key = { prefix: prefixOf(m.duplicateOfPrefix), number: m.duplicateOf };
+    return { ...key, type, hidden, text: `Original ${itemRef(key)}` };
   }
   return null;
 }
@@ -263,7 +279,7 @@ function eventText(e: Entry, m: Record<string, unknown>): string {
           return `das Antwort-Postfach von ${q(m.from)} auf ${q(m.to)} geändert`;
         case 'participantAdded':
           return m.viaDuplicate
-            ? `${q(m.to)} als beteiligt hinzugefügt (aus Duplikat ${itemRef(Number(m.viaDuplicate))})`
+            ? `${q(m.to)} als beteiligt hinzugefügt (aus Duplikat ${itemRef({ prefix: prefixOf(m.viaDuplicatePrefix), number: Number(m.viaDuplicate) })})`
             : `${q(m.to)} als beteiligt hinzugefügt`;
         case 'participantRemoved':
           return `${q(m.from)} als beteiligt entfernt`;
@@ -278,6 +294,9 @@ function eventText(e: Entry, m: Record<string, unknown>): string {
           return m.from ? `das Fälligkeitsdatum von ${q(m.from)} auf ${q(m.to)} geändert` : `das Fälligkeitsdatum ${q(m.to)} gesetzt`;
         case 'checklistItem':
           return m.to ? `den Punkt ${q(m.text)} abgehakt` : `den Haken bei ${q(m.text)} entfernt`;
+        case 'helpspot':
+          // Aus HelpSpot übernommene Änderung: der Text von HelpSpot, mehrere Zeilen in einer
+          return `in HelpSpot geändert: ${String(m.text ?? '').split(/\n+/).map((l) => l.trim()).filter(Boolean).join('; ')}`;
       }
       return 'den Vorgang geändert';
   }

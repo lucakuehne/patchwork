@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useStickyTop } from './composables';
+import { opensInBrowser } from './open-item';
 import AppHeader from './components/AppHeader.vue';
 import CertificateBanner from './components/CertificateBanner.vue';
 import ConfirmHost from './components/ConfirmHost.vue';
@@ -23,6 +24,15 @@ const topBar = ref<HTMLElement | null>(null);
 useStickyTop(topBar);
 // Wechselt die Anmeldung in einem anderen Tab, lädt dieser neu
 session.watchOtherTabs();
+// Links auf Vorgänge im Text («PW-123», siehe markdown-html.ts): in der App öffnen statt die Seite neu zu laden;
+// Ctrl+Klick und die mittlere Taste öffnen wie gewohnt einen neuen Tab
+const router = useRouter();
+document.addEventListener('click', (event) => {
+  const link = (event.target as Element | null)?.closest?.('a[data-item-ref]');
+  if (!link || opensInBrowser(event)) return;
+  event.preventDefault();
+  void router.push(link.getAttribute('href') ?? '/');
+});
 </script>
 
 <template>
@@ -37,7 +47,7 @@ session.watchOtherTabs();
     <RouterView />
   </main>
   <ToastHost />
-  <!-- Vorgang im Fenster (Einstellung «Fenster»), über ?item=123 -->
+  <!-- Vorgang im Fenster (Einstellung «Fenster»), über ?item=PW-123 -->
   <ItemModal v-if="showHeader" />
   <ConfirmHost />
 </template>

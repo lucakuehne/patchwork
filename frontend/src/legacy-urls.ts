@@ -1,4 +1,5 @@
 import type { LocationQuery } from 'vue-router';
+import { itemRef, parseItemRef } from './item-ref';
 
 /**
  * Frühere deutsche Adressen der Oberfläche (bis 28.10.2026). Lesezeichen und Links in bereits versendeten Mails führen
@@ -29,11 +30,22 @@ const PATHS: Record<string, string> = {
   '/admin/regeln': '/admin/rules',
 };
 
-/** Vorgang als Seite: «/v/123» bzw. im Portal «/portal/v/123» */
+/**
+ * Vorgang als Seite: früher «/v/123» bzw. im Portal «/portal/v/123», bis 29.10.2026 «/items/123» ohne Präfix. Neu
+ * steht immer die volle Kennung in der Adresse («/items/PW-123»).
+ */
 const ITEM_PATHS: [RegExp, string][] = [
-  [/^\/v\/(\d+)$/, '/items/'],
-  [/^\/portal\/v\/(\d+)$/, '/portal/items/'],
+  [/^\/v\/([^/]+)$/, '/items/'],
+  [/^\/portal\/v\/([^/]+)$/, '/portal/items/'],
+  [/^\/items\/([^/]+)$/, '/items/'],
+  [/^\/portal\/items\/([^/]+)$/, '/portal/items/'],
 ];
+
+/** Kennung in der Schreibweise der Adresse («PW-123»), sonst der Wert unverändert */
+const canonicalRef = (value: string) => {
+  const key = parseItemRef(value);
+  return key ? itemRef(key) : value;
+};
 
 const KEYS: Record<string, string> = { vorgang: 'item', weiter: 'next', ergebnis: 'result', herkunft: 'origin' };
 
@@ -49,8 +61,8 @@ function translatePath(path: string): string {
   const trimmed = path.length > 1 ? path.replace(/\/+$/, '') : path;
   if (PATHS[trimmed]) return PATHS[trimmed];
   for (const [pattern, prefix] of ITEM_PATHS) {
-    const number = trimmed.match(pattern)?.[1];
-    if (number) return `${prefix}${number}`;
+    const ref = trimmed.match(pattern)?.[1];
+    if (ref) return `${prefix}${canonicalRef(decodeURIComponent(ref))}`;
   }
   return path;
 }
@@ -60,7 +72,8 @@ function translateQuery(query: LocationQuery): LocationQuery {
   for (const [key, value] of Object.entries(query)) {
     const name = KEYS[key] ?? key;
     const values = VALUES[name];
-    result[name] = values && typeof value === 'string' ? (values[value] ?? value) : value;
+    if (name === 'item' && typeof value === 'string') result[name] = canonicalRef(value);
+    else result[name] = values && typeof value === 'string' ? (values[value] ?? value) : value;
   }
   return result;
 }

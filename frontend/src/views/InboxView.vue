@@ -6,9 +6,10 @@ import ListFilters from '../components/ListFilters.vue';
 import MineToggle from '../components/MineToggle.vue';
 import TypeChangeDialog from '../components/TypeChangeDialog.vue';
 import { useListFilters, useListSort, useMineFilter, useReloadAfterItemModal } from '../composables';
+import type { ItemKey } from '../item-ref';
 import { listParams } from '../list-filters';
 import { itemRef } from '../format';
-import { useOpenItem } from '../open-item';
+import { itemHref, useOpenItem } from '../open-item';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import type { ItemSummary, ItemType } from '../types';
@@ -22,19 +23,19 @@ const openItem = useOpenItem();
 const mine = useMineFilter('inbox');
 const items = ref<ItemSummary[]>([]);
 const loading = ref(true);
-const busy = ref<number | null>(null);
+const busy = ref<string | null>(null);
 const newOpen = ref(false);
 
 // Neue Aufgaben öffnen nicht, die Meldung bietet «Öffnen»; Störungen öffnen wie bisher
-function onCreated(number: number, type: ItemType) {
+function onCreated(created: ItemKey, type: ItemType) {
   newOpen.value = false;
   if (type === 'task') {
-    toast.success(`${itemRef(number)} erstellt`, { text: 'Öffnen', to: `/items/${number}`, item: { number, type } });
+    toast.success(`${itemRef(created)} erstellt`, { text: 'Öffnen', to: itemHref(created), item: { ...created, type } });
     void session.refreshCounts();
     return;
   }
   toast.success('Vorgang erfasst');
-  openItem(number, type);
+  openItem(created, type);
 }
 
 // Filter (ohne Status, Vorgänge im Eingang haben keinen) und Sortierung, pro Ansicht gemerkt
@@ -59,7 +60,7 @@ const taskFor = ref<ItemSummary | null>(null);
 async function onTaskAssigned() {
   const item = taskFor.value!;
   taskFor.value = null;
-  toast.success(`${itemRef(item.number)} ist jetzt eine Aufgabe`);
+  toast.success(`${itemRef(item)} ist jetzt eine Aufgabe`);
   await Promise.all([load(), session.refreshCounts()]);
 }
 
@@ -68,10 +69,10 @@ async function assign(item: ItemSummary, type: ItemType) {
     taskFor.value = item;
     return;
   }
-  busy.value = item.number;
+  busy.value = item.id;
   try {
-    await api.post(`/items/${item.number}/type`, { type });
-    toast.success(`${itemRef(item.number)} ist jetzt eine ${type === 'incident' ? 'Störung' : 'Aufgabe'}`);
+    await api.post(`/items/${itemRef(item)}/type`, { type });
+    toast.success(`${itemRef(item)} ist jetzt eine ${type === 'incident' ? 'Störung' : 'Aufgabe'}`);
     await Promise.all([load(), session.refreshCounts()]);
   } catch (err) {
     toast.error(err);
@@ -81,10 +82,10 @@ async function assign(item: ItemSummary, type: ItemType) {
 }
 
 async function discard(item: ItemSummary) {
-  busy.value = item.number;
+  busy.value = item.id;
   try {
-    await api.post(`/items/${item.number}/discard`, { discarded: true });
-    toast.success(`${itemRef(item.number)} verworfen`);
+    await api.post(`/items/${itemRef(item)}/discard`, { discarded: true });
+    toast.success(`${itemRef(item)} verworfen`);
     await Promise.all([load(), session.refreshCounts()]);
   } catch (err) {
     toast.error(err);
@@ -114,7 +115,7 @@ async function discard(item: ItemSummary) {
             class="btn btn-sm"
             :class="{ 'btn-primary': item.suggestedType === 'incident' }"
             type="button"
-            :disabled="busy === item.number"
+            :disabled="busy === item.id"
             @click="assign(item, 'incident')"
           >
             Störung
@@ -124,7 +125,7 @@ async function discard(item: ItemSummary) {
             class="btn btn-sm"
             :class="{ 'btn-primary': item.suggestedType === 'task' }"
             type="button"
-            :disabled="busy === item.number"
+            :disabled="busy === item.id"
             @click="assign(item, 'task')"
           >
             Aufgabe
@@ -133,7 +134,7 @@ async function discard(item: ItemSummary) {
             class="btn btn-sm btn-ghost btn-danger"
             type="button"
             title="Spam oder Newsletter verwerfen"
-            :disabled="busy === item.number"
+            :disabled="busy === item.id"
             @click="discard(item)"
           >
             Verwerfen
@@ -146,7 +147,7 @@ async function discard(item: ItemSummary) {
   <NewItemDialog v-if="newOpen" @close="newOpen = false" @created="onCreated" />
   <TypeChangeDialog
     v-if="taskFor"
-    :number="taskFor.number"
+    :item-key="taskFor"
     :type="null"
     :status="null"
     target-type="task"

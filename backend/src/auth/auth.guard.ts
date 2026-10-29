@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Response } from 'express';
+import { parseItemRef } from '../items/item-ref';
 import { PORTAL_REFUSED, PortalAccessService } from '../portal/portal-access.service';
 import { AreasService } from '../settings/areas';
 import { ADMIN_ONLY, AuthedRequest, IS_PUBLIC, PORTAL } from './auth.decorators';
@@ -56,9 +57,10 @@ export class AuthGuard implements CanActivate {
     if (this.reflector.getAllAndOverride<boolean>(ADMIN_ONLY, targets) && req.user.role !== 'admin') {
       throw new ForbiddenException('Nur für Administratoren');
     }
-    // Routen eines Vorgangs (…/items/:number/…): nur in den Bereichen des Benutzers (Bereiche je Rolle)
-    const number = req.params?.number;
-    if (typeof number === 'string' && /^\d+$/.test(number)) await this.areas.assertNumber(req.user, Number(number));
+    // Routen eines Vorgangs (…/items/:ref/…): nur in den Bereichen des Benutzers (Bereiche je Rolle)
+    const ref = req.params?.ref;
+    const key = typeof ref === 'string' ? parseItemRef(ref) : null;
+    if (key) await this.areas.assertKey(req.user, key);
     return true;
   }
 }

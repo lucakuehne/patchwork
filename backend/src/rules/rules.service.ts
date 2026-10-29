@@ -43,6 +43,7 @@ export interface RuleRun {
 const q = (s: string) => `«${s}»`;
 
 export interface PreviewHit {
+  prefix: string;
   number: number;
   title: string;
   /** neu erfasst, Antwort bzw. (zeitgesteuert) jetzt fällig */
@@ -172,7 +173,7 @@ export class RulesService {
     conditions: RuleGroup,
   ): Promise<{ hits: PreviewHit[]; more: boolean }> {
     const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
-    const candidates: (RuleEvent & { number: number; title: string; kind: PreviewHit['kind']; at: Date })[] = [];
+    const candidates: (RuleEvent & { prefix: string; number: number; title: string; kind: PreviewHit['kind']; at: Date })[] = [];
 
     // Zeitgesteuert: Vorgänge, die jetzt lange genug in einem gewählten Status bzw. im Wartet-Status ihres Typs sind
     const statusIds = schedule ? scheduledStatusIds([schedule], await this.statuses.targets()) : [];
@@ -191,7 +192,7 @@ export class RulesService {
         .orderBy(asc(items.statusChangedAt))
         .limit(500);
       for (const { item, sender } of rows) {
-        candidates.push({ ...timedEvent(item, sender), number: item.number, title: item.title, kind: 'due', at: item.statusChangedAt });
+        candidates.push({ ...timedEvent(item, sender), prefix: item.prefix, number: item.number, title: item.title, kind: 'due', at: item.statusChangedAt });
       }
     }
 
@@ -211,6 +212,7 @@ export class RulesService {
           subject: item.title,
           body: item.description,
           mailboxId: item.source === 'mail' ? item.mailboxId : null,
+          prefix: item.prefix,
           number: item.number,
           title: item.title,
           kind: 'new',
@@ -246,6 +248,7 @@ export class RulesService {
           body: entry.body,
           // Für ältere Antworten ist nur das Antwort-Postfach des Vorgangs bekannt
           mailboxId: source === 'mail' ? item.mailboxId : null,
+          prefix: item.prefix,
           number: item.number,
           title: item.title,
           kind: 'reply',
@@ -265,7 +268,7 @@ export class RulesService {
           more = true;
           break;
         }
-        hits.push({ number: c.number, title: c.title, kind: c.kind, sender: c.sender, at: c.at });
+        hits.push({ prefix: c.prefix, number: c.number, title: c.title, kind: c.kind, sender: c.sender, at: c.at });
       }
     } finally {
       await checker.close();

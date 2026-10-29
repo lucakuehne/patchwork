@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { parseItemRef } from './item-ref';
 import { legacyLocation } from './legacy-urls';
 import { useSession } from './stores/session';
 import type { Area } from './types';
@@ -44,10 +45,11 @@ export const router = createRouter({
     { path: '/search', name: 'search', component: () => import('./views/SearchView.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     {
-      path: '/items/:number(\\d+)',
+      // Kennung mit Präfix, z.B. /items/PW-123 oder /items/HS-17223 (ohne Präfix leitet legacy-urls.ts weiter)
+      path: '/items/:ref',
       name: 'item',
       component: () => import('./views/ItemView.vue'),
-      props: (route) => ({ number: Number(route.params.number) }),
+      props: (route) => ({ itemKey: parseItemRef(route.params.ref) }),
     },
     {
       path: '/admin',
@@ -84,6 +86,7 @@ export const router = createRouter({
         },
         { path: 'snippets', name: 'admin-snippets', component: () => import('./views/admin/AdminSnippets.vue') },
         { path: 'rules', name: 'admin-rules', component: () => import('./views/admin/AdminRules.vue') },
+        { path: 'helpspot', name: 'admin-helpspot', component: () => import('./views/admin/AdminHelpSpot.vue') },
       ],
     },
     {
@@ -100,10 +103,10 @@ export const router = createRouter({
         { path: '', name: 'portal-home', component: () => import('./views/portal/PortalHome.vue') },
         { path: 'new', name: 'portal-new', component: () => import('./views/portal/PortalNew.vue') },
         {
-          path: 'items/:number(\\d+)',
+          path: 'items/:ref',
           name: 'portal-item',
           component: () => import('./views/portal/PortalItem.vue'),
-          props: (route) => ({ number: Number(route.params.number) }),
+          props: (route) => ({ itemKey: parseItemRef(route.params.ref) }),
         },
       ],
     },
@@ -143,7 +146,7 @@ router.beforeEach(async (to) => {
   }
   if (portalRoute) {
     // Admin und IT nutzen die normale Oberfläche; Links auf einen Vorgang im Portal führen direkt dorthin
-    return to.name === 'portal-item' ? { name: 'item', params: { number: to.params.number } } : { name: session.homeRoute };
+    return to.name === 'portal-item' ? { name: 'item', params: { ref: to.params.ref } } : { name: session.homeRoute };
   }
   if (to.matched.some((r) => r.meta.admin) && !session.isAdmin) return { name: session.homeRoute };
   // Bereiche ohne Zugriff (z.B. «/» bzw. Eingang, wenn die IT ihn nicht sieht): zum ersten sichtbaren Bereich

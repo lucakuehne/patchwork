@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
 import { attachments, entries, items, statuses, users, type Attachment, type User } from '../db/schema';
 import { duplicateRedirect } from '../items/duplicates';
+import { byKey, HELPSPOT_PREFIX, type ItemKey } from '../items/item-ref';
 import { StatusesService } from '../statuses/statuses.service';
 import { portalStatus } from './portal-status';
 import { visibleInPortal } from './portal-visibility';
@@ -34,6 +35,7 @@ export class PortalService {
     const [rows, targets] = await Promise.all([
       this.db
         .select({
+          prefix: items.prefix,
           number: items.number,
           title: items.title,
           status: { id: statuses.id, type: statuses.type, label: statuses.label, color: statuses.color, closed: statuses.closed },
@@ -43,12 +45,13 @@ export class PortalService {
         })
         .from(items)
         .leftJoin(statuses, eq(statuses.id, items.statusId))
-        .where(and(eq(items.reporterId, user.id), eq(items.discarded, false), condition))
+        .where(and(eq(items.reporterId, user.id), eq(items.discarded, false), ne(items.prefix, HELPSPOT_PREFIX), condition))
         .orderBy(state === 'open' ? desc(items.updatedAt) : desc(items.closedAt))
         .limit(200),
       this.statuses.targets(),
     ]);
     return rows.map((r) => ({
+      prefix: r.prefix,
       number: r.number,
       title: r.title,
       createdAt: r.createdAt,
@@ -58,12 +61,12 @@ export class PortalService {
     }));
   }
 
-  async detail(user: User, number: number) {
+  async detail(user: User, key: ItemKey) {
     const [row] = await this.db
       .select({ item: items, status: statuses })
       .from(items)
       .leftJoin(statuses, eq(statuses.id, items.statusId))
-      .where(and(eq(items.number, number), eq(items.reporterId, user.id), eq(items.discarded, false)))
+      .where(and(byKey(key), eq(items.reporterId, user.id), eq(items.discarded, false), ne(items.prefix, HELPSPOT_PREFIX)))
       .limit(1);
     if (!row) throw new NotFoundException('Meldung nicht gefunden');
     const item = row.item;
@@ -91,10 +94,11 @@ export class PortalService {
     const [original, targets] = await Promise.all([duplicateRedirect(this.db, item), this.statuses.targets()]);
 
     return {
+      prefix: item.prefix,
       number: item.number,
       title: item.title,
       duplicateOf: original
-        ? { number: original.number, title: original.title, accessible: original.reporterId === user.id }
+        ? { prefix: original.prefix, number: original.number, title: original.title, accessible: original.reporterId === user.id }
         : null,
       description: item.description,
       descriptionHtml: portalHtml(item.descriptionHtml),
@@ -130,7 +134,7 @@ export class PortalService {
       .from(attachments)
       .innerJoin(items, eq(items.id, attachments.itemId))
       .leftJoin(entries, eq(entries.id, attachments.entryId))
-      .where(and(eq(attachments.id, attachmentId), eq(items.reporterId, user.id), eq(items.discarded, false)))
+      .where(and(eq(attachments.id, attachmentId), eq(items.reporterId, user.id), eq(items.discarded, false), ne(items.prefix, HELPSPOT_PREFIX)))
       .limit(1);
     if (!row || !visibleInPortal(row.att.entryId, row.entryKind, row.entryMeta)) throw new NotFoundException('Anhang nicht gefunden');
     return row.att;

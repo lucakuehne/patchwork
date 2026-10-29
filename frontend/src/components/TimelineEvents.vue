@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { formatDateTime } from '../format';
 import { renderMarkdown } from '../markdown';
-import { asListItem, automaticStatusText, eventPart, type EventPart } from '../timeline';
+import { asListItem, authorName, automaticStatusText, eventPart, type EventPart } from '../timeline';
 import type { Entry } from '../types';
 import ItemLink from './ItemLink.vue';
 import TimelineHead from './TimelineHead.vue';
@@ -16,7 +16,7 @@ const props = defineProps<{ entries: Entry[] }>();
 const latest = computed(() => props.entries[0]!);
 // Von einer Regel: «Regel «Name»» mit den gespeicherten Änderungen
 const rule = computed(() => (props.entries.length === 1 && latest.value.meta?.field === 'rule' ? latest.value.meta : null));
-const author = computed(() => (rule.value ? `Regel «${String(rule.value.ruleName)}»` : (latest.value.author?.name ?? 'System')));
+const author = computed(() => (rule.value ? `Regel «${String(rule.value.ruleName)}»` : (authorName(latest.value) ?? 'System')));
 const automatic = computed(() => (props.entries.length === 1 ? automaticStatusText(latest.value) : null));
 // In der Liste in zeitlicher Reihenfolge
 const parts = computed<EventPart[]>(() => {
@@ -41,11 +41,11 @@ const times = computed(() =>
 
 <template>
   <div class="events">
-    <TimelineHead :name="author" :system="!!rule || !latest.author" :time="latest.createdAt" :time-title="times" />
+    <TimelineHead :name="author" :system="!!rule || !authorName(latest)" :time="latest.createdAt" :time-title="times" />
     <ul class="changes">
       <li v-for="(part, i) in parts" :key="i">
         {{ asListItem(part.text)
-        }}<ItemLink v-if="part.link && !part.link.hidden" class="other" :number="part.link.number" :type="part.link.type">{{
+        }}<ItemLink v-if="part.link && !part.link.hidden" class="other" :item-key="part.link" :type="part.link.type">{{
           part.link.text
         }}</ItemLink
         ><span v-else-if="part.link" class="other" title="Kein Zugriff auf diesen Bereich">{{ part.link.text }}</span>

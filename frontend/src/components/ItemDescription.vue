@@ -81,7 +81,7 @@ async function submit() {
     <AttachmentList :attachments="item.attachments" :text="item.description" :html="item.descriptionHtml" />
     <OriginalMailDialog
       v-if="showOriginal && item.originalMessageId"
-      :number="item.number"
+      :item-key="item"
       :message-id="item.originalMessageId"
       @close="showOriginal = false"
       @simulated="emit('changed')"

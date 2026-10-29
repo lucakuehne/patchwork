@@ -44,9 +44,9 @@ watch(state, load, { immediate: true });
       <template v-else>Keine abgeschlossenen Vorgänge.</template>
     </div>
 
-    <RouterLink v-for="item in items" :key="item.number" :to="`/portal/items/${item.number}`" class="card item-card">
+    <RouterLink v-for="item in items" :key="itemRef(item)" :to="`/portal/items/${itemRef(item)}`" class="card item-card">
       <div class="row">
-        <span class="mono muted small">{{ itemRef(item.number) }}</span>
+        <span class="mono muted small">{{ itemRef(item) }}</span>
         <PortalStatusBadge :status="item.status" />
         <span class="spacer" />
         <span class="faint small">

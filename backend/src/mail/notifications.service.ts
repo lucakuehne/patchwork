@@ -10,6 +10,7 @@ import { PortalAccessService } from '../portal/portal-access.service';
 import { AreasService } from '../settings/areas';
 import { StorageService } from '../storage/storage.service';
 import { itemRef, subjectFor } from './mail-content';
+import { HELPSPOT_PREFIX, type ItemKey } from '../items/item-ref';
 import { mentionsAsText } from '../items/mentions';
 import { composeMail, fill, markdownAsText, personValues, type TemplateKey } from './mail-templates';
 import { MailTemplatesService } from './mail-templates.service';
@@ -35,7 +36,7 @@ interface ReporterMail {
   attachmentIds?: string[];
   automated: boolean;
   /** Vorgang für den Link ins Portal, falls abweichend */
-  portalNumber?: number;
+  portalItem?: ItemKey;
   /** Weiterer Vorgang, in dessen Verlauf die Mail erscheint */
   relatedItemId?: string;
 }
@@ -143,14 +144,14 @@ export class NotificationsService {
     await this.sendToReporter(original, to, cc, {
       template: merged ? 'duplicateMerged' : 'duplicateRedirected',
       values: {
-        Duplikat: `${itemRef(duplicate.number)} «${duplicate.title}»`,
-        Original: `${itemRef(original.number)} «${original.title}»`,
+        Duplikat: `${itemRef(duplicate)} «${duplicate.title}»`,
+        Original: `${itemRef(original)} «${original.title}»`,
         // Die Mail geht an den Melder des Duplikats; bei einem anderen Melder als beim Original nennt sie ihn
         ...personValues('Melder', reporter ?? (await this.user(duplicate.reporterId))),
       },
       automated: true,
       // Im Portal sieht der Melder sein Duplikat; das Original nur, wenn er auch dort Melder ist
-      portalNumber: merged ? original.number : duplicate.number,
+      portalItem: merged ? original : duplicate,
       // Im Verlauf beim Original und beim Duplikat
       relatedItemId: duplicate.id,
     });
@@ -185,7 +186,7 @@ export class NotificationsService {
     if (!assignee) return;
     const actor = await this.user(actorId);
     await this.sendToStaff(item, assignee, 'fixCompleted', {
-      'Behebender Vorgang': `${itemRef(fixing.number)} «${fixing.title}»`,
+      'Behebender Vorgang': `${itemRef(fixing)} «${fixing.title}»`,
       Bearbeiter: actor?.name ?? '–',
     });
   }
@@ -237,7 +238,7 @@ export class NotificationsService {
         : '',
     ]);
     return {
-      Nummer: itemRef(item.number),
+      Nummer: itemRef(item),
       Titel: item.title,
       Status: status,
       ...personValues('Melder', reporter),
@@ -249,14 +250,14 @@ export class NotificationsService {
   /** Betreff aus der Vorlage; die Nummer steht immer davor, damit Antworten zugeordnet werden. */
   private subject(item: Item, template: string | null, values: Record<string, string>): string {
     const text = fill(template ?? '{{Titel}}', values).replace(/\s+/g, ' ').trim();
-    return subjectFor(item.number, text || item.title);
+    return subjectFor(item, text || item.title);
   }
 
   private async sendToReporter(item: Item, to: string[], cc: string[], mail: ReporterMail) {
     if (to.length === 0 && cc.length === 0) return;
     const mailbox = await this.mailboxes.forSending(item.mailboxId);
     if (!mailbox) {
-      this.logger.warn(`Kein aktives Postfach für den Versand zu ${itemRef(item.number)}`);
+      this.logger.warn(`Kein aktives Postfach für den Versand zu ${itemRef(item)}`);
       return;
     }
     const previous = await this.db
@@ -266,7 +267,7 @@ export class NotificationsService {
       .orderBy(asc(mailMessages.createdAt));
     const lastInbound = previous.filter((m) => m.direction === 'in').at(-1)?.messageId ?? null;
 
-    const portalUrl = `${appConfig.publicUrl}/portal/items/${mail.portalNumber ?? item.number}`;
+    const portalUrl = `${appConfig.publicUrl}/portal/items/${itemRef(mail.portalItem ?? item)}`;
     const values = { ...(await this.itemValues(item, portalUrl)), ...mail.values };
     const [template, link, footer, reporter] = await Promise.all([
       this.templates.get(mail.template),
@@ -274,8 +275,9 @@ export class NotificationsService {
       this.templates.get('reporterFooter'),
       this.user(item.reporterId),
     ]);
-    // Link-Zeile zum Portal nur, wenn das Portal für den Melder freigeschaltet ist
-    const withLink = !!reporter && (await this.portalAccess.allowed(reporter));
+    // Link-Zeile zum Portal nur, wenn das Portal für den Melder freigeschaltet ist; übernommene Tickets aus HelpSpot
+    // zeigt das Portal nicht
+    const withLink = !!reporter && (mail.portalItem ?? item).prefix !== HELPSPOT_PREFIX && (await this.portalAccess.allowed(reporter));
     const { text, html, inline } = await this.embedImages(
       item,
       composeMail(
@@ -341,10 +343,10 @@ export class NotificationsService {
     if (!(await this.areas.canSee(recipient, item.type))) return;
     const mailbox = await this.mailboxes.forSending(item.mailboxId);
     if (!mailbox) {
-      this.logger.warn(`Kein aktives Postfach für Benachrichtigungen zu ${itemRef(item.number)}`);
+      this.logger.warn(`Kein aktives Postfach für Benachrichtigungen zu ${itemRef(item)}`);
       return;
     }
-    const values = { ...(await this.itemValues(item, `${appConfig.publicUrl}/items/${item.number}`)), ...extra };
+    const values = { ...(await this.itemValues(item, `${appConfig.publicUrl}/items/${itemRef(item)}`)), ...extra };
     const [template, link, footer] = await Promise.all([
       this.templates.get(key),
       this.templates.get('staffLink'),

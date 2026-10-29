@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { asc, eq, inArray, max } from 'drizzle-orm';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
+import { byKey, type ItemKey } from './item-ref';
 import {
   checklistItems,
   checklists,
@@ -62,9 +63,9 @@ export class ChecklistsService {
     }));
   }
 
-  async create(number: number, title: string): Promise<void> {
+  async create(key: ItemKey, title: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const item = await this.taskByNumber(tx, number);
+      const item = await this.taskByKey(tx, key);
       const [row] = await tx
         .select({ max: max(checklists.position) })
         .from(checklists)
@@ -91,9 +92,9 @@ export class ChecklistsService {
   }
 
   /** Reihenfolge der Checklisten eines Vorgangs. */
-  async reorder(number: number, ids: string[]): Promise<void> {
+  async reorder(key: ItemKey, ids: string[]): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const item = await this.taskByNumber(tx, number);
+      const item = await this.taskByKey(tx, key);
       const existing = await tx.select({ id: checklists.id }).from(checklists).where(eq(checklists.itemId, item.id));
       this.assertSameSet(
         existing.map((e) => e.id),
@@ -221,9 +222,9 @@ export class ChecklistsService {
   }
 
   /** Fügt eine Vorlage als neue Checkliste in eine Aufgabe ein. */
-  async insertTemplate(number: number, templateId: string): Promise<void> {
+  async insertTemplate(key: ItemKey, templateId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const item = await this.taskByNumber(tx, number);
+      const item = await this.taskByKey(tx, key);
       if (!(await this.addFromTemplate(tx, item.id, templateId))) throw new NotFoundException('Vorlage nicht gefunden');
       await this.touch(tx, item.id);
     });
@@ -252,8 +253,8 @@ export class ChecklistsService {
     return template.name;
   }
 
-  private async taskByNumber(tx: Tx, number: number): Promise<Item> {
-    const [item] = await tx.select().from(items).where(eq(items.number, number)).for('update').limit(1);
+  private async taskByKey(tx: Tx, key: ItemKey): Promise<Item> {
+    const [item] = await tx.select().from(items).where(byKey(key)).for('update').limit(1);
     if (!item) throw new NotFoundException('Vorgang nicht gefunden');
     if (item.type !== 'task') throw new BadRequestException('Checklisten gibt es nur bei Aufgaben');
     return item;

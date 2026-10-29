@@ -12,6 +12,8 @@
   - `docs/Entscheidungen.md`: alle mit dem Benutzer abgestimmten Entscheidungen inkl. Randfälle. Vor jeder
     Verhaltensänderung lesen, neue Entscheidungen dort nachtragen.
   - `README.md`: Funktionsumfang, Einrichtung, Tests, Betriebsskripte, LDAP/AD, Docker. Bei neuen Funktionen nachführen.
+  - `docs/helpspot-import-plan.md`: Plan für die Kennung mit Präfix (PW-/HS-) und den Import aus HelpSpot (umgesetzt am
+    29.10.2026) sowie für den Umstieg von HelpSpot (offen).
 
 ## Zusammenarbeit
 
@@ -34,7 +36,7 @@
 ## Namen
 
 - Bezeichner, Datenbank, API, Migrationen und Dateinamen englisch, ebenso Pfade und Query-Parameter der Oberfläche
-  (`/tasks?item=123`), Testdaten-IDs und Bezeichner in Tests; Kommentare, Oberfläche, Commits und Dokumente deutsch.
+  (`/tasks?item=PW-123`), Testdaten-IDs und Bezeichner in Tests; Kommentare, Oberfläche, Commits und Dokumente deutsch.
   Bestehende Migrationen behalten ihren (teils deutschen) Namen. Frühere deutsche Adressen leitet
   `frontend/src/legacy-urls.ts` weiter. Deutsch bleiben die Platzhalter der Mail-Vorlagen und Textbausteine
   (`{{Melder Vorname}}`), weil Admins sie eintippen.
@@ -76,7 +78,7 @@
   `items_status_changed`, der `status_changed_at` setzt).
 - Die Logik hängt am Häkchen «abgeschlossen» je Status und an den Ziel-Status je Typ (Start, nach Antwort, Schliessen,
   Ablehnen, Wartet; Tabelle `status_targets`), nie an Statusnamen. Kategorien gibt es seit 20.10.2026 nicht mehr.
-- Bereiche je Rolle: Der AuthGuard prüft jede Route mit `:number`; Routen über andere IDs (Anhänge, Notizen,
+- Bereiche je Rolle: Der AuthGuard prüft jede Route mit `:ref` (Kennung eines Vorgangs, z.B. PW-123); Routen über andere IDs (Anhänge, Notizen,
   Checklisten) und Listen prüfen selbst (`AreasService`).
 - Passwörter von Postfächern und LDAP sind mit `APP_SECRET` verschlüsselt. `APP_SECRET` nicht ändern, solange die
   Datenbank weiterverwendet wird.

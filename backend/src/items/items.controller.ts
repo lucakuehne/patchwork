@@ -26,7 +26,6 @@ import { appConfig } from '../config';
 import { emailSchema, nullableUuid, ZodPipe } from '../common/zod.pipe';
 import { InjectDb, type Db } from '../db/db.module';
 import { attachments, entries, mailMessages, outgoingMails, type User } from '../db/schema';
-import { itemRef } from '../mail/mail-content';
 import { templateByKey } from '../mail/mail-templates';
 import { AreasService } from '../settings/areas';
 import { disposition, mailAttachmentPreview, mailView, sendMailAttachment } from '../mail/mail-view';
@@ -35,6 +34,8 @@ import { sendAttachment } from '../storage/attachment-response';
 import { StorageService } from '../storage/storage.service';
 import { ChecklistsService } from './checklists.service';
 import { SORT_FIELDS, VIEWS } from './item-views';
+import { itemRef, type ItemKey } from './item-ref';
+import { ItemRefPipe } from './item-ref.pipe';
 import { ItemsService, type UploadedFile } from './items.service';
 import { LinksService } from './links.service';
 
@@ -137,7 +138,7 @@ export class ItemsController {
     private readonly areas: AreasService,
   ) {}
 
-  // Routen mit «:number» prüft der AuthGuard auf die Bereiche des Benutzers (Bereiche je Rolle), die übrigen hier
+  // Routen mit «:ref» prüft der AuthGuard auf die Bereiche des Benutzers (Bereiche je Rolle), die übrigen hier
 
   @Get('items')
   async list(@Query(new ZodPipe(listSchema)) query: z.infer<typeof listSchema>, @CurrentUser() user: User) {
@@ -165,12 +166,12 @@ export class ItemsController {
   ) {
     await this.areas.assertType(user, body.type);
     const item = await this.items.createInternal(user, body, files ?? []);
-    return { number: item.number };
+    return { prefix: item.prefix, number: item.number };
   }
 
-  @Get('items/:number')
-  async detail(@Param('number', ParseIntPipe) number: number, @CurrentUser() user: User) {
-    const item = await this.items.detail(number, user);
+  @Get('items/:ref')
+  async detail(@Param('ref', ItemRefPipe) key: ItemKey, @CurrentUser() user: User) {
+    const item = await this.items.detail(key, user);
     return {
       ...item,
       links: await this.links.forItem(item.id, await this.areas.limit(user)),
@@ -179,68 +180,68 @@ export class ItemsController {
     };
   }
 
-  @Patch('items/:number')
+  @Patch('items/:ref')
   @HttpCode(204)
   async update(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(updateSchema)) body: z.infer<typeof updateSchema>,
     @CurrentUser() user: User,
   ) {
-    await this.items.update(user, number, body);
+    await this.items.update(user, key, body);
   }
 
-  @Post('items/:number/type')
+  @Post('items/:ref/type')
   @HttpCode(204)
   async setType(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(typeChangeSchema)) body: z.infer<typeof typeChangeSchema>,
     @CurrentUser() user: User,
   ) {
     // Nur in einen Bereich, den man selbst sieht (Entscheid vom 23.10.2026)
     await this.areas.assertType(user, body.type);
-    await this.items.setType(user, number, body.type, body.statusId);
+    await this.items.setType(user, key, body.type, body.statusId);
   }
 
-  @Post('items/:number/move')
+  @Post('items/:ref/move')
   @HttpCode(204)
   async move(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(moveSchema)) body: z.infer<typeof moveSchema>,
     @CurrentUser() user: User,
   ) {
-    await this.items.move(user, number, body.statusId, body.beforeId ?? null, body.afterId ?? null, body.force);
+    await this.items.move(user, key, body.statusId, body.beforeId ?? null, body.afterId ?? null, body.force);
   }
 
-  @Post('items/:number/reject')
+  @Post('items/:ref/reject')
   @HttpCode(204)
   async reject(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(rejectSchema)) body: z.infer<typeof rejectSchema>,
     @CurrentUser() user: User,
   ) {
-    await this.items.reject(user, number, body.reason, body.notify);
+    await this.items.reject(user, key, body.reason, body.notify);
   }
 
-  @Post('items/:number/discard')
+  @Post('items/:ref/discard')
   @HttpCode(204)
   async discard(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(z.object({ discarded: z.boolean() }))) body: { discarded: boolean },
     @CurrentUser() user: User,
   ) {
-    await this.items.setDiscarded(user, number, body.discarded);
+    await this.items.setDiscarded(user, key, body.discarded);
   }
 
-  @Post('items/:number/entries')
+  @Post('items/:ref/entries')
   @HttpCode(204)
   @UseInterceptors(uploads())
   async comment(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(commentSchema)) body: z.infer<typeof commentSchema>,
     @UploadedFiles() files: UploadedFile[] | undefined,
     @CurrentUser() user: User,
   ) {
-    await this.items.comment(user, number, body.kind, body.body, files ?? [], body.asUserId);
+    await this.items.comment(user, key, body.kind, body.body, files ?? [], body.asUserId);
   }
 
   @Patch('entries/:id')
@@ -269,46 +270,46 @@ export class ItemsController {
     await this.items.setNoteTime(user, id, new Date(body.at));
   }
 
-  @Post('items/:number/participants')
+  @Post('items/:ref/participants')
   @HttpCode(204)
   async addParticipant(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(participantSchema)) body: z.infer<typeof participantSchema>,
     @CurrentUser() user: User,
   ) {
-    await this.items.addParticipant(user, number, body.email, body.name);
+    await this.items.addParticipant(user, key, body.email, body.name);
   }
 
-  @Delete('items/:number/participants/:userId')
+  @Delete('items/:ref/participants/:userId')
   @HttpCode(204)
   async removeParticipant(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() user: User,
   ) {
-    await this.items.removeParticipant(user, number, userId);
+    await this.items.removeParticipant(user, key, userId);
   }
 
-  @Put('items/:number/mute')
+  @Put('items/:ref/mute')
   @HttpCode(204)
   async mute(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(z.object({ muted: z.boolean() }))) body: { muted: boolean },
     @CurrentUser() user: User,
   ) {
-    await this.items.setMuted(user, number, body.muted);
+    await this.items.setMuted(user, key, body.muted);
   }
 
   /** Originalmail (.eml) einer eingehenden Nachricht. */
-  @Get('items/:number/original')
+  @Get('items/:ref/original')
   async original(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Query('messageId') messageId: string,
     @Res() res: Response,
   ) {
-    const { item, storageKey } = await this.originalMail(number, messageId);
+    const { item, storageKey } = await this.originalMail(key, messageId);
     res.setHeader('Content-Type', 'message/rfc822');
-    res.setHeader('Content-Disposition', `attachment; filename="${itemRef(item.number)}.eml"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${itemRef(item)}.eml"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     this.storage
       .stream(storageKey)
@@ -317,44 +318,44 @@ export class ItemsController {
   }
 
   /** Originalmail zum Anschauen: Kopf, bereinigtes HTML (ohne externe Bilder) bzw. Text und Anhänge. */
-  @Get('items/:number/original/view')
-  async originalView(@Param('number', ParseIntPipe) number: number, @Query('messageId') messageId: string) {
-    const { item, storageKey } = await this.originalMail(number, messageId);
+  @Get('items/:ref/original/view')
+  async originalView(@Param('ref', ItemRefPipe) key: ItemKey, @Query('messageId') messageId: string) {
+    const { item, storageKey } = await this.originalMail(key, messageId);
     const query = `?messageId=${encodeURIComponent(messageId)}`;
-    return mailView(await this.readStored(storageKey), (index) => `/api/items/${item.number}/original/attachments/${index}${query}`, true);
+    return mailView(await this.readStored(storageKey), (index) => `/api/items/${itemRef(item)}/original/attachments/${index}${query}`, true);
   }
 
   /** Anhang der Originalmail; «inline=1» zeigt Bilder und PDF im Browser an (Vorschau). */
-  @Get('items/:number/original/attachments/:index')
+  @Get('items/:ref/original/attachments/:index')
   async originalAttachment(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Param('index', ParseIntPipe) index: number,
     @Query('messageId') messageId: string,
     @Query('inline') inline: string | undefined,
     @Res() res: Response,
   ) {
-    const { storageKey } = await this.originalMail(number, messageId);
+    const { storageKey } = await this.originalMail(key, messageId);
     if (!sendMailAttachment(await simpleParser(await this.readStored(storageKey)), index, res, inline === '1')) {
       throw new NotFoundException('Anhang nicht gefunden');
     }
   }
 
-  @Get('items/:number/original/attachments/:index/preview')
+  @Get('items/:ref/original/attachments/:index/preview')
   async originalAttachmentPreview(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Param('index', ParseIntPipe) index: number,
     @Query('messageId') messageId: string,
   ) {
-    const { storageKey } = await this.originalMail(number, messageId);
+    const { storageKey } = await this.originalMail(key, messageId);
     return mailAttachmentPreview(await simpleParser(await this.readStored(storageKey)), index);
   }
 
   /** Eine von Patchwork zu diesem Vorgang versendete Mail, so wie sie (ohne Testbetrieb) versendet wird. */
-  @Get('items/:number/mails/:id')
-  async sentMail(@Param('number', ParseIntPipe) number: number, @Param('id', ParseUUIDPipe) id: string) {
-    const { item, mail } = await this.sentMailRow(number, id);
+  @Get('items/:ref/mails/:id')
+  async sentMail(@Param('ref', ItemRefPipe) key: ItemKey, @Param('id', ParseUUIDPipe) id: string) {
+    const { item, mail } = await this.sentMailRow(key, id);
     // Eigenes HTML; eingebettete Bilder («cid:») zeigen auf die Anhänge der gespeicherten Mail
-    const view = await mailView(await this.readStored(mail.storageKey), (index) => `/api/items/${item.number}/mails/${mail.id}/attachments/${index}`, false);
+    const view = await mailView(await this.readStored(mail.storageKey), (index) => `/api/items/${itemRef(item)}/mails/${mail.id}/attachments/${index}`, false);
     return {
       id: mail.id,
       label: mail.entryId ? 'Öffentliche Antwort' : (templateByKey(mail.template ?? '')?.label ?? 'Automatische Mail'),
@@ -373,9 +374,9 @@ export class ItemsController {
     };
   }
 
-  @Get('items/:number/mails/:id/eml')
-  async sentMailEml(@Param('number', ParseIntPipe) number: number, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    const { mail } = await this.sentMailRow(number, id);
+  @Get('items/:ref/mails/:id/eml')
+  async sentMailEml(@Param('ref', ItemRefPipe) key: ItemKey, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const { mail } = await this.sentMailRow(key, id);
     res.setHeader('Content-Type', 'message/rfc822');
     res.setHeader('Content-Disposition', disposition(`${mail.subject || 'Mail'}.eml`));
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -385,32 +386,32 @@ export class ItemsController {
       .pipe(res);
   }
 
-  @Get('items/:number/mails/:id/attachments/:index')
+  @Get('items/:ref/mails/:id/attachments/:index')
   async sentMailAttachment(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('index', ParseIntPipe) index: number,
     @Query('inline') inline: string | undefined,
     @Res() res: Response,
   ) {
-    const { mail } = await this.sentMailRow(number, id);
+    const { mail } = await this.sentMailRow(key, id);
     if (!sendMailAttachment(await simpleParser(await this.readStored(mail.storageKey)), index, res, inline === '1')) {
       throw new NotFoundException('Anhang nicht gefunden');
     }
   }
 
-  @Get('items/:number/mails/:id/attachments/:index/preview')
+  @Get('items/:ref/mails/:id/attachments/:index/preview')
   async sentMailAttachmentPreview(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('index', ParseIntPipe) index: number,
   ) {
-    const { mail } = await this.sentMailRow(number, id);
+    const { mail } = await this.sentMailRow(key, id);
     return mailAttachmentPreview(await simpleParser(await this.readStored(mail.storageKey)), index);
   }
 
-  private async sentMailRow(number: number, id: string) {
-    const item = await this.items.byNumber(number);
+  private async sentMailRow(key: ItemKey, id: string) {
+    const item = await this.items.byKey(key);
     const [mail] = await this.db
       .select()
       .from(outgoingMails)
@@ -420,8 +421,8 @@ export class ItemsController {
     return { item, mail };
   }
 
-  private async originalMail(number: number, messageId: string | undefined) {
-    const item = await this.items.byNumber(number);
+  private async originalMail(key: ItemKey, messageId: string | undefined) {
+    const item = await this.items.byKey(key);
     const [row] = await this.db
       .select()
       .from(mailMessages)

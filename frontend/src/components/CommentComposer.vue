@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
+import { itemRef } from '../item-ref';
 import { fillSnippet } from '../snippets';
 import { useSession } from '../stores/session';
 import { deliveryBlock, isBlockLive } from '../test-mode';
@@ -41,6 +42,7 @@ const authorId = computed(() => author.value?.id ?? props.currentUserId);
 function insertSnippet(snippet: Snippet) {
   editor.value?.insertMarkdown(
     fillSnippet(snippet.body, {
+      prefix: props.item.prefix,
       number: props.item.number,
       title: props.item.title,
       reporter: props.item.reporter,
@@ -75,7 +77,7 @@ async function send() {
     form.append('body', body.value);
     if (asUserId.value) form.append('asUserId', asUserId.value);
     for (const f of files.value) form.append('files', f, f.name);
-    await api.post(`/items/${props.item.number}/entries`, form);
+    await api.post(`/items/${itemRef(props.item)}/entries`, form);
     body.value = '';
     files.value = [];
     asUserId.value = '';

@@ -4,7 +4,7 @@ import { simpleParser, type ParsedMail } from 'mailparser';
 import { InjectDb, type Db } from '../db/db.module';
 import { incomingMails, items, mailMessages, outgoingMails, type IncomingMailRow, type User } from '../db/schema';
 import { decodeFilename, ItemsService, type UploadedFile } from '../items/items.service';
-import { extractItemNumber, itemRef } from './mail-content';
+import { itemKeyFromSubject, itemRef, type ItemKey } from '../items/item-ref';
 import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
@@ -18,7 +18,8 @@ export interface SimulationInput {
   replyTo?: string;
   mailboxId?: string;
   /** Neue Mail als Antwort auf diesen Vorgang: [PW-…] im Betreff und Verweis auf seine letzte Mail */
-  replyToItem?: number;
+  /** Kennung des Vorgangs, auf den die simulierte Mail antwortet */
+  replyToItem?: ItemKey;
   from: string;
   name: string;
   subject: string;
@@ -110,7 +111,7 @@ export class MailSimulationService {
     // Echten Vorgang im Eingang verwerfen (lässt sich wiederherstellen)
     if (original && input.discardOriginal) {
       const discardable = await this.discardable(original.row);
-      if (discardable) await this.items.setDiscarded(admin, discardable.number, true);
+      if (discardable) await this.items.setDiscarded(admin, discardable, true);
     }
     return row;
   }
@@ -148,10 +149,10 @@ export class MailSimulationService {
   }
 
   /** Vorgang, den die echte Mail im Eingang erzeugt hat, sofern er noch dort liegt und nicht verworfen ist */
-  private async discardable(row: IncomingMailRow): Promise<{ number: number; title: string } | null> {
+  private async discardable(row: IncomingMailRow): Promise<{ prefix: string; number: number; title: string } | null> {
     if (row.result !== 'created' || !row.itemId) return null;
     const [item] = await this.db.select().from(items).where(eq(items.id, row.itemId)).limit(1);
-    return item && !item.type && !item.discarded ? { number: item.number, title: item.title } : null;
+    return item && !item.type && !item.discarded ? { prefix: item.prefix, number: item.number, title: item.title } : null;
   }
 
   /** Antwort auf eine Mail von Patchwork: an deren Postfach, mit Zitat und Verweisen wie aus Outlook. */
@@ -191,8 +192,9 @@ export class MailSimulationService {
     let inReplyTo: { messageId: string; references: string[] } | undefined;
     // Als Antwort auf einen Vorgang: Nummer im Betreff und Verweis auf seine letzte Mail
     if (input.replyToItem !== undefined) {
-      const item = await this.items.byNumber(input.replyToItem);
-      if (extractItemNumber(subject) !== item.number) subject = `[${itemRef(item.number)}] ${subject}`;
+      const item = await this.items.byKey(input.replyToItem);
+      const inSubject = itemKeyFromSubject(subject);
+      if (!inSubject || itemRef(inSubject) !== itemRef(item)) subject = `[${itemRef(item)}] ${subject}`;
       const previous = await this.db
         .select({ messageId: mailMessages.messageId })
         .from(mailMessages)

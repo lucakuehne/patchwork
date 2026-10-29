@@ -16,5 +16,5 @@ export function incomingResultText(mail: Pick<IncomingMail, 'result' | 'reason' 
   const label = INCOMING_RESULTS[mail.result].label;
   if (mail.result === 'ignored' || mail.result === 'failed') return mail.reason ? `${label} (${mail.reason})` : label;
   if (!mail.item) return label;
-  return mail.result === 'created' ? `${label} ${itemRef(mail.item.number)}` : `${label} in ${itemRef(mail.item.number)}`;
+  return mail.result === 'created' ? `${label} ${itemRef(mail.item)}` : `${label} in ${itemRef(mail.item)}`;
 }

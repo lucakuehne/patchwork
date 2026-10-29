@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { itemRef } from '../format';
-import { itemHref, MODAL_QUERY, modalNumber } from '../open-item';
+import { itemHref, MODAL_QUERY, modalKey } from '../open-item';
 import ModalDialog from './ModalDialog.vue';
 
 // Erst beim ersten Öffnen laden (enthält Editor und Timeline)
@@ -10,11 +10,11 @@ const ItemView = defineAsyncComponent(() => import('../views/ItemView.vue'));
 
 /**
  * Vorgang im grossen Fenster über der aktuellen Ansicht (Einstellung «Fenster»), gesteuert über die Adresse
- * (`?item=123`): «Zurück» im Browser schliesst es, Neuladen öffnet es wieder. «Als Seite öffnen» wechselt zur Seite.
+ * (`?item=PW-123`): «Zurück» im Browser schliesst es, Neuladen öffnet es wieder. «Als Seite öffnen» wechselt zur Seite.
  */
 const route = useRoute();
 const router = useRouter();
-const number = computed(() => modalNumber(route.query));
+const key = computed(() => modalKey(route.query));
 
 /** Schliessen: zurück, wenn das Fenster aus dieser Ansicht geöffnet wurde, sonst die Adresse ohne Fenster */
 function close() {
@@ -27,10 +27,10 @@ function close() {
 </script>
 
 <template>
-  <ModalDialog v-if="number" :key="number" :title="itemRef(number)" huge @close="close">
+  <ModalDialog v-if="key" :key="itemRef(key)" :title="itemRef(key)" huge @close="close">
     <template #actions>
-      <RouterLink class="btn btn-sm" :to="itemHref(number)">Als Seite öffnen</RouterLink>
+      <RouterLink class="btn btn-sm" :to="itemHref(key)">Als Seite öffnen</RouterLink>
     </template>
-    <ItemView :number="number" embedded />
+    <ItemView :item-key="key" embedded />
   </ModalDialog>
 </template>

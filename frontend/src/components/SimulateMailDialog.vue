@@ -44,7 +44,7 @@ const error = ref('');
 const freeAddress = computed(() => !props.reply || sender.value === OTHER);
 
 // Antwort auf einen Vorgang (nur bei neuen Mails): Suche nach Nummer oder Text
-const replyItem = ref<Pick<ItemSummary, 'number' | 'title'> | null>(null);
+const replyItem = ref<Pick<ItemSummary, 'prefix' | 'number' | 'title'> | null>(null);
 const itemQuery = ref('');
 const debouncedQuery = useDebounced(itemQuery, 250);
 const itemResults = ref<ItemSummary[]>([]);
@@ -60,7 +60,7 @@ watch(debouncedQuery, async (q) => {
   }
 });
 function chooseItem(item: ItemSummary) {
-  replyItem.value = { number: item.number, title: item.title };
+  replyItem.value = { prefix: item.prefix, number: item.number, title: item.title };
   itemQuery.value = '';
   itemResults.value = [];
 }
@@ -84,7 +84,7 @@ async function submit() {
     form.append('from', from);
     if (freeAddress.value && name.value.trim()) form.append('name', name.value.trim());
     if (!props.reply) form.append('subject', subject.value);
-    if (!props.reply && replyItem.value) form.append('replyToItem', String(replyItem.value.number));
+    if (!props.reply && replyItem.value) form.append('replyToItem', itemRef(replyItem.value));
     form.append('text', text.value);
     form.append('automated', String(automated.value));
     if (props.original) {
@@ -111,7 +111,7 @@ const title = computed(() => (props.reply ? 'Antwort simulieren' : props.origina
       Sie landet nicht im Postfach und erscheint in der Timeline mit «simuliert».
     </p>
     <p v-if="reply" class="muted hint">
-      Antwort auf «{{ reply.subject }}»<template v-if="reply.item"> ({{ itemRef(reply.item.number) }})</template>. Die ursprüngliche Mail wird darunter zitiert wie in
+      Antwort auf «{{ reply.subject }}»<template v-if="reply.item"> ({{ itemRef(reply.item) }})</template>. Die ursprüngliche Mail wird darunter zitiert wie in
       Outlook.
     </p>
     <p v-if="original" class="muted hint">Vorbelegt aus der echten Mail «{{ original.subject }}»; alles lässt sich ändern.</p>
@@ -148,7 +148,7 @@ const title = computed(() => (props.reply ? 'Antwort simulieren' : props.origina
       <label for="sim-item">Antwort auf Vorgang (optional)</label>
       <div v-if="replyItem" class="chosen">
         <span>
-          <span class="mono">{{ itemRef(replyItem.number) }}</span> {{ replyItem.title }}
+          <span class="mono">{{ itemRef(replyItem) }}</span> {{ replyItem.title }}
         </span>
         <button class="link-btn" type="button" aria-label="Vorgang entfernen" @click="replyItem = null">✕</button>
       </div>
@@ -156,11 +156,11 @@ const title = computed(() => (props.reply ? 'Antwort simulieren' : props.origina
         <input id="sim-item" v-model="itemQuery" class="input" placeholder="Nummer oder Text suchen" autocomplete="off" />
         <div v-if="itemResults.length" class="results">
           <button v-for="i in itemResults" :key="i.id" type="button" class="result" @click="chooseItem(i)">
-            <span class="mono">{{ itemRef(i.number) }}</span> {{ i.title }}
+            <span class="mono">{{ itemRef(i) }}</span> {{ i.title }}
           </button>
         </div>
       </template>
-      <span class="faint small">Setzt [PW-…] in den Betreff und verweist auf die letzte Mail des Vorgangs.</span>
+      <span class="faint small">Setzt die Kennung (z.B. [PW-…]) in den Betreff und verweist auf die letzte Mail des Vorgangs.</span>
     </div>
     <div class="field">
       <label for="sim-text">Text</label>
@@ -180,7 +180,7 @@ const title = computed(() => (props.reply ? 'Antwort simulieren' : props.origina
     </label>
     <label v-if="original?.discardable" class="checkbox">
       <input v-model="discardOriginal" type="checkbox" />
-      Original verwerfen ({{ itemRef(original.discardable.number) }} im Eingang, lässt sich wiederherstellen)
+      Original verwerfen ({{ itemRef(original.discardable) }} im Eingang, lässt sich wiederherstellen)
     </label>
     <div v-if="error" class="error-box">{{ error }}</div>
     <template #footer>

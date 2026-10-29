@@ -1,19 +1,13 @@
 import MarkdownIt from 'markdown-it';
 import sanitizeHtml from 'sanitize-html';
 
-export const NUMBER_PREFIX = 'PW';
+import { itemRef, type ItemKey } from '../items/item-ref';
 
-export const itemRef = (number: number) => `${NUMBER_PREFIX}-${number}`;
+export { itemRef };
 
-/** Betreff mit Nummer, z.B. «[PW-12] Drucker druckt nicht». */
-export function subjectFor(number: number, title: string, label?: string): string {
-  return `[${itemRef(number)}] ${label ? `${label}: ` : ''}${title}`;
-}
-
-/** Liest die Vorgangsnummer aus einem Betreff («[PW-1234]»). */
-export function extractItemNumber(subject: string | undefined): number | null {
-  const match = subject?.match(new RegExp(`\\[${NUMBER_PREFIX}-(\\d{1,9})\\]`, 'i'));
-  return match ? Number(match[1]) : null;
+/** Betreff mit Kennung, z.B. «[PW-12] Drucker druckt nicht». */
+export function subjectFor(item: ItemKey, title: string, label?: string): string {
+  return `[${itemRef(item)}] ${label ? `${label}: ` : ''}${title}`;
 }
 
 type HeaderValue = unknown;

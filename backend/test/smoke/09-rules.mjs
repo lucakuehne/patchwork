@@ -269,7 +269,7 @@ await step('Zeitgesteuerte Regeln: erinnern, schliessen und eskalieren', async (
     const db = new pg.Client({ connectionString: process.env.SMOKE_DATABASE_URL });
     await db.connect();
     const back = (number, days) =>
-      db.query(`update items set status_changed_at = now() - $1::interval where number = $2`, [`${days} days`, number]);
+      db.query(`update items set status_changed_at = now() - $1::interval where prefix = 'PW' and number = $2`, [`${days} days`, number]);
     try {
       await back(waiting, 2);
       assert.deepEqual(await api('POST', '/admin/rules/run-timed'), { items: 1, reminded: 1, closed: 0 });

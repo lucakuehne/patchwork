@@ -123,7 +123,7 @@ await step('Zuweisen: Mail an Zuständigen', async () => {
   const mail = await waitForMail(IVAN, (m) => m.subject === `[PW-${itemNo}] Zugewiesen: VPN verbindet nicht`, 'Zuweisung');
   // Standardtext mit Vor- und Nachname des Melders, Link-Zeile «Vorgang öffnen», Fusszeile mit «Patchwork»
   assert.ok(mail.text.includes(`Melder: Anna Muster (${ANNA})`), mail.text);
-  assert.match(mail.text, new RegExp(`Vorgang öffnen: \\S+/items/${itemNo}\\b`));
+  assert.match(mail.text, new RegExp(`Vorgang öffnen: \\S+/items/PW-${itemNo}\\b`));
   assert.ok(mail.text.includes(`Patchwork · Benachrichtigung zu PW-${itemNo}`), mail.text);
   assert.ok(!mail.text.includes('Patchwork Test'), 'kein App-Name in der Mail');
   const mine = await api('GET', '/items?view=incidents&mine=1');

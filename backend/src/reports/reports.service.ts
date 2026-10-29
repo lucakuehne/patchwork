@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { sql, type SQL } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
 import type { ItemType, Priority } from '../db/schema';
+import { itemRef } from '../items/item-ref';
 import { PRIORITY_LABELS, TYPE_LABELS } from '../items/items.service';
 
 export type Bucket = 'day' | 'week' | 'month';
@@ -54,9 +55,9 @@ export interface Report {
     byPriority: { priority: Priority; type: ItemType | null; count: number }[];
     byAssignee: { id: string | null; name: string | null; type: ItemType | null; count: number }[];
   };
-  oldest: { total: number; items: { number: number; title: string; type: ItemType | null; status: string | null; assignee: string | null; createdAt: Date }[] };
+  oldest: { total: number; items: { prefix: string; number: number; title: string; type: ItemType | null; status: string | null; assignee: string | null; createdAt: Date }[] };
   /** Offene Aufgaben mit Fälligkeit vor heute */
-  overdue: { total: number; items: { number: number; title: string; status: string; assignee: string | null; dueDate: string }[] };
+  overdue: { total: number; items: { prefix: string; number: number; title: string; status: string; assignee: string | null; dueDate: string }[] };
   /** Dauer bis «Gelöst» bei Störungen, die im Zeitraum abgeschlossen wurden (ohne den Ablehnen-Status) */
   resolution: DurationStats & { byPriority: (DurationStats & { priority: Priority })[] };
   /** Störungen: Zeit bis zur ersten öffentlichen Antwort aus Patchwork (erste Antwort im Zeitraum) */
@@ -71,7 +72,8 @@ export interface Report {
 }
 
 /** Offen = im Eingang (ohne Status) oder in einem Status, der nicht abgeschlossen ist */
-const OPEN = sql`i.discarded = false and (i.status_id is null or not s.closed)`;
+/** Aus HelpSpot übernommene Vorgänge (HS-…) zählen nicht mit (Entscheid vom 29.10.2026) */
+const OPEN = sql`i.discarded = false and i.prefix <> 'HS' and (i.status_id is null or not s.closed)`;
 
 /** Status ist der Ablehnen-Status seines Typs («Ablehnen führt in») */
 const REJECT_STATUS = sql`exists (select 1 from status_targets t where t.status_id = s.id and t.target = 'reject')`;
@@ -134,12 +136,12 @@ export class ReportsService {
       this.rows<{ start: string; type: string; n: number }>(sql`
         select ${bucketOf(sql`i.created_at`)} as start, coalesce(i.type::text, 'inbox') as type, count(*)::int as n
         from items i
-        where i.discarded = false and ${inPeriod(sql`i.created_at`)} and ${inScope}
+        where i.discarded = false and i.prefix <> 'HS' and ${inPeriod(sql`i.created_at`)} and ${inScope}
         group by 1, 2`),
       this.rows<{ start: string; type: ItemType; rejected: boolean; n: number }>(sql`
         select ${bucketOf(sql`i.closed_at`)} as start, i.type::text as type, ${REJECT_STATUS} as rejected, count(*)::int as n
         from items i join statuses s on s.id = i.status_id
-        where i.discarded = false and i.type is not null and ${inPeriod(sql`i.closed_at`)} and ${inScope}
+        where i.discarded = false and i.prefix <> 'HS' and i.type is not null and ${inPeriod(sql`i.closed_at`)} and ${inScope}
         group by 1, 2, 3`),
     ]);
     const flow = starts.map(({ start }) => ({
@@ -169,7 +171,7 @@ export class ReportsService {
         where ${OPEN} and ${inScope}
         group by s.id, s.type, s.label, s.closed, s.position
         order by s.type, s.position`),
-      this.rows<{ n: number }>(sql`select count(*)::int as n from items i where i.discarded = false and i.type is null`),
+      this.rows<{ n: number }>(sql`select count(*)::int as n from items i where i.discarded = false and i.prefix <> 'HS' and i.type is null`),
       this.rows<{ priority: Priority; type: ItemType | null; count: number }>(sql`
         select i.priority::text as priority, i.type::text as type, count(*)::int as count
         from items i left join statuses s on s.id = i.status_id
@@ -180,8 +182,8 @@ export class ReportsService {
         from items i left join statuses s on s.id = i.status_id left join users u on u.id = i.assignee_id
         where ${OPEN} and ${inScope} and ${active}
         group by u.id, u.name, i.type`),
-      this.rows<{ number: number; title: string; type: ItemType | null; status: string | null; assignee: string | null; createdAt: Date }>(sql`
-        select i.number, i.title, i.type::text as type, s.label as status, u.name as assignee, i.created_at as "createdAt"
+      this.rows<{ prefix: string; number: number; title: string; type: ItemType | null; status: string | null; assignee: string | null; createdAt: Date }>(sql`
+        select i.prefix, i.number, i.title, i.type::text as type, s.label as status, u.name as assignee, i.created_at as "createdAt"
         from items i left join statuses s on s.id = i.status_id left join users u on u.id = i.assignee_id
         where ${OPEN} and ${inScope} and ${active} and i.created_at < now() - interval '30 days'
         order by i.created_at asc
@@ -190,11 +192,11 @@ export class ReportsService {
         select count(*)::int as n
         from items i left join statuses s on s.id = i.status_id
         where ${OPEN} and ${inScope} and ${active} and i.created_at < now() - interval '30 days'`),
-      this.rows<{ number: number; title: string; status: string; assignee: string | null; dueDate: string }>(sql`
-        select i.number, i.title, s.label as status, u.name as assignee, i.due_date::text as "dueDate"
+      this.rows<{ prefix: string; number: number; title: string; status: string; assignee: string | null; dueDate: string }>(sql`
+        select i.prefix, i.number, i.title, s.label as status, u.name as assignee, i.due_date::text as "dueDate"
         from items i join statuses s on s.id = i.status_id left join users u on u.id = i.assignee_id
         where ${OPEN} and i.type = 'task' and i.due_date < (now() at time zone ${p.timeZone})::date
-        order by i.due_date, i.number
+        order by i.due_date, i.prefix, i.number
         limit 20`),
       this.rows<{ n: number }>(sql`
         select count(*)::int as n
@@ -207,14 +209,14 @@ export class ReportsService {
       this.rows<StatsRow & { priority: Priority | null }>(sql`
         select i.priority::text as priority, ${stats(sql`extract(epoch from i.closed_at - i.created_at)`)}
         from items i join statuses s on s.id = i.status_id
-        where i.discarded = false and i.type = 'incident' and s.closed and not ${REJECT_STATUS} and ${inPeriod(sql`i.closed_at`)}
+        where i.discarded = false and i.prefix <> 'HS' and i.type = 'incident' and s.closed and not ${REJECT_STATUS} and ${inPeriod(sql`i.closed_at`)}
         group by grouping sets ((), (i.priority))`),
       // Erste öffentliche Antwort aus Patchwork: ohne Antworten per Mail oder Portal und ohne den Melder selbst
       this.rows<StatsRow>(sql`
         with first as (
           select i.created_at, min(e.created_at) as replied_at
           from items i join entries e on e.item_id = i.id
-          where i.discarded = false and i.type = 'incident' and e.kind = 'reply' and e.author_id is not null
+          where i.discarded = false and i.prefix <> 'HS' and i.type = 'incident' and e.kind = 'reply' and e.author_id is not null
             and e.author_id is distinct from i.reporter_id and e.meta->>'source' is null
           group by i.id, i.created_at
         )
@@ -226,7 +228,7 @@ export class ReportsService {
         join items i on i.id = e.item_id
         join statuses f on f.id = ${entryStatus('from')}
         join statuses t on t.id = ${entryStatus('to')}
-        where e.kind = 'status' and i.discarded = false and i.type = 'incident' and f.closed and not t.closed
+        where e.kind = 'status' and i.discarded = false and i.prefix <> 'HS' and i.type = 'incident' and f.closed and not t.closed
           and ${inPeriod(sql`e.created_at`)}`),
       // Beginn: erster Wechsel aus dem Start-Status; nie im Backlog: Zuordnung zur Aufgabe oder Erfassung
       this.rows<StatsRow>(sql`
@@ -239,7 +241,7 @@ export class ReportsService {
             i.created_at
           ) as started_at
           from items i join statuses s on s.id = i.status_id
-          where i.discarded = false and i.type = 'task' and s.closed and not ${REJECT_STATUS} and ${inPeriod(sql`i.closed_at`)}
+          where i.discarded = false and i.prefix <> 'HS' and i.type = 'task' and s.closed and not ${REJECT_STATUS} and ${inPeriod(sql`i.closed_at`)}
         )
         select ${stats(sql`greatest(0, extract(epoch from closed_at - started_at))`)} from done`),
       // Zuordnung aus dem Eingang (Typwechsel ohne bisherigen Typ) durch eine Person, nicht durch Regeln
@@ -247,23 +249,23 @@ export class ReportsService {
         with typed as (
           select i.created_at, min(e.created_at) as typed_at
           from items i join entries e on e.item_id = i.id
-          where i.discarded = false and e.kind = 'type' and e.meta->>'from' is null and e.author_id is not null
+          where i.discarded = false and i.prefix <> 'HS' and e.kind = 'type' and e.meta->>'from' is null and e.author_id is not null
           group by i.id, i.created_at
         )
         select ${stats(sql`greatest(0, extract(epoch from typed_at - created_at))`)}
         from typed where ${inPeriod(sql`typed_at`)}`),
-      this.rows<{ n: number }>(sql`select count(*)::int as n from items i where i.discarded and ${inPeriod(sql`i.created_at`)}`),
+      this.rows<{ n: number }>(sql`select count(*)::int as n from items i where i.discarded and i.prefix <> 'HS' and ${inPeriod(sql`i.created_at`)}`),
       this.rows<{ name: string; email: string; count: number }>(sql`
         select u.name, u.email, count(*)::int as count
         from items i join users u on u.id = i.reporter_id
-        where i.discarded = false and ${inPeriod(sql`i.created_at`)} and ${inScope}
+        where i.discarded = false and i.prefix <> 'HS' and ${inPeriod(sql`i.created_at`)} and ${inScope}
         group by u.id, u.name, u.email
         order by count desc, u.name
         limit 10`),
       this.rows<{ label: string | null; icon: string | null; type: ItemType | null; count: number }>(sql`
         select c.label, c.icon, i.type::text as type, count(*)::int as count
         from items i left join channels c on c.id = i.channel_id
-        where i.discarded = false and ${inPeriod(sql`i.created_at`)} and ${inScope}
+        where i.discarded = false and i.prefix <> 'HS' and ${inPeriod(sql`i.created_at`)} and ${inScope}
         group by c.id, c.label, c.icon, c.position, i.type
         order by c.position nulls last`),
     ]);
@@ -302,6 +304,7 @@ export class ReportsService {
   async csv(p: ReportPeriod): Promise<string> {
     const inScope = p.scope === 'all' ? sql`true` : sql`i.type::text = ${p.scope}`;
     const rows = await this.rows<{
+      prefix: string;
       number: number;
       type: ItemType | null;
       title: string;
@@ -314,7 +317,7 @@ export class ReportsService {
       createdAt: Date;
       closedAt: Date | null;
     }>(sql`
-      select i.number, i.type::text as type, i.title, s.label as status, i.priority::text as priority,
+      select i.prefix, i.number, i.type::text as type, i.title, s.label as status, i.priority::text as priority,
         r.name as reporter, r.email as "reporterEmail", a.name as assignee, c.label as channel,
         i.created_at as "createdAt", i.closed_at as "closedAt"
       from items i
@@ -322,9 +325,9 @@ export class ReportsService {
       join users r on r.id = i.reporter_id
       left join users a on a.id = i.assignee_id
       left join channels c on c.id = i.channel_id
-      where i.discarded = false and i.created_at >= ${p.from.toISOString()}::timestamptz and i.created_at < ${p.to.toISOString()}::timestamptz
+      where i.discarded = false and i.prefix <> 'HS' and i.created_at >= ${p.from.toISOString()}::timestamptz and i.created_at < ${p.to.toISOString()}::timestamptz
         and ${inScope}
-      order by i.number`);
+      order by i.prefix, i.number`);
     const dateTime = new Intl.DateTimeFormat('de-CH', {
       timeZone: p.timeZone,
       day: '2-digit',
@@ -335,7 +338,7 @@ export class ReportsService {
     });
     const header = ['Nummer', 'Typ', 'Titel', 'Status', 'Priorität', 'Melder', 'E-Mail Melder', 'Zuständig', 'Meldeweg', 'Erfasst', 'Abgeschlossen'];
     const lines = rows.map((r) => [
-      `PW-${r.number}`,
+      itemRef(r),
       r.type ? TYPE_LABELS[r.type] : 'Eingang',
       r.title,
       r.status ?? '',

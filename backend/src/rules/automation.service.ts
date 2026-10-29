@@ -10,6 +10,7 @@ import { DueRemindersService } from './due-reminders.service';
 import { matchesGroup } from './rule-eval';
 import { RulesService, timedEvent } from './rules.service';
 import { dueTimedRules, scheduleCovers, scheduledStatusIds } from './timed';
+import { itemRef } from '../items/item-ref';
 
 /**
  * Zeitgesteuerte Regeln (z.B. «wartet seit 7 Tagen → Melder erinnern»), geprüft alle 15 Minuten. Eine Regel gilt für
@@ -100,7 +101,7 @@ export class AutomationService implements OnModuleInit {
           if (applied.reminded) result.reminded++;
           if (applied.closed) result.closed++;
         } catch (err) {
-          this.logger.error(`Zeitgesteuerte Regeln für PW-${item.number} fehlgeschlagen: ${(err as Error).message}`);
+          this.logger.error(`Zeitgesteuerte Regeln für ${itemRef(item)} fehlgeschlagen: ${(err as Error).message}`);
         }
       }
     } finally {

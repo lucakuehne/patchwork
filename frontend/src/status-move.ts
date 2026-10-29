@@ -1,4 +1,5 @@
 import { api, ApiError } from './api';
+import { itemRef, type ItemKey } from './item-ref';
 import { useConfirm } from './stores/confirm';
 import type { ItemType, StatusTargets, StatusTargetsByType } from './types';
 
@@ -13,9 +14,9 @@ export interface MoveRequest {
  * abgeschlossenen Status ausser dem Ablehnen-Status), wird nachgefragt und bei Bestätigung erneut mit «force» gesendet.
  * Ergebnis: false, wenn abgebrochen wurde.
  */
-export async function moveItem(number: number, request: MoveRequest): Promise<boolean> {
+export async function moveItem(item: ItemKey, request: MoveRequest): Promise<boolean> {
   try {
-    await api.post(`/items/${number}/move`, { ...request });
+    await api.post(`/items/${itemRef(item)}/move`, { ...request });
     return true;
   } catch (err) {
     if (!(err instanceof ApiError) || err.code !== 'OPEN_CHECKLIST') throw err;
@@ -25,7 +26,7 @@ export async function moveItem(number: number, request: MoveRequest): Promise<bo
       confirmLabel: 'Trotzdem abschliessen',
     });
     if (!ok) return false;
-    await api.post(`/items/${number}/move`, { ...request, force: true });
+    await api.post(`/items/${itemRef(item)}/move`, { ...request, force: true });
     return true;
   }
 }

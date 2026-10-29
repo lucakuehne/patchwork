@@ -15,6 +15,7 @@
       <RouterLink to="/admin/snippets">Textbausteine</RouterLink>
       <RouterLink to="/admin/ldap">LDAP / AD</RouterLink>
       <RouterLink to="/admin/https">HTTPS</RouterLink>
+      <RouterLink to="/admin/helpspot">HelpSpot-Import</RouterLink>
     </nav>
     <section class="admin-content">
       <RouterView />

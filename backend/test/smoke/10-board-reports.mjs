@@ -65,7 +65,7 @@ await step('Board: abgeschlossene Spalten zeigen nur die letzten 14 Tage', async
   const db = new pg.Client({ connectionString: process.env.SMOKE_DATABASE_URL });
   await db.connect();
   try {
-    await db.query(`update items set closed_at = now() - interval '15 days' where number = $1`, [t1]);
+    await db.query(`update items set closed_at = now() - interval '15 days' where prefix = 'PW' and number = $1`, [t1]);
     assert.ok(!(await onBoard()), 'vor mehr als 14 Tagen abgeschlossen');
     assert.ok((await api('GET', '/items?view=tasks-done')).items.some((i) => i.number === t1), 'bleibt unter «Erledigt»');
   } finally {

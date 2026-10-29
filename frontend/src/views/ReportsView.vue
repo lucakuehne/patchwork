@@ -140,7 +140,7 @@ async function exportPdf() {
             {
               title: `Überfällige Aufgaben (${r.overdue.total} insgesamt)`,
               head: ['Nummer', 'Titel', 'Status', 'Zuständig', 'Fällig'],
-              body: r.overdue.items.map((i) => [itemRef(i.number), i.title, i.status, i.assignee ?? '–', overdueText(i.dueDate)]),
+              body: r.overdue.items.map((i) => [itemRef(i), i.title, i.status, i.assignee ?? '–', overdueText(i.dueDate)]),
               empty: 'Keine überfälligen Aufgaben.',
             },
           ]
@@ -155,7 +155,7 @@ async function exportPdf() {
         title: `Älteste offene ${noun.value} (${oldestHint(r, s)})`,
         head: ['Nummer', 'Titel', 'Status', 'Zuständig', 'Offen seit'],
         body: r.oldest.items.map((i) => [
-          itemRef(i.number),
+          itemRef(i),
           i.title,
           i.status ?? 'Eingang',
           i.assignee ?? '–',
@@ -300,9 +300,9 @@ function overdueText(dueDate: string): string {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="i in report.overdue.items" :key="i.number">
+            <tr v-for="i in report.overdue.items" :key="itemRef(i)">
               <td>
-                <ItemLink :number="i.number" type="task" class="mono">{{ itemRef(i.number) }}</ItemLink>
+                <ItemLink :item-key="i" type="task" class="mono">{{ itemRef(i) }}</ItemLink>
               </td>
               <td class="title-cell">{{ i.title }}</td>
               <td>{{ i.status }}</td>
@@ -359,9 +359,9 @@ function overdueText(dueDate: string): string {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="i in report.oldest.items" :key="i.number">
+            <tr v-for="i in report.oldest.items" :key="itemRef(i)">
               <td>
-                <ItemLink :number="i.number" :type="i.type" class="mono">{{ itemRef(i.number) }}</ItemLink>
+                <ItemLink :item-key="i" :type="i.type" class="mono">{{ itemRef(i) }}</ItemLink>
               </td>
               <td class="title-cell">{{ i.title }}</td>
               <td>{{ i.status ?? 'Eingang' }}</td>

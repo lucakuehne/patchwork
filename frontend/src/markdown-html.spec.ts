@@ -68,4 +68,14 @@ describe('markdownToHtml', () => {
   it('maskiert den Alternativtext', () => {
     expect(markdownToHtml(`![a"b<c](attachment:${ID})`, 'staff')).toContain('alt="a&quot;b&lt;c"');
   });
+
+  it('verlinkt Kennungen im Text, nicht in Code, Links und im Portal', () => {
+    const html = markdownToHtml('Siehe PW-12 und **HS-17223**.', 'staff');
+    expect(html).toContain('<a href="/items/PW-12" class="item-ref" data-item-ref="PW-12">PW-12</a>');
+    expect(html).toContain('<strong><a href="/items/HS-17223" class="item-ref" data-item-ref="HS-17223">HS-17223</a></strong>');
+    expect(markdownToHtml('`PW-12`', 'staff')).not.toContain('<a');
+    expect(markdownToHtml('[PW-12](https://example.com)', 'staff')).toBe('<p><a href="https://example.com">PW-12</a></p>\n');
+    expect(markdownToHtml('xPW-12 PW-12a', 'staff')).not.toContain('<a');
+    expect(markdownToHtml('Siehe PW-12', 'portal')).not.toContain('<a');
+  });
 });

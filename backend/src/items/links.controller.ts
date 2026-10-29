@@ -1,14 +1,17 @@
-import { Body, Controller, Delete, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { z } from 'zod';
 import { CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
 import { AreasService } from '../settings/areas';
 import { LINK_ROLES, LinksService } from './links.service';
+import { itemRefSchema, type ItemKey } from './item-ref';
+import { ItemRefPipe } from './item-ref.pipe';
 
 const linkSchema = z.object({
   role: z.enum(LINK_ROLES),
-  otherNumber: z.coerce.number().int().positive(),
+  /** Kennung des anderen Vorgangs */
+  other: itemRefSchema,
 });
 
 @Controller()
@@ -18,25 +21,25 @@ export class LinksController {
     private readonly areas: AreasService,
   ) {}
 
-  @Post('items/:number/links')
+  @Post('items/:ref/links')
   @HttpCode(204)
   async add(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Body(new ZodPipe(linkSchema)) body: z.infer<typeof linkSchema>,
     @CurrentUser() user: User,
   ) {
     // Der eigene Vorgang ist schon geprüft (AuthGuard), der andere muss ebenfalls in den Bereichen des Benutzers liegen
-    await this.areas.assertNumber(user, body.otherNumber);
-    await this.links.add(user.id, number, body.role, body.otherNumber);
+    await this.areas.assertKey(user, body.other);
+    await this.links.add(user.id, key, body.role, body.other);
   }
 
-  @Delete('items/:number/links/:linkId')
+  @Delete('items/:ref/links/:linkId')
   @HttpCode(204)
   async remove(
-    @Param('number', ParseIntPipe) number: number,
+    @Param('ref', ItemRefPipe) key: ItemKey,
     @Param('linkId', ParseUUIDPipe) linkId: string,
     @CurrentUser() user: User,
   ) {
-    await this.links.remove(user.id, number, linkId);
+    await this.links.remove(user.id, key, linkId);
   }
 }

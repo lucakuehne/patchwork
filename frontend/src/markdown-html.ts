@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
+import { itemRef, itemRefsInText } from './item-ref';
 
 /** Wo ein Text erscheint: in Patchwork (IT) oder im Portal (Melder). Davon hängen die Adressen der Bilder ab. */
 export type ImageContext = 'staff' | 'portal';
@@ -77,6 +78,39 @@ md.renderer.rules.link_close = (tokens, idx, options, env: { context?: ImageCont
   env.mention = false;
   return env.context === 'portal' ? '' : '</span>';
 };
+
+// Kennungen im Text («PW-123», «HS-17223») als Link auf den Vorgang (Entscheid vom 29.10.2026). Nur in Patchwork, im
+// Portal nicht (Melder sehen fremde Vorgänge nicht); nicht in Code und nicht innerhalb eines bestehenden Links.
+md.core.ruler.push('item_refs', (state) => {
+  if ((state.env as { context?: ImageContext }).context === 'portal') return;
+  for (const block of state.tokens) {
+    if (block.type !== 'inline' || !block.children) continue;
+    const children: Token[] = [];
+    let depth = 0;
+    for (const token of block.children) {
+      if (token.type === 'link_open') depth++;
+      else if (token.type === 'link_close') depth--;
+      const found = token.type === 'text' && depth === 0 ? itemRefsInText(token.content) : [];
+      if (found.length === 0) {
+        children.push(token);
+        continue;
+      }
+      const text = (content: string) => Object.assign(new state.Token('text', '', 0), { content });
+      let pos = 0;
+      for (const { index, length, key } of found) {
+        if (index > pos) children.push(text(token.content.slice(pos, index)));
+        const open = new state.Token('link_open', 'a', 1);
+        open.attrSet('href', `/items/${itemRef(key)}`);
+        open.attrSet('class', 'item-ref');
+        open.attrSet('data-item-ref', itemRef(key));
+        children.push(open, text(token.content.slice(index, index + length)), new state.Token('link_close', 'a', -1));
+        pos = index + length;
+      }
+      if (pos < token.content.length) children.push(text(token.content.slice(pos)));
+    }
+    block.children = children;
+  }
+});
 
 /** Markdown als HTML, noch nicht bereinigt. Im Browser immer über renderMarkdown (markdown.ts). */
 export function markdownToHtml(source: string, context: ImageContext): string {

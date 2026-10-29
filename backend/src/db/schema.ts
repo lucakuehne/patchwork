@@ -203,7 +203,10 @@ export const items = pgTable(
   'items',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    number: serial('number').notNull().unique(),
+    /** Kennung: Präfix und Nummer (PW-123, aus HelpSpot HS-17223), je Präfix ein eigener Nummernkreis */
+    prefix: text('prefix').notNull().default('PW'),
+    /** Die Sequenz zählt für PW; Vorgänge mit anderem Präfix setzen ihre Nummer selbst */
+    number: serial('number').notNull(),
     /** null = liegt im Eingang */
     type: itemType('type'),
     statusId: uuid('status_id').references(() => statuses.id, { onDelete: 'restrict' }),
@@ -245,6 +248,8 @@ export const items = pgTable(
     ),
   },
   (t) => [
+    unique('items_prefix_number_uq').on(t.prefix, t.number),
+    index('items_number_idx').on(t.number),
     index('items_type_idx').on(t.type),
     index('items_status_idx').on(t.statusId),
     index('items_assignee_idx').on(t.assigneeId),
@@ -282,11 +287,17 @@ export const entries = pgTable(
     timeChangedById: uuid('time_changed_by_id').references(() => users.id, { onDelete: 'set null' }),
     /** Admin, der die Antwort oder Notiz im Namen des Autors erfasst hat; null = vom Autor selbst */
     recordedById: uuid('recorded_by_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Kennung im System, aus dem der Eintrag übernommen wurde (z.B. «hs:35790» aus HelpSpot), sonst null */
+    externalId: text('external_id'),
     search: tsvector('search').generatedAlwaysAs(
       (): SQL => sql`to_tsvector('german'::regconfig, coalesce(${entries.body}, ''))`,
     ),
   },
-  (t) => [index('entries_item_idx').on(t.itemId, t.createdAt), index('entries_search_idx').using('gin', t.search)],
+  (t) => [
+    index('entries_item_idx').on(t.itemId, t.createdAt),
+    index('entries_search_idx').using('gin', t.search),
+    unique('entries_external_id_uq').on(t.externalId),
+  ],
 );
 
 export const attachments = pgTable(
@@ -304,9 +315,15 @@ export const attachments = pgTable(
     storageKey: text('storage_key').notNull(),
     /** Content-ID für eingebettete Bilder in Mails */
     contentId: text('content_id'),
+    /** Kennung im System, aus dem der Anhang übernommen wurde (z.B. «hs-doc:9001»), sonst null */
+    externalId: text('external_id'),
     createdAt: createdAt(),
   },
-  (t) => [index('attachments_item_idx').on(t.itemId), index('attachments_entry_idx').on(t.entryId)],
+  (t) => [
+    index('attachments_item_idx').on(t.itemId),
+    index('attachments_entry_idx').on(t.entryId),
+    unique('attachments_external_id_uq').on(t.externalId),
+  ],
 );
 
 /**
@@ -573,6 +590,50 @@ export const snippets = pgTable('snippets', {
 });
 
 export type User = typeof users.$inferSelect;
+/**
+ * Aus HelpSpot übernommene Tickets (Import, Entscheid vom 29.10.2026): Rohdaten der API unverändert, damit sich nach
+ * dem Abschalten von HelpSpot noch etwas nachtragen lässt, und der zugehörige Vorgang (HS-<Nummer>).
+ */
+export const helpspotTickets = pgTable(
+  'helpspot_tickets',
+  {
+    number: integer('number').primaryKey(),
+    itemId: uuid('item_id').references(() => items.id, { onDelete: 'set null' }),
+    /** Antwort von private.request.get */
+    raw: jsonb('raw').$type<Record<string, unknown>>().notNull(),
+    /** Status in HelpSpot (Anzeige im Vorgang) */
+    status: text('status').notNull().default(''),
+    /** Melder laut HelpSpot, z.B. ohne E-Mail-Adresse nur mit Namen */
+    reporterName: text('reporter_name').notNull().default(''),
+    /** Message-ID der ersten Mail, um Kopien aus der Parallelphase zu erkennen */
+    messageId: text('message_id'),
+    importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('helpspot_tickets_item_idx').on(t.itemId), index('helpspot_tickets_message_idx').on(t.messageId)],
+);
+
+/** Läufe des Imports aus HelpSpot, für Fortschritt und Verlauf auf der Seite «HelpSpot-Import» */
+export const helpspotImportRuns = pgTable('helpspot_import_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  startedById: uuid('started_by_id').references(() => users.id, { onDelete: 'set null' }),
+  /** running, done oder failed */
+  status: text('status').notNull().default('running'),
+  /** Tickets, die sich seit diesem Zeitpunkt geändert haben; null = alle */
+  since: timestamp('since', { withTimezone: true }),
+  total: integer('total').notNull().default(0),
+  processed: integer('processed').notNull().default(0),
+  created: integer('created').notNull().default(0),
+  updated: integer('updated').notNull().default(0),
+  skipped: integer('skipped').notNull().default(0),
+  failed: integer('failed').notNull().default(0),
+  /** Fehler einzelner Tickets (höchstens 50) */
+  errors: jsonb('errors').$type<{ number: number; message: string }[]>().notNull().default([]),
+  /** Fehler, der den ganzen Lauf abgebrochen hat */
+  error: text('error'),
+});
+
 export type Item = typeof items.$inferSelect;
 export type Status = typeof statuses.$inferSelect;
 export type Channel = typeof channels.$inferSelect;
@@ -582,6 +643,8 @@ export type OutgoingMailRow = typeof outgoingMails.$inferSelect;
 export type IncomingMailRow = typeof incomingMails.$inferSelect;
 export type IncomingResult = (typeof incomingResult.enumValues)[number];
 export type Attachment = typeof attachments.$inferSelect;
+export type HelpSpotTicketRow = typeof helpspotTickets.$inferSelect;
+export type HelpSpotImportRun = typeof helpspotImportRuns.$inferSelect;
 export type Rule = typeof rules.$inferSelect;
 export type Snippet = typeof snippets.$inferSelect;
 export type UserRole = (typeof userRole.enumValues)[number];
