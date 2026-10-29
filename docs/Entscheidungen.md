@@ -270,21 +270,26 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   Personen. Massgebend ist der Typ des Vorgangs beim Versand. «Generell» gilt für Mails zu Vorgängen ohne Typ (Eingang,
   z.B. Eingangsbestätigung) und für Mails ohne Vorgang (Willkommen). Normaler Betrieb ist, wenn in allen drei Blöcken
   beide Kreise auf «an alle» stehen. Nach dem Update gilt die bisherige Einstellung für alle drei Blöcke.
-  - Noch zu bestätigen: Sind die Blöcke verschieden eingestellt, nennt der Hinweis oben jeden Block (z.B. «Generell:
-    keine Mails. Störungen: nur an ausgewählte IT-Mitarbeitende. Aufgaben: alle Mails.»), sonst ein Satz wie bisher.
-    Der Vermerk zum Testbetrieb im Antwortfeld richtet sich nach dem Block des Vorgangs. «Antwort simulieren» gibt es,
-    solange mindestens ein Block im Testbetrieb ist.
+  - Bestätigt am 29.10.2026: Der Hinweis oben sagt im Testbetrieb immer nur «Testbetrieb: Es werden nicht alle Mails
+    versendet.» (Admins mit Link auf die nicht versendeten Mails), nicht je Block. Die Übersicht je Block steht unter
+    Verwaltung → Ausgehende Mails neben «Speichern» (z.B. «Generell: keine Mails. Störungen: nur an ausgewählte
+    IT-Mitarbeitende. Aufgaben: alle Mails.»). Der Vermerk zum Testbetrieb im Antwortfeld richtet sich nach dem Block
+    des Vorgangs. «Antwort simulieren» gibt es, solange mindestens ein Block im Testbetrieb ist.
 - **Antworten und Notizen im Namen eines anderen Benutzers:** Admins wählen im Antwortfeld unter «Als» eine andere
   Person (aktive Benutzer mit der Rolle IT oder Admin), für öffentliche Antworten und interne Notizen. Vorgabe ist man
   selbst; nach dem Senden steht die Auswahl wieder auf einem selbst. Die gewählte Person gilt als Autor: im Verlauf,
   bei den Platzhaltern {{Bearbeiter …}} der Textbausteine und bei Mails (die Person selbst bekommt weder die Antwort
   noch die Mail «Erwähnt», in «Erwähnt» steht ihr Name). Intern steht beim Darüberfahren über den Namen «erfasst von …»
   mit dem Admin; Melder sehen das weder im Portal (dort wie jede Antwort der IT als «IT») noch in der Mail.
-  - Noch zu bestätigen: Eine solche Notiz können in den ersten 5 Minuten die gewählte Person und der Admin bearbeiten,
-    der sie erfasst hat.
+  - Bestätigt am 29.10.2026: Eine solche Notiz können in den ersten 3 Minuten die gewählte Person und der Admin
+    bearbeiten, der sie erfasst hat (dieselbe Frist wie für alle Notizen).
   - Technisch: Spalte `entries.recorded_by_id` (nur gesetzt, wenn jemand im Namen eines anderen schreibt).
 - **Backlog im Board:** Karten im Start-Status der Aufgaben (Standard «Backlog») sind leicht ausgegraut wie die
   abgeschlossenen (Titel grau). Nur im Board der Aufgaben.
+- **Diagnose unter Verwaltung → LDAP** (bestätigt am 29.10.2026): Der Schritt «Benutzerfilter» warnt nur noch, wenn
+  kein Konto im Filter eine E-Mail hat. Haben die ersten 5 Konten keine (oft Systemkonten wie Administrator, Guest,
+  krbtgt), sucht er gezielt nach Konten mit E-Mail, nennt diese als Beispiel und weist darauf hin, dass sich Konten ohne
+  E-Mail nicht anmelden können.
 - **Englische Adressen** (gewünscht am 28.10.2026): Pfade und Query-Parameter der Oberfläche sind englisch, z.B.
   `/inbox`, `/incidents`, `/incidents/resolved`, `/tasks`, `/tasks/done`, `/tasks/rejected`, `/search`, `/settings`,
   `/setup`, `/reports`, `/items/123` (bisher `/v/123`), `/portal/new`, `/portal/items/123`, `/admin/general`,
@@ -384,8 +389,8 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   «Zeit angepasst»; beim Darüberfahren die ursprüngliche Zeit und welcher Admin sie wann angepasst hat. Öffentliche
   Antworten nie (sie sind als Mail verschickt).
   - Technisch: `entries.created_at` ist die neue Zeit; `original_created_at` (bleibt bei weiteren Anpassungen),
-    `time_changed_at` und `time_changed_by_id` halten die Anpassung fest (Migration 0035). Die 5 Minuten zum Bearbeiten
-    eigener Notizen zählen ab der ursprünglichen Zeit.
+    `time_changed_at` und `time_changed_by_id` halten die Anpassung fest (Migration 0035). Die Frist zum Bearbeiten
+    eigener Notizen zählt ab der ursprünglichen Zeit.
 
 ## Board oder Liste, Vorgang als Seite oder Fenster (bestätigt am 27.10.2026)
 
@@ -464,7 +469,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 
 ## Rückmeldungen vom 15.10.2026
 
-- **Eigene interne Notizen bearbeiten:** 5 Minuten lang nach dem Erfassen («Bearbeiten» bei der Notiz). Danach steht «bearbeitet» bei der Zeit. Nur in Patchwork erfasste Notizen, keine öffentlichen Antworten (die sind schon per Mail verschickt) und keine per Mail eingegangenen.
+- **Eigene interne Notizen bearbeiten:** 3 Minuten lang nach dem Erfassen (bis 28.10.2026 5 Minuten, verkürzt am 29.10.2026) («Bearbeiten» bei der Notiz). Danach steht «bearbeitet» bei der Zeit. Nur in Patchwork erfasste Notizen, keine öffentlichen Antworten (die sind schon per Mail verschickt) und keine per Mail eingegangenen.
 - **Ausgehende Mails im Verlauf** (bestätigt am 20.10.2026): Automatische Mails an Melder und Beteiligte (Eingangsbestätigung, Erledigt, Abgelehnt, Duplikat-Hinweise, Erinnerung, automatisch geschlossen) erscheinen im Verlauf als kurze graue Zeile, z.B. «Mail «Erledigt» an Anna Muster», mit Zeit und Vermerk bei Abweichungen (nicht versendet, Fehler). «ansehen» öffnet ein Modal mit Kopf (An, CC, Betreff, Status) und der Mail, wie sie versendet wurde. Benachrichtigungen an die IT erscheinen nicht. Bei öffentlichen Antworten öffnet «Mail ansehen» in der Kopfzeile dasselbe Modal. Nur in der Oberfläche, nicht im Portal. Duplikat-Hinweise laufen unter der Nummer des Originals und erscheinen im Verlauf beim Original und beim Duplikat (bestätigt am 20.10.2026). Die Mail steht ab dem Auslösen im Verlauf («wird versendet»); solange eine Mail unterwegs ist, lädt der Vorgang alle 3 Sekunden nach (höchstens eine Minute). Die Ansicht zeigt die Mail hell wie versendet, auch im dunklen Farbschema. Automatische Mails von vor dieser Änderung erscheinen nicht im Verlauf, weil ihre Art damals nicht gespeichert wurde; unter Verwaltung → Ausgehende Mails bleiben sie (bestätigt am 20.10.2026).
 - **Änderungen zusammenfassen:** Mehrere Änderungen derselben Person kurz hintereinander (z.B. Status und Priorität) erscheinen als eine Zeile in der Timeline. Gespeichert wird weiterhin jede Änderung einzeln.
   - Bestätigt am 20.10.2026: Ändert dieselbe Person dasselbe Feld darin mehrmals (je höchstens 2 Minuten auseinander), erscheint es nur einmal, vom ersten zum letzten Wert, mit der Zeit der letzten Änderung. Steht am Ende wieder der Ausgangswert, entfällt die Zeile (und die Karte, wenn nichts übrig bleibt). Gilt für Status, Typ, Titel, Priorität, Meldeweg, Zuständig, Melder, Antwort-Postfach und Beschreibung («Beschreibung geändert» einmal); nicht für Beteiligte, Verknüpfungen, Ablehnen, automatische Wechsel und Regeln.
@@ -542,7 +547,7 @@ Bestätigt am 19.10.2026:
     - IT-Mitarbeitende sind Benutzer mit der Rolle IT oder Admin. Massgebend ist der Empfänger, nicht die Art der Mail.
     - Auswahl: IT-Mitarbeitende per Häkchen aus der Liste, die übrigen über die Personensuche (Patchwork, AD, freie E-Mail-Adresse).
     - Geht eine Mail an mehrere Empfänger, von denen nur ein Teil freigegeben ist, erhalten nur diese sie, und im Kopf stehen nur diese (über Microsoft Graph geht es nicht anders). Die vollständige Mail steht im Protokoll mit dem Vermerk, wer sie nicht bekommen hat.
-    - Solange nicht beide Kreise «an alle» sind, sehen alle Benutzer oben einen Hinweis, der sagt, wer Mails bekommt. In der Timeline steht bei öffentlichen Antworten «nicht versendet» bzw. «teilweise versendet».
+    - Solange nicht beide Kreise «an alle» sind, sehen alle Benutzer oben einen Hinweis, der sagt, wer Mails bekommt (seit 29.10.2026 allgemein «Es werden nicht alle Mails versendet.», siehe «Testbetrieb je Typ …»). In der Timeline steht bei öffentlichen Antworten «nicht versendet» bzw. «teilweise versendet».
     - Bestehende Einstellung: eingeschaltet wird «an niemanden / an niemanden», ausgeschaltet «an alle / an alle».
     - Gewünscht am 20.10.2026: Die Einstellung steht auf der Seite «Ausgehende Mails» über der Liste, nicht mehr unter «Allgemein».
     - Seit 28.10.2026 je Vorgangstyp (Generell, Störungen, Aufgaben), siehe «Testbetrieb je Typ, im Namen anderer antworten, Backlog im Board».

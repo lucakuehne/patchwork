@@ -1,7 +1,7 @@
 import type { Entry } from '../db/schema';
 
 /** So lange nach dem Erfassen bietet die Oberfläche «Bearbeiten» für eigene interne Notizen an. */
-export const NOTE_EDIT_MINUTES = 5;
+export const NOTE_EDIT_MINUTES = 3;
 
 /** Zusätzliche Frist zum Speichern, damit eine rechtzeitig begonnene Bearbeitung nicht verloren geht. */
 const SAVE_GRACE_MINUTES = 5;

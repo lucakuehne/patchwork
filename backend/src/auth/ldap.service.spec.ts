@@ -7,6 +7,7 @@ import {
   mailFilter,
   parseLdapUrl,
   peopleFilter,
+  withAttribute,
 } from './ldap.service';
 
 describe('parseLdapUrl', () => {
@@ -70,6 +71,12 @@ describe('Konto zu einer E-Mail-Adresse', () => {
     expect(mailFilter({ userFilter: AD_USER_FILTER, mailAttribute: 'mail' }, 'lena@test.local', true)).toMatch(
       /\(mail=lena@test\.local\)\(!\(userAccountControl:1\.2\.840\.113556\.1\.4\.803:=2\)\)\)$/,
     );
+  });
+});
+
+describe('Diagnose: Konten mit E-Mail', () => {
+  it('schränkt den Benutzerfilter auf Konten mit dem Attribut ein', () => {
+    expect(withAttribute('(&(objectClass=user)(sAMAccountName=*))', 'mail')).toBe('(&(&(objectClass=user)(sAMAccountName=*))(mail=*))');
   });
 });
 

@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import { useSession } from '../stores/session';
-import { testModeText } from '../test-mode';
 
-/** Hinweis für alle Benutzer, solange der Testbetrieb nicht alle Mails versendet. */
+/**
+ * Hinweis für alle Benutzer, solange der Testbetrieb nicht alle Mails versendet. Immer derselbe allgemeine Satz, nicht
+ * je Block (Entscheid vom 29.10.2026); wer was bekommt, steht unter Verwaltung → Ausgehende Mails.
+ */
 const session = useSession();
-const text = computed(() => testModeText(session.info?.delivery));
 </script>
 
 <template>
-  <div v-if="text" class="test-mode" role="status">
-    <strong>Testbetrieb:</strong> {{ text }}
+  <div v-if="session.info?.testMode" class="test-mode" role="status">
+    <strong>Testbetrieb:</strong> Es werden nicht alle Mails versendet.
     <RouterLink v-if="session.isAdmin" to="/admin/outgoing-mails?status=withheld">Nicht versendete Mails ansehen</RouterLink>
   </div>
 </template>

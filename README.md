@@ -44,7 +44,7 @@ Konzept: [Grundkonzept.md](Grundkonzept.md), getroffene Entscheidungen: [docs/En
 - **Stummschalten** von Benachrichtigungen ist vorläufig ausgeblendet und wirkt nicht.
 - **Personensuche** für Melder und Beteiligte nach Name, Benutzername und E-Mail, auch im AD.
 - **Im Namen eines anderen** (nur Admins): Im Antwortfeld wählt man unter «Als» eine aktive IT- oder Admin-Person; die Antwort oder Notiz gilt als ihre (Verlauf, Mails, Textbausteine), intern zeigt der Name beim Darüberfahren «erfasst von …». Melder sehen davon nichts.
-- Eigene **interne Notizen** lassen sich 5 Minuten lang bearbeiten (auch vom Admin, der sie im Namen eines anderen erfasst hat). Admins können Datum und Uhrzeit jeder internen Notiz anpassen («Zeit anpassen», nicht in die Zukunft); die Notiz rückt an die neue Stelle und zeigt «Zeit angepasst» mit der ursprünglichen Zeit. Mehrere Änderungen kurz hintereinander erscheinen als eine Zeile in der Timeline.
+- Eigene **interne Notizen** lassen sich 3 Minuten lang bearbeiten (auch vom Admin, der sie im Namen eines anderen erfasst hat). Admins können Datum und Uhrzeit jeder internen Notiz anpassen («Zeit anpassen», nicht in die Zukunft); die Notiz rückt an die neue Stelle und zeigt «Zeit angepasst» mit der ursprünglichen Zeit. Mehrere Änderungen kurz hintereinander erscheinen als eine Zeile in der Timeline.
 
 ## Etappe 3
 

@@ -79,6 +79,11 @@ export function mailFilter(
   return `(&${accounts}(${cfg.mailAttribute}=${escapeFilterValue(email.trim())})${isAd ? AD_ENABLED_ONLY : ''})`;
 }
 
+/** Nur die Konten eines Filters, die das Attribut haben (z.B. eine E-Mail-Adresse) */
+export function withAttribute(filter: string, attribute: string): string {
+  return `(&${filter}(${attribute}=*))`;
+}
+
 /**
  * Vor- und Nachname aus givenName und sn. Fehlen beide (z.B. Dienstkonten), werden sie aus dem Anzeigenamen geschätzt,
  * ohne Anzeigenamen aus dem Teil der E-Mail-Adresse vor dem @ (siehe splitName).
@@ -619,22 +624,38 @@ export class LdapService {
         } else if (sample.entries.length === 0) {
           add('filter', 'Benutzerfilter', 'warning', `Mit diesem Filter wird kein Benutzer gefunden.${adFilterHint}`);
         } else {
+          const nameOf = (e: Entry) => firstValue(e, cfg.nameAttribute) || e.dn;
           const withMail = sample.entries.filter((e) => firstValue(e, cfg.mailAttribute)).length;
-          const names = sample.entries.map((e) => firstValue(e, cfg.nameAttribute) || e.dn).join(', ');
+          const names = sample.entries.map(nameOf).join(', ');
           const count = sample.more ? `Mehr als ${sample.entries.length}` : String(sample.entries.length);
-          // Konten ohne E-Mail (z.B. Administrator, krbtgt) sind normal. Warnung nur, wenn keines eine hat:
-          // dann stimmt vermutlich das E-Mail-Attribut nicht.
-          add(
-            'filter',
-            'Benutzerfilter',
-            withMail === 0 ? 'warning' : 'ok',
-            `${count} Benutzer gefunden, z.B. ${names}.` +
-              (withMail === 0
-                ? ` Keiner davon hat das Attribut «${cfg.mailAttribute}» – ohne E-Mail ist keine Anmeldung möglich. Attribut für die E-Mail prüfen.`
-                : withMail < sample.entries.length
-                  ? ` Hinweis: ${sample.entries.length - withMail} davon ohne «${cfg.mailAttribute}», diese können sich nicht anmelden.`
-                  : ''),
-          );
+          // Die ersten Konten ohne E-Mail sind oft Systemkonten (Administrator, Guest, krbtgt): dann gezielt nach
+          // Konten mit E-Mail suchen. Warnung nur, wenn keines eine hat, dann stimmt vermutlich das Attribut nicht.
+          const mailed =
+            withMail === 0 && sample.more
+              ? await this.searchLimited(client, cfg.baseDn, withAttribute(filterAll, cfg.mailAttribute), [cfg.nameAttribute], 3)
+              : null;
+          if (mailed && (mailed.entries.length > 0 || mailed.more)) {
+            const examples = mailed.entries.length ? `, z.B. ${mailed.entries.map(nameOf).join(', ')}` : '';
+            add(
+              'filter',
+              'Benutzerfilter',
+              'ok',
+              `${count} Benutzer gefunden${examples}. Hinweis: Nicht alle haben «${cfg.mailAttribute}» (z.B. ${names}), ` +
+                'diese können sich nicht anmelden.',
+            );
+          } else {
+            add(
+              'filter',
+              'Benutzerfilter',
+              withMail === 0 ? 'warning' : 'ok',
+              `${count} Benutzer gefunden, z.B. ${names}.` +
+                (withMail === 0
+                  ? ` Keiner davon hat das Attribut «${cfg.mailAttribute}» – ohne E-Mail ist keine Anmeldung möglich. Attribut für die E-Mail prüfen.`
+                  : withMail < sample.entries.length
+                    ? ` Hinweis: ${sample.entries.length - withMail} davon ohne «${cfg.mailAttribute}», diese können sich nicht anmelden.`
+                    : ''),
+            );
+          }
         }
       } catch (err) {
         addExplained('filter', 'Benutzerfilter', 'error', explainSearchError(err, { isAd }));

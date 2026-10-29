@@ -958,9 +958,12 @@ await step('testbetrieb-je-typ', async () => {
   const labels = (await blocks.allInnerTexts()).map((t) => t.trim());
   if (labels.join('|') !== 'Generell|Störungen|Aufgaben') throw new Error(`Blöcke: ${labels.join(', ')}`);
   if ((await page.locator('#tm-incident-staff').inputValue()) !== 'selected') throw new Error('Störungen nicht «nur an ausgewählte»');
+  // Hinweis oben immer allgemein, die Übersicht je Block steht neben «Speichern»
   const banner = (await page.locator('.test-mode[role="status"]').innerText()).trim();
-  if (!banner.includes('Generell: keine Mails. Störungen: nur an ausgewählte IT-Mitarbeitende. Aufgaben: alle Mails.')) {
-    throw new Error(`Hinweis oben: ${banner}`);
+  if (!banner.startsWith('Testbetrieb: Es werden nicht alle Mails versendet.')) throw new Error(`Hinweis oben: ${banner}`);
+  const summary = (await page.locator('.card', { has: page.locator('section.block') }).locator('.row .faint').innerText()).trim();
+  if (summary !== 'Generell: keine Mails. Störungen: nur an ausgewählte IT-Mitarbeitende. Aufgaben: alle Mails.') {
+    throw new Error(`Übersicht neben «Speichern»: ${summary}`);
   }
   await page.locator('.card', { has: page.locator('section.block') }).screenshot({ path: `${OUT}/87-testbetrieb-je-typ.png` });
   console.log('Bild 87-testbetrieb-je-typ');

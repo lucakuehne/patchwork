@@ -5,7 +5,7 @@ import type { Entry, ItemMail, ItemType } from './types';
 export const GROUP_GAP_MS = 2 * 60_000;
 
 /** So lange nach dem Erfassen lässt sich eine eigene interne Notiz bearbeiten (wie im Backend). */
-export const NOTE_EDIT_MINUTES = 5;
+export const NOTE_EDIT_MINUTES = 3;
 
 export type TimelineBlock =
   | { kind: 'message'; entry: Entry }

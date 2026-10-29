@@ -7,15 +7,15 @@ const after = (minutes: number) => new Date(created.getTime() + minutes * 60_000
 
 describe('noteEditRefusal', () => {
   it('erlaubt die eigene Notiz in den ersten Minuten', () => {
-    expect(noteEditRefusal(note, 'ada', after(4))).toBeNull();
+    expect(noteEditRefusal(note, 'ada', after(2))).toBeNull();
   });
 
   it('lässt eine begonnene Bearbeitung noch kurz nach Ablauf speichern', () => {
-    expect(noteEditRefusal(note, 'ada', after(9))).toBeNull();
+    expect(noteEditRefusal(note, 'ada', after(7))).toBeNull();
   });
 
   it('lehnt nach Ablauf der Frist ab', () => {
-    expect(noteEditRefusal(note, 'ada', after(11))?.reason).toBe('expired');
+    expect(noteEditRefusal(note, 'ada', after(9))?.reason).toBe('expired');
   });
 
   it('lehnt fremde Notizen ab', () => {
@@ -37,7 +37,7 @@ describe('noteEditRefusal', () => {
 
   it('zählt die Frist ab der ursprünglichen Zeit, wenn ein Admin die Zeit angepasst hat', () => {
     const moved = { ...note, createdAt: new Date('2026-10-14T08:00:00Z'), originalCreatedAt: created };
-    expect(noteEditRefusal(moved, 'ada', after(4))).toBeNull();
+    expect(noteEditRefusal(moved, 'ada', after(2))).toBeNull();
     expect(noteEditRefusal(moved, 'ada', after(11))?.reason).toBe('expired');
   });
 });
