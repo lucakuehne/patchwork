@@ -322,7 +322,8 @@ const runResult = (r: HelpSpotImportRun) =>
               <div v-if="r.error" class="error-text">{{ r.error }}</div>
               <details v-if="r.errors.length" class="small">
                 <summary>Fehler einzelner Tickets</summary>
-                <div v-for="e in r.errors" :key="e.number">HelpSpot {{ e.number }}: {{ e.message }}</div>
+                <div v-for="e in r.errors.slice(0, 50)" :key="e.number">HelpSpot {{ e.number }}: {{ e.message }}</div>
+                <div v-if="r.errors.length > 50" class="faint">… und {{ r.errors.length - 50 }} weitere</div>
               </details>
             </td>
           </tr>

@@ -67,19 +67,27 @@ describe('Ticket aus HelpSpot', () => {
     expect(change).toMatchObject({ id: 35793, change: true, public: false, note: 'Status von Active zu Problem Solved' });
   });
 
-  it('Protokoll als HTML ohne Kennzeichen: Änderung, als HTML behandelt', () => {
+  it('HTML ohne Kennzeichen (Protokolle, Fehlermeldungen) gleich als Text', () => {
     const logHtml =
       '<div class="note-stream-item-logtext">Request Changed:</div><div class="note-stream-item-logtext">Request changed from &quot;CLOSED&quot; to &quot;OPEN&quot;</div>';
-    const history = (tLog: string, tNote: string) =>
+    const history = (tLog: string, tNote: string, fNoteIsHTML = 0) =>
       normalizeTicket({
         ...raw,
-        request_history: { item: { '1': { xRequestHistory: 1, person_type: 'staff', fPublic: 0, fNoteIsHTML: 0, fInitial: 0, tLog, tNote } } },
+        request_history: { item: { '1': { xRequestHistory: 1, person_type: 'staff', fPublic: 0, fNoteIsHTML, fInitial: 0, tLog, tNote } } },
       }).history[0];
-    expect(history('Request Changed:', logHtml)).toMatchObject({ change: true, html: true });
-    expect(history(logHtml, logHtml)).toMatchObject({ change: true, html: true });
-    expect(history('', logHtml)).toMatchObject({ change: true, html: true });
-    // Gewöhnlicher Text mit «<» mitten im Satz bleibt Text
-    expect(history('', 'Wert ist <5 und >2')).toMatchObject({ change: false, html: false });
+    const asText = { change: true, html: false, note: 'Request Changed:\nRequest changed from "CLOSED" to "OPEN"' };
+    expect(history('Request Changed:', logHtml)).toMatchObject(asText);
+    expect(history(logHtml, logHtml)).toMatchObject(asText);
+    expect(history('', logHtml)).toMatchObject(asText);
+    expect(history('', 'EMAIL ERROR: got code &quot;503&quot;<br />Bitte prüfen')).toMatchObject({
+      change: false,
+      note: 'EMAIL ERROR: got code "503"\nBitte prüfen',
+    });
+    // Gewöhnlicher Text mit «<» mitten im Satz oder einer Adresse in spitzen Klammern bleibt, wie er ist
+    expect(history('', 'Wert ist <5 und >2')).toMatchObject({ change: false, html: false, note: 'Wert ist <5 und >2' });
+    expect(history('', 'Von: Anna <anna@firma.ch>')).toMatchObject({ note: 'Von: Anna <anna@firma.ch>' });
+    // Mit Kennzeichen bleibt es HTML
+    expect(history('', '<p>Hallo</p>', 1)).toMatchObject({ html: true, note: '<p>Hallo</p>' });
   });
 
   it('erkennt Spam und Papierkorb', () => {

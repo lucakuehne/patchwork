@@ -25,6 +25,9 @@ export interface EventPart {
 
 const isMessage = (e: Entry) => e.kind === 'reply' || e.kind === 'note';
 
+/** Aus HelpSpot übernommener Eintrag; solche Änderungen stehen nie mit Änderungen in Patchwork in einer Karte */
+export const fromHelpSpot = (e: Entry) => e.meta?.source === 'helpspot';
+
 /** Ablehnungen (mit Begründung), automatische Statuswechsel und Regeln stehen immer für sich. */
 function groupable(e: Entry): boolean {
   if (isMessage(e)) return false;
@@ -156,6 +159,7 @@ function groupEntries(newestFirst: Entry[]): TimelineBlock[] {
       groupable(previous) &&
       groupable(entry) &&
       authorKey(previous) === authorKey(entry) &&
+      fromHelpSpot(previous) === fromHelpSpot(entry) &&
       new Date(previous.createdAt).getTime() - new Date(entry.createdAt).getTime() <= GROUP_GAP_MS
     ) {
       (last as { entries: Entry[] }).entries.push(entry);
@@ -234,6 +238,20 @@ function typeOnlyParts(m: Record<string, unknown>, state: 'hidden' | 'shown'): s
 export function eventPart(e: Entry): EventPart {
   const m = e.meta ?? {};
   return { text: eventText(e, m), link: otherLink(e) };
+}
+
+/**
+ * Zeilen eines Eintrags in der Liste einer Karte. Eine aus HelpSpot übernommene Änderung hat je Änderung eine Zeile im
+ * Wortlaut von HelpSpot; dass sie aus HelpSpot kommt, steht im Kopf der Karte (Entscheid vom 30.10.2026).
+ */
+export function eventParts(e: Entry): EventPart[] {
+  const m = e.meta ?? {};
+  if (e.kind !== 'change' || m.field !== 'helpspot') return [eventPart(e)];
+  const lines = String(m.text ?? '')
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return (lines.length ? lines : ['in HelpSpot geändert']).map((text) => ({ text, link: null }));
 }
 
 function eventText(e: Entry, m: Record<string, unknown>): string {

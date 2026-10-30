@@ -113,12 +113,10 @@ export class HelpSpotClient {
     return this.call('private.request.get', { xRequest: number });
   }
 
-  /** Inhalt eines Anhangs */
+  /** Inhalt eines Anhangs; leer, wenn der Anhang in HelpSpot leer ist */
   async document(documentId: string): Promise<Buffer> {
     const data = await this.call('private.document.get', { xDocumentId: documentId });
-    const body = String(data.sBody ?? '');
-    if (!body) throw new HelpSpotError(`Anhang ${documentId} ist leer oder nicht lesbar`);
-    return Buffer.from(body, 'base64');
+    return Buffer.from(String(data.sBody ?? ''), 'base64');
   }
 }
 

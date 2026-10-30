@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HelpSpotSettings } from '../settings/settings.service';
-import { changeText, effectiveMappings, htmlToText, resolveTicket, suggestCopyKeep, suggestType, type MappingContext } from './helpspot-map';
+import { changeText, effectiveMappings, resolveTicket, suggestCopyKeep, suggestType, type MappingContext } from './helpspot-map';
+import { htmlToText } from './helpspot-text';
 import type { HsTicket } from './helpspot-ticket';
 
 const ctx: MappingContext = {

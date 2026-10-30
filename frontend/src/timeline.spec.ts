@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asListItem, eventPart, groupTimeline, mailRecipientsText } from './timeline';
+import { asListItem, eventPart, eventParts, groupTimeline, mailRecipientsText } from './timeline';
 import type { Entry, ItemMail } from './types';
 
 const ada = { id: 'ada', name: 'Ada Admin', firstName: 'Ada', lastName: 'Admin', email: 'ada@test.local', role: 'admin' as const };
@@ -226,5 +226,15 @@ describe('groupTimeline', () => {
     expect(asListItem('«Luca Kühne» als zuständig gesetzt')).toBe('«Luca Kühne» als zuständig gesetzt');
     expect(asListItem('keine Eingangsbestätigung verschickt')).toBe('Keine Eingangsbestätigung verschickt');
     expect(asListItem('abgelehnt (Melder informiert)')).toBe('Abgelehnt (Melder informiert)');
+  });
+
+  it('Änderung aus HelpSpot: eine Zeile je Änderung, nie mit Änderungen aus Patchwork in einer Karte', () => {
+    const hs = (minute: number, text: string) => entry(minute, { meta: { source: 'helpspot', field: 'helpspot', text } });
+    const lines = eventParts(hs(1, 'Request changed from "OPEN" to "CLOSED"\nStatus changed from "Active" to "Problem Solved"'));
+    expect(lines.map((p) => p.text)).toEqual(['Request changed from "OPEN" to "CLOSED"', 'Status changed from "Active" to "Problem Solved"']);
+    expect(eventParts(hs(1, '')).map((p) => p.text)).toEqual(['in HelpSpot geändert']);
+    // Dieselbe Person kurz hintereinander: HelpSpot für sich, Patchwork für sich
+    expect(shape([entry(3), hs(2, 'a'), hs(1, 'b')])).toEqual([1, 2]);
+    expect(eventParts(entry(1))).toEqual([eventPart(entry(1))]);
   });
 });

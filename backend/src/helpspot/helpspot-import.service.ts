@@ -29,14 +29,14 @@ import { StatusesService } from '../statuses/statuses.service';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { HelpSpotClient, HelpSpotError } from './helpspot-client';
-import { changeText, effectiveMappings, htmlToText, resolveTicket, suggestCopyKeep, type MappingContext } from './helpspot-map';
+import { changeText, effectiveMappings, resolveTicket, suggestCopyKeep, type MappingContext } from './helpspot-map';
+import { htmlToText } from './helpspot-text';
 import { normalizeTicket, type HsFile, type HsHistoryItem, type HsTicket } from './helpspot-ticket';
 
 /** Zeitzone, in der HelpSpot die Zeiten der API formatiert */
 const TIME_ZONE = 'Europe/Zurich';
 /** Melder ohne E-Mail-Adresse in HelpSpot (Name steht beim Vorgang) */
 const NO_EMAIL_CONTACT = { email: 'ohne-email@helpspot.invalid', name: 'Ohne E-Mail (HelpSpot)' };
-const MAX_ERRORS = 50;
 
 export interface HelpSpotSettingsInput {
   url: string;
@@ -72,6 +72,7 @@ interface RunContext extends MappingContext {
   includeOpen: boolean;
   /** Name (klein) → E-Mail der Mitarbeitenden in HelpSpot */
   staffEmail: Map<string, string>;
+  /** Name (klein) → Benutzer in Patchwork (null = keiner) */
   users: Map<string, User | null>;
 }
 
@@ -213,7 +214,7 @@ export class HelpSpotImportService implements OnModuleInit {
     if (this.running) throw new ConflictException('Es läuft bereits ein Import');
     const client = await this.client();
     const [last] = await this.db
-      .select({ startedAt: helpspotImportRuns.startedAt })
+      .select({ startedAt: helpspotImportRuns.startedAt, errors: helpspotImportRuns.errors })
       .from(helpspotImportRuns)
       .where(eq(helpspotImportRuns.status, 'done'))
       .orderBy(desc(helpspotImportRuns.startedAt))
@@ -222,7 +223,9 @@ export class HelpSpotImportService implements OnModuleInit {
       .insert(helpspotImportRuns)
       .values({ startedById: actor.id, since: last?.startedAt ?? null, includeOpen })
       .returning();
-    this.running = this.run(run!, client).finally(() => (this.running = null));
+    // Tickets mit Fehler im letzten Lauf noch einmal, auch wenn sie sich in HelpSpot nicht geändert haben
+    const retry = (last?.errors ?? []).map((e) => e.number);
+    this.running = this.run(run!, client, retry).finally(() => (this.running = null));
     return run!;
   }
 
@@ -231,15 +234,16 @@ export class HelpSpotImportService implements OnModuleInit {
     await this.running;
   }
 
-  private async run(run: HelpSpotImportRun, client: HelpSpotClient): Promise<void> {
+  private async run(run: HelpSpotImportRun, client: HelpSpotClient, retry: number[]): Promise<void> {
     const counts = { created: 0, updated: 0, skipped: 0, skippedOpen: 0, failed: 0, processed: 0 };
     const errors: { number: number; message: string }[] = [];
     const progress = () => this.db.update(helpspotImportRuns).set({ ...counts, errors }).where(eq(helpspotImportRuns.id, run.id));
     try {
       // Kleiner Überlapp, damit nichts zwischen zwei Läufen verloren geht
       const since = run.since ? Math.floor(run.since.getTime() / 1000) - 300 : 1;
-      const changed = await client.changedSince(since);
-      const numbers = run.includeOpen ? [...new Set([...changed, ...(await this.openNumbers(client))])].sort((a, b) => a - b) : changed;
+      const changed = [...(await client.changedSince(since)), ...retry];
+      const open = run.includeOpen ? await this.openNumbers(client) : [];
+      const numbers = [...new Set([...changed, ...open])].sort((a, b) => a - b);
       await this.db.update(helpspotImportRuns).set({ total: numbers.length }).where(eq(helpspotImportRuns.id, run.id));
       const context: RunContext = {
         ...(await this.mappingContext()),
@@ -253,7 +257,8 @@ export class HelpSpotImportService implements OnModuleInit {
           counts[await this.importTicket(client, number, context)]++;
         } catch (err) {
           counts.failed++;
-          if (errors.length < MAX_ERRORS) errors.push({ number, message: (err as Error).message });
+          // Alle Fehler festhalten: Der nächste Lauf versucht diese Tickets noch einmal
+          errors.push({ number, message: (err as Error).message });
           this.logger.warn(`HelpSpot-Ticket ${number} nicht übernommen: ${(err as Error).message}`);
         }
         counts.processed++;
@@ -314,9 +319,16 @@ export class HelpSpotImportService implements OnModuleInit {
         )
       : new Set<string | null>();
     const stored = new Map<string, { storageKey: string; size: number }>();
+    const empty = new Set<string>();
     for (const { file } of files) {
-      if (known.has(docId(file)) || stored.has(docId(file))) continue;
+      if (known.has(docId(file)) || stored.has(docId(file)) || empty.has(docId(file))) continue;
       const data = await client.document(file.documentId);
+      // In HelpSpot leer: das Ticket ohne diesen Anhang übernehmen (Entscheid vom 30.10.2026)
+      if (data.length === 0) {
+        empty.add(docId(file));
+        this.logger.warn(`HelpSpot-Ticket ${t.number}: Anhang «${file.filename}» ist leer und wird nicht übernommen`);
+        continue;
+      }
       stored.set(docId(file), { storageKey: await this.storage.save(data), size: data.length });
     }
 
@@ -386,9 +398,9 @@ export class HelpSpotImportService implements OnModuleInit {
       for (const h of t.history) {
         if (h === initial || done.has(entryId(h))) continue;
         // Ohne Text und ohne Anhang (z.B. nur ein Protokoll von HelpSpot) gibt es nichts zu zeigen
-        if (!h.note.trim() && h.files.length === 0) continue;
+        if (!h.note.trim() && h.files.every((f) => empty.has(docId(f)))) continue;
         // Änderung ohne Inhalt, z.B. nur «Request Changed:»
-        if (h.change && !changeText(h.note, h.html) && h.files.length === 0) continue;
+        if (h.change && !changeText(h.note, h.html) && h.files.every((f) => empty.has(docId(f)))) continue;
         await this.addEntry(tx, item, h, authors.get(h) ?? null, stored);
       }
 
@@ -470,12 +482,26 @@ export class HelpSpotImportService implements OnModuleInit {
     return this.users.findOrCreateContact(NO_EMAIL_CONTACT.email, NO_EMAIL_CONTACT.name);
   }
 
-  /** Konto in Patchwork zu einer Person aus HelpSpot (über die E-Mail der Mitarbeitenden), sonst null */
+  /**
+   * Benutzer in Patchwork zu Mitarbeitenden aus HelpSpot: über die E-Mail laut Mitarbeiterliste von HelpSpot, sonst über
+   * den Namen, wenn ihn genau ein Benutzer trägt (Entscheid vom 30.10.2026: Ehemalige fehlen in der Liste, haben in
+   * Patchwork aber oft einen Kontakt, den ein Admin dann zum deaktivierten IT-Benutzer macht). Sonst null.
+   */
   private async staffUser(name: string, ctx: RunContext): Promise<User | null> {
-    const email = ctx.staffEmail.get(name.toLowerCase());
-    if (!email) return null;
-    if (!ctx.users.has(email)) ctx.users.set(email, (await this.users.findByEmail(email)) ?? null);
-    return ctx.users.get(email) ?? null;
+    const key = name.trim().toLowerCase();
+    if (!key) return null;
+    if (!ctx.users.has(key)) {
+      const email = ctx.staffEmail.get(key);
+      const byEmail = email ? await this.users.findByEmail(email) : undefined;
+      ctx.users.set(key, byEmail ?? (await this.userByName(key)) ?? null);
+    }
+    return ctx.users.get(key) ?? null;
+  }
+
+  /** Benutzer mit diesem Namen (klein, ohne Leerzeichen am Rand), nur wenn es genau einen gibt */
+  private async userByName(key: string): Promise<User | undefined> {
+    const rows = await this.db.select().from(users).where(sql`lower(btrim(${users.name})) = ${key}`).limit(2);
+    return rows.length === 1 ? rows[0] : undefined;
   }
 
   /** Autor eines Eintrags: Mitarbeitende mit Konto, der Melder, sonst niemand (der Name steht dann beim Eintrag) */

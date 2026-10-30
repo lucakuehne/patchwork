@@ -1129,6 +1129,13 @@ await step('helpspot-import', async () => {
   if (await page.locator('.timeline .message.note').getByRole('button', { name: 'Bearbeiten' }).count()) {
     throw new Error('Übernommene Notiz lässt sich bearbeiten');
   }
+  // Änderungen aus HelpSpot: «aus HelpSpot» im Kopf der Karte, je Änderung eine Zeile im Wortlaut von HelpSpot
+  const changes = page.locator('.timeline .events', { hasText: 'aus HelpSpot' }).first();
+  await changes.waitFor();
+  const lines = (await changes.locator('li').allInnerTexts()).map((t) => t.trim());
+  if (!lines.includes('Status changed from "Active" to "Problem Solved"') || lines.some((l) => /in HelpSpot geändert|;/.test(l))) {
+    throw new Error(`Änderungen aus HelpSpot: ${lines.join(' | ')}`);
+  }
   await shot('90-helpspot-vorgang', true);
 });
 

@@ -634,7 +634,7 @@ export const helpspotImportRuns = pgTable('helpspot_import_runs', {
   /** Offene Tickets, die ein Lauf nur mit geschlossenen ausgelassen hat */
   skippedOpen: integer('skipped_open').notNull().default(0),
   failed: integer('failed').notNull().default(0),
-  /** Fehler einzelner Tickets (höchstens 50) */
+  /** Fehler einzelner Tickets (alle; der nächste Lauf versucht sie noch einmal) */
   errors: jsonb('errors').$type<{ number: number; message: string }[]>().notNull().default([]),
   /** Fehler, der den ganzen Lauf abgebrochen hat */
   error: text('error'),

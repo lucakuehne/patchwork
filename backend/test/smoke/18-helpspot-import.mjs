@@ -1,7 +1,7 @@
 // Smoke-Test, Bereich «Import aus HelpSpot» gegen einen nachgebauten HelpSpot (läuft über test/smoke.mjs).
 // Patchwork und der Runner teilen im Test-Stack das Netz: Patchwork erreicht den Server hier über 127.0.0.1.
 import http from 'node:http';
-import { ANNA, api, assert, channel, detail, inbox, IVAN, loginAs, MAILBOX, PNG, poll, reply, RUN, sendMail, sleep, status, step, waitForMail } from './lib.mjs';
+import { ANNA, api, assert, BERTA, channel, detail, inbox, IVAN, loginAs, MAILBOX, PNG, poll, reply, RUN, sendMail, sleep, status, step, waitForMail } from './lib.mjs';
 
 const PORT = 18181;
 const URL_HS = `http://127.0.0.1:${PORT}`;
@@ -48,7 +48,13 @@ const tickets = {
           fPublic: 0,
           fNoteIsHTML: 0,
           tNote: 'Treiber geprüft',
-          files: { file: [{ sCID: '', sFilename: 'Protokoll.txt', xDocumentId: 9102, sFileMimeType: 'text/plain' }] },
+          files: {
+            file: [
+              { sCID: '', sFilename: 'Protokoll.txt', xDocumentId: 9102, sFileMimeType: 'text/plain' },
+              // In HelpSpot leer: das Ticket kommt ohne diesen Anhang
+              { sCID: '', sFilename: 'Leer.pdf', xDocumentId: 9104, sFileMimeType: 'application/pdf' },
+            ],
+          },
         }),
         5004: entry(5004, { xPerson: 'Ivan IT', person_type: 'staff', dtGMTChange: '16. Jan 2024, 08:00 Uhr', fPublic: 0, tLog: 'Request Changed:', tNote: 'Status: Active → Problem Solved' }),
         // Protokoll als HTML ohne Kennzeichen, so wie HelpSpot es liefert
@@ -61,6 +67,15 @@ const tickets = {
           tLog: 'Request Changed:',
           tNote:
             '<div class="note-stream-item-logtext">Request Changed:</div><div class="note-stream-item-logtext">Status changed from &quot;Active&quot; to &quot;Problem Solved&quot;</div>',
+        }),
+        // Fehlermeldung mit Entitäten und «<br />», ohne Kennzeichen als HTML
+        5042: entry(5042, {
+          xPerson: 'Ivan IT',
+          person_type: 'staff',
+          dtGMTChange: '16. Jan 2024, 08:02 Uhr',
+          fPublic: 0,
+          fNoteIsHTML: 0,
+          tNote: 'EMAIL ERROR: got code &quot;503&quot;<br />Bitte prüfen',
         }),
         // Ohne Text und ohne Anhang (z.B. nur ein Protokoll von HelpSpot): wird nicht übernommen
         5041: entry(5041, { xPerson: 'Ivan IT', person_type: 'staff', dtGMTChange: '16. Jan 2024, 08:01 Uhr', fPublic: 0, tLog: 'a:1:{s:7:"ccstaff";s:0:"";}', tNote: '' }),
@@ -122,9 +137,22 @@ const TASK_MAIL = `<hs-task-${RUN}@test.local>`;
 const NOTE_MAIL = `<hs-note-${RUN}@test.local>`;
 tickets[12406] = copyTicket(12406, `Zugang aus HelpSpot ${RUN}`, TASK_MAIL);
 tickets[12407] = copyTicket(12407, `Laufwerk aus HelpSpot ${RUN}`, NOTE_MAIL);
-const documents = { 9101: PNG.toString('base64'), 9102: Buffer.from('Protokoll').toString('base64') };
+const documents = { 9101: PNG.toString('base64'), 9102: Buffer.from('Protokoll').toString('base64'), 9104: '' };
+// Zuerst nicht abrufbar (HelpSpot kurz gestört): Der nächste Lauf versucht es noch einmal, auch ohne Änderung
+const late = copyTicket(12408, `Später abrufbar ${RUN}`, `<hs-late-${RUN}@test.local>`);
+let lateAvailable = false;
+// Ehemalige, die in der Mitarbeiterliste von HelpSpot fehlen: über den Namen einem Benutzer zugeordnet (Berta, 01-setup)
+late.xPersonAssignedTo = 'Berta von Arx';
+late.request_history.item[124081] = entry(124081, {
+  xPerson: 'Berta von Arx',
+  person_type: 'staff',
+  dtGMTChange: '2. Feb 2024, 11:00 Uhr',
+  fPublic: 0,
+  fNoteIsHTML: 0,
+  tNote: `Notiz einer Ehemaligen ${RUN}`,
+});
 // 12405 wurde in HelpSpot in 12401 zusammengeführt: die API liefert dann 12401
-const changed = new Map([12401, 12402, 12403, 12404, 12405, 12406, 12407].map((n) => [n, OLD]));
+const changed = new Map([12401, 12402, 12403, 12404, 12405, 12406, 12407, 12408].map((n) => [n, OLD]));
 
 function helpspot(req, res) {
   const send = (status, body) => {
@@ -148,11 +176,12 @@ function helpspot(req, res) {
     }
     case 'private.request.get': {
       const n = Number(p.xRequest);
+      if (n === 12408) return lateAvailable ? send(200, late) : send(503, { reply: 'Service Unavailable' });
       const ticket = tickets[n === 12405 ? 12401 : n];
       return ticket ? send(200, ticket) : send(400, { reply: 'Valid request ID required' });
     }
     case 'private.document.get':
-      return documents[p.xDocumentId] ? send(200, { sBody: documents[p.xDocumentId], sFilename: 'Datei' }) : send(400, { reply: 'Not found' });
+      return p.xDocumentId in documents ? send(200, { sBody: documents[p.xDocumentId], sFilename: 'Datei' }) : send(400, { reply: 'Not found' });
     default:
       return send(400, { reply: `Unbekannte Methode ${p.method}` });
   }
@@ -226,7 +255,8 @@ try {
     const run = await importNow();
     assert.equal(run.status, 'done', run.error ?? '');
     assert.equal(run.includeOpen, false);
-    assert.deepEqual([run.total, run.created, run.updated, run.skipped, run.skippedOpen, run.failed], [7, 3, 0, 3, 1, 0], JSON.stringify(run));
+    assert.deepEqual([run.total, run.created, run.updated, run.skipped, run.skippedOpen, run.failed], [8, 3, 0, 3, 1, 1], JSON.stringify(run));
+    assert.deepEqual(run.errors.map((e) => e.number), [12408]);
     await api('GET', '/items/HS-12402', undefined, { expect: [404] });
 
     const hs = await api('GET', '/items/HS-12401');
@@ -245,11 +275,14 @@ try {
       ['note', IVAN],
       ['change', IVAN],
       ['change', IVAN],
+      ['note', IVAN],
       ['reply', ANNA],
     ]);
+    assert.equal(hs.entries[4].body, 'EMAIL ERROR: got code "503"\nBitte prüfen', 'Entitäten und <br /> als Text');
+    assert.equal(hs.entries[4].bodyHtml, null);
     assert.ok(hs.entries.every((e) => e.meta?.source === 'helpspot'));
     assert.match(hs.entries[0].bodyHtml, /Bitte neu starten/);
-    assert.equal(hs.entries[1].attachments[0].filename, 'Protokoll.txt');
+    assert.deepEqual(hs.entries[1].attachments.map((a) => a.filename), ['Protokoll.txt'], 'leerer Anhang ausgelassen');
     assert.equal(hs.entries[2].meta.field, 'helpspot');
     assert.equal(hs.entries[3].meta.text, 'Status changed from "Active" to "Problem Solved"', 'HTML als Text, ohne «Request Changed:»');
 
@@ -257,7 +290,8 @@ try {
     const withOpen = await importNow(true);
     assert.deepEqual(
       [withOpen.status, withOpen.includeOpen, withOpen.total, withOpen.created, withOpen.skippedOpen, withOpen.failed],
-      ['done', true, 1, 1, 0, 0],
+      // 12408 noch einmal versucht, noch immer nicht abrufbar
+      ['done', true, 2, 1, 0, 1],
       JSON.stringify(withOpen),
     );
     const task = await api('GET', '/items/HS-12402');
@@ -301,11 +335,17 @@ try {
     // Das offene 12402 ändert sich auch: ein Lauf nur mit geschlossenen lässt es auf dem Stand des letzten Imports
     tickets[12402].request_history.item[6002] = entry(6002, { xPerson: 'Ivan IT', person_type: 'staff', dtGMTChange: '4. Mar 2025, 09:00 Uhr', fPublic: 0, tNote: `Offen geändert ${RUN}` });
     changed.set(12402, Math.floor(Date.now() / 1000));
+    // 12408 ist wieder abrufbar und hat sich nicht geändert: kommt trotzdem, weil der letzte Lauf es nicht übernehmen konnte
+    lateAvailable = true;
     const run = await importNow();
-    assert.deepEqual([run.status, run.total, run.created, run.updated, run.skippedOpen, run.failed], ['done', 2, 0, 1, 1, 0], JSON.stringify(run));
+    assert.deepEqual([run.status, run.total, run.created, run.updated, run.skippedOpen, run.failed], ['done', 3, 1, 1, 1, 0], JSON.stringify(run));
+    const lateItem = await api('GET', '/items/HS-12408');
+    assert.equal(lateItem.title, `Später abrufbar ${RUN}`);
+    assert.equal(lateItem.assignee?.email, BERTA, 'Zuständige über den Namen');
+    assert.equal(lateItem.entries.find((e) => e.body === `Notiz einer Ehemaligen ${RUN}`)?.author?.email, BERTA, 'Autorin über den Namen');
     assert.ok(!(await api('GET', '/items/HS-12402')).entries.some((e) => e.body === `Offen geändert ${RUN}`), 'offenes Ticket unverändert');
     const hs = await api('GET', '/items/HS-12401');
-    assert.equal(hs.entries.length, 6);
+    assert.equal(hs.entries.length, 7);
     assert.equal(hs.entries.filter((e) => e.body === `Nachtrag ${RUN}`).length, 1);
     assert.equal(hs.attachments.length, 1, 'Anhänge nicht doppelt');
   });

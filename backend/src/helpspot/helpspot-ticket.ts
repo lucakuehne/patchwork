@@ -1,4 +1,5 @@
 import { parseHelpSpotDate } from './helpspot-dates';
+import { htmlToText } from './helpspot-text';
 
 /** Anhang eines Eintrags in HelpSpot */
 export interface HsFile {
@@ -89,9 +90,11 @@ export function messageIdFromHeaders(headers: unknown): string | null {
 
 /**
  * HTML ohne Kennzeichen: Die Protokolle von HelpSpot («Request Changed») kommen als HTML mit fNoteIsHTML = 0, z.B.
- * «<div class="note-stream-item-logtext">Request Changed:</div>…». Massgebend ist ein Tag ganz am Anfang.
+ * «<div class="note-stream-item-logtext">Request Changed:</div>…», Fehlermeldungen mit «&quot;» oder «<br />».
+ * Erkennbar an einem Tag ganz am Anfang, an «<br>» oder an Entitäten; Adressen wie «<anna@firma.ch>» zählen nicht.
  */
-const startsWithTag = (value: string) => /^\s*<(div|p|span|br|table|ul|ol|font|html|body)\b/i.test(value);
+export const unflaggedHtml = (value: string) =>
+  /^\s*<(div|p|span|br|table|ul|ol|font|html|body)\b/i.test(value) || /<br\s*\/?>/i.test(value) || /&(quot|amp|lt|gt|nbsp|#\d+);/.test(value);
 
 const withoutTags = (value: string) => value.replace(/<[^>]*>/g, '').trim();
 
@@ -102,16 +105,18 @@ export function normalizeTicket(raw: Raw, timeZone = 'Europe/Zurich'): HsTicket 
       const log = text(item.tLog);
       const note = text(item.tNote);
       const change = withoutTags(log).startsWith('Request Changed') || withoutTags(note).startsWith('Request Changed');
+      const html = flag(item.fNoteIsHTML);
       return {
         id: Number(item.xRequestHistory),
         person: text(item.xPerson),
         personType: text(item.person_type) || 'system',
         at: parseHelpSpotDate(item.dtGMTChange, timeZone),
         public: flag(item.fPublic),
-        html: flag(item.fNoteIsHTML) || startsWithTag(note),
+        html,
         initial: flag(item.fInitial),
         change,
-        note,
+        // HTML ohne Kennzeichen gleich als Text; mit Kennzeichen bleibt es HTML (Ansicht wie die Mail)
+        note: !html && unflaggedHtml(note) ? htmlToText(note) : note,
         files: filesOf(item.files),
         messageId: messageIdFromHeaders(item.tEmailHeaders),
       };

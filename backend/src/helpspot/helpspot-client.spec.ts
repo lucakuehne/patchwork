@@ -62,12 +62,15 @@ describe('Client der HelpSpot-API', () => {
     const page = Array.from({ length: 1000 }, (_, i) => ({ xRequest: i + 1 }));
     const { fn, calls } = fakeFetch([
       { status: 200, body: { sBody: Buffer.from('Inhalt').toString('base64') } },
+      { status: 200, body: { sBody: '' } },
       { status: 200, body: { request: page } },
       { status: 200, body: { request: [{ xRequest: 1001 }] } },
     ]);
     const client = new HelpSpotClient('https://hs.example', 'k', { fetch: fn, sleep: async () => undefined, minIntervalMs: 0 });
     expect((await client.document('9001')).toString()).toBe('Inhalt');
+    // Leerer Anhang in HelpSpot: leer statt Fehler, der Import lässt ihn aus
+    expect(await client.document('9002')).toHaveLength(0);
     expect(await client.search({ fOpen: 1 })).toHaveLength(1001);
-    expect(calls[2]!.url).toContain('start=1000');
+    expect(calls[3]!.url).toContain('start=1000');
   });
 });

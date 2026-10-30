@@ -346,6 +346,28 @@ abschalten.
     Text, eine Zeile je Änderung, ohne die Zeile «Request Changed:». Migration 0041 bereinigt bereits übernommene
     Änderungen, Notizen, Antworten und Beschreibungen. Bestätigt am 30.10.2026: Der Text der Änderungen bleibt so, wie
     HelpSpot ihn schreibt (englisch, z.B. «Status changed from "Problem Solved" to "Active"»), ohne Übersetzung.
+  - Gewünscht am 30.10.2026: Änderungen aus HelpSpot tragen «aus HelpSpot» im Kopf der Karte (wie Antworten und
+    Notizen), nicht «in HelpSpot geändert:» vor dem Text, und jede Änderung steht als eigene Zeile in der Liste statt mit
+    «;» verbunden. Eine Karte enthält nie Änderungen aus HelpSpot und aus Patchwork zusammen.
+  - Nach der Prüfung des Probeimports (30.10.2026), technisch: Auch «<br />» oder Entitäten wie «&quot;» mitten im Text
+    gelten als HTML ohne Kennzeichen (z.B. Fehlermeldungen von HelpSpot beim Mailversand); solche Texte übernimmt der
+    Import gleich als Text, Migration 0042 bereinigt die schon übernommenen. Adressen in spitzen Klammern
+    («<anna@firma.ch>») bleiben stehen. Tickets mit Fehler versucht der nächste Lauf noch einmal, auch wenn sie sich in
+    HelpSpot nicht geändert haben; der Verlauf hält dafür alle Fehler fest (angezeigt die ersten 50).
+  - Bestätigt am 30.10.2026 nach der Prüfung des Probeimports:
+    - Ein in HelpSpot leerer Anhang hält das Ticket nicht mehr auf: Es kommt ohne diesen Anhang (vorher fehlten deshalb
+      5 Tickets ganz; der nächste Lauf holt sie).
+    - Die internen Notizen von HelpSpot selbst («Help Desk Message»: «Automation Match …», Fehler beim Mailversand,
+      «AI Summary») bleiben alle erhalten.
+    - «Changes» und «Project» bleiben Störungen, wie zugeordnet.
+    - Zuständige und Autoren aus HelpSpot ohne passende Adresse (Ehemalige fehlen in der Mitarbeiterliste von
+      HelpSpot): Der Import ordnet sie über den Namen einem Benutzer zu, wenn genau einer so heisst; Migration 0043 tut
+      das für die schon übernommenen Vorgänge (Zuständige) und Einträge von Mitarbeitenden (Autoren). Die Personen
+      selbst stellt ein Admin unter Verwaltung → Benutzer ein: Ehemalige werden deaktivierte IT-Benutzer (keine
+      Anmeldung, keine Mails, nicht in der Auswahl für neue Zuweisungen), wer noch in der IT ist, erhält die Rolle IT,
+      wer noch im Unternehmen, aber nicht mehr in der IT ist, bleibt Kontakt mit der Rolle Standard. Mitarbeiterkonten
+      ohne Person in Patchwork (z.B. das Administrator-Konto von HelpSpot) bleiben ohne Zuständigen bzw. mit dem Namen
+      aus HelpSpot beim Eintrag.
   - Bestätigt am 29.10.2026: Mails an Melder zu HS-Vorgängen ohne Link-Zeile zum Portal, weil das Portal sie nicht zeigt.
 - Bestätigt am 30.10.2026: **Umfang eines Laufs** wählbar: «Nur geschlossene Tickets» (Probeimport, bis zum Stichtag) oder
   «Geschlossene und offene Tickets» (am Stichtag). Mit offenen holt der Lauf alle offenen Tickets, auch die seit dem

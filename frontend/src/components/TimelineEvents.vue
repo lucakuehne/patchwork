@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { formatDateTime } from '../format';
 import { renderMarkdown } from '../markdown';
-import { asListItem, authorName, automaticStatusText, eventPart, type EventPart } from '../timeline';
+import { asListItem, authorName, automaticStatusText, eventParts, fromHelpSpot, type EventPart } from '../timeline';
 import type { Entry } from '../types';
 import ItemLink from './ItemLink.vue';
 import TimelineHead from './TimelineHead.vue';
@@ -22,8 +22,10 @@ const automatic = computed(() => (props.entries.length === 1 ? automaticStatusTe
 const parts = computed<EventPart[]>(() => {
   if (automatic.value) return [{ text: automatic.value, link: null }];
   if (rule.value) return ((rule.value.changes as string[] | undefined) ?? []).map((text) => ({ text, link: null }));
-  return [...props.entries].reverse().map(eventPart);
+  return [...props.entries].reverse().flatMap(eventParts);
 });
+// Aus HelpSpot übernommen: Hinweis im Kopf wie bei Antworten und Notizen (eine Karte mischt nie beides)
+const helpSpot = computed(() => fromHelpSpot(latest.value));
 const rejection = computed(() => {
   const e = latest.value;
   return props.entries.length === 1 && e.kind === 'status' && e.meta?.rejected && e.body ? renderMarkdown(e.body) : '';
@@ -41,7 +43,13 @@ const times = computed(() =>
 
 <template>
   <div class="events">
-    <TimelineHead :name="author" :system="!!rule || !authorName(latest)" :time="latest.createdAt" :time-title="times" />
+    <TimelineHead
+      :name="author"
+      :system="!!rule || !authorName(latest)"
+      :kind="helpSpot ? 'aus HelpSpot' : undefined"
+      :time="latest.createdAt"
+      :time-title="times"
+    />
     <ul class="changes">
       <li v-for="(part, i) in parts" :key="i">
         {{ asListItem(part.text)

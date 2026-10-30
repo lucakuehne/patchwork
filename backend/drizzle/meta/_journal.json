@@ -295,6 +295,20 @@
       "when": 1793359426723,
       "tag": "0041_helpspot_html_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793362184806,
+      "tag": "0042_helpspot_entities_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793363919882,
+      "tag": "0043_helpspot_staff_by_name",
+      "breakpoints": true
     }
   ]
 }
