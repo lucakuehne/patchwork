@@ -67,6 +67,21 @@ describe('Ticket aus HelpSpot', () => {
     expect(change).toMatchObject({ id: 35793, change: true, public: false, note: 'Status von Active zu Problem Solved' });
   });
 
+  it('Protokoll als HTML ohne Kennzeichen: Änderung, als HTML behandelt', () => {
+    const logHtml =
+      '<div class="note-stream-item-logtext">Request Changed:</div><div class="note-stream-item-logtext">Request changed from &quot;CLOSED&quot; to &quot;OPEN&quot;</div>';
+    const history = (tLog: string, tNote: string) =>
+      normalizeTicket({
+        ...raw,
+        request_history: { item: { '1': { xRequestHistory: 1, person_type: 'staff', fPublic: 0, fNoteIsHTML: 0, fInitial: 0, tLog, tNote } } },
+      }).history[0];
+    expect(history('Request Changed:', logHtml)).toMatchObject({ change: true, html: true });
+    expect(history(logHtml, logHtml)).toMatchObject({ change: true, html: true });
+    expect(history('', logHtml)).toMatchObject({ change: true, html: true });
+    // Gewöhnlicher Text mit «<» mitten im Satz bleibt Text
+    expect(history('', 'Wert ist <5 und >2')).toMatchObject({ change: false, html: false });
+  });
+
   it('erkennt Spam und Papierkorb', () => {
     expect(normalizeTicket({ ...raw, xStatus: 'SPAM' }).spam).toBe(true);
     expect(normalizeTicket({ ...raw, fTrash: 1 }).trash).toBe(true);

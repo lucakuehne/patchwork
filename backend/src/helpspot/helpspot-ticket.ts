@@ -87,21 +87,31 @@ export function messageIdFromHeaders(headers: unknown): string | null {
   return id ? (id.startsWith('<') ? id : `<${id}>`) : null;
 }
 
+/**
+ * HTML ohne Kennzeichen: Die Protokolle von HelpSpot («Request Changed») kommen als HTML mit fNoteIsHTML = 0, z.B.
+ * «<div class="note-stream-item-logtext">Request Changed:</div>…». Massgebend ist ein Tag ganz am Anfang.
+ */
+const startsWithTag = (value: string) => /^\s*<(div|p|span|br|table|ul|ol|font|html|body)\b/i.test(value);
+
+const withoutTags = (value: string) => value.replace(/<[^>]*>/g, '').trim();
+
 /** Ticket aus der Antwort von private.request.get, Verlauf nach Reihenfolge der Einträge */
 export function normalizeTicket(raw: Raw, timeZone = 'Europe/Zurich'): HsTicket {
   const history = valuesOf((raw.request_history as Raw | undefined)?.item ?? raw.request_history)
     .map((item): HsHistoryItem => {
       const log = text(item.tLog);
+      const note = text(item.tNote);
+      const change = withoutTags(log).startsWith('Request Changed') || withoutTags(note).startsWith('Request Changed');
       return {
         id: Number(item.xRequestHistory),
         person: text(item.xPerson),
         personType: text(item.person_type) || 'system',
         at: parseHelpSpotDate(item.dtGMTChange, timeZone),
         public: flag(item.fPublic),
-        html: flag(item.fNoteIsHTML),
+        html: flag(item.fNoteIsHTML) || startsWithTag(note),
         initial: flag(item.fInitial),
-        change: log.startsWith('Request Changed'),
-        note: text(item.tNote),
+        change,
+        note,
         files: filesOf(item.files),
         messageId: messageIdFromHeaders(item.tEmailHeaders),
       };

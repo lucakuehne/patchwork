@@ -51,6 +51,17 @@ const tickets = {
           files: { file: [{ sCID: '', sFilename: 'Protokoll.txt', xDocumentId: 9102, sFileMimeType: 'text/plain' }] },
         }),
         5004: entry(5004, { xPerson: 'Ivan IT', person_type: 'staff', dtGMTChange: '16. Jan 2024, 08:00 Uhr', fPublic: 0, tLog: 'Request Changed:', tNote: 'Status: Active → Problem Solved' }),
+        // Protokoll als HTML ohne Kennzeichen, so wie HelpSpot es liefert
+        5040: entry(5040, {
+          xPerson: 'Ivan IT',
+          person_type: 'staff',
+          dtGMTChange: '16. Jan 2024, 08:01 Uhr',
+          fPublic: 0,
+          fNoteIsHTML: 0,
+          tLog: 'Request Changed:',
+          tNote:
+            '<div class="note-stream-item-logtext">Request Changed:</div><div class="note-stream-item-logtext">Status changed from &quot;Active&quot; to &quot;Problem Solved&quot;</div>',
+        }),
         // Ohne Text und ohne Anhang (z.B. nur ein Protokoll von HelpSpot): wird nicht übernommen
         5041: entry(5041, { xPerson: 'Ivan IT', person_type: 'staff', dtGMTChange: '16. Jan 2024, 08:01 Uhr', fPublic: 0, tLog: 'a:1:{s:7:"ccstaff";s:0:"";}', tNote: '' }),
         5005: entry(5005, { xPerson: 'Anna Muster', person_type: 'customer', dtGMTChange: '16. Jan 2024, 08:15 Uhr', fPublic: 1, fNoteIsHTML: 0, tNote: 'Danke, geht wieder.' }),
@@ -233,12 +244,14 @@ try {
       ['reply', IVAN],
       ['note', IVAN],
       ['change', IVAN],
+      ['change', IVAN],
       ['reply', ANNA],
     ]);
     assert.ok(hs.entries.every((e) => e.meta?.source === 'helpspot'));
     assert.match(hs.entries[0].bodyHtml, /Bitte neu starten/);
     assert.equal(hs.entries[1].attachments[0].filename, 'Protokoll.txt');
     assert.equal(hs.entries[2].meta.field, 'helpspot');
+    assert.equal(hs.entries[3].meta.text, 'Status changed from "Active" to "Problem Solved"', 'HTML als Text, ohne «Request Changed:»');
 
     // Stichtag: mit offenen Tickets, auch wenn sie sich seit dem letzten Lauf nicht geändert haben
     const withOpen = await importNow(true);
@@ -292,7 +305,7 @@ try {
     assert.deepEqual([run.status, run.total, run.created, run.updated, run.skippedOpen, run.failed], ['done', 2, 0, 1, 1, 0], JSON.stringify(run));
     assert.ok(!(await api('GET', '/items/HS-12402')).entries.some((e) => e.body === `Offen geändert ${RUN}`), 'offenes Ticket unverändert');
     const hs = await api('GET', '/items/HS-12401');
-    assert.equal(hs.entries.length, 5);
+    assert.equal(hs.entries.length, 6);
     assert.equal(hs.entries.filter((e) => e.body === `Nachtrag ${RUN}`).length, 1);
     assert.equal(hs.attachments.length, 1, 'Anhänge nicht doppelt');
   });

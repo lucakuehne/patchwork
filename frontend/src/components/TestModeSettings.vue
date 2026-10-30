@@ -20,9 +20,10 @@ const saving = ref(false);
 /** Auslöser eines Blocks aufgeklappt, wenn beim Laden einer abweicht; danach klappt nur man selbst */
 const triggersOpen = ref<Partial<Record<DeliveryBlock, boolean>>>({});
 
+/** Gleiche Reihenfolge wie die Kreise darüber: links IT-Mitarbeitende, rechts Melder und Beteiligte */
 const TRIGGER_GROUPS = [
-  { value: 'reporter', label: 'An Melder und Beteiligte' },
   { value: 'staff', label: 'An IT-Mitarbeitende' },
+  { value: 'reporter', label: 'An Melder und Beteiligte' },
 ] as const;
 
 onMounted(async () => {

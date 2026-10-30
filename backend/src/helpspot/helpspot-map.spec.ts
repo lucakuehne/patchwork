@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HelpSpotSettings } from '../settings/settings.service';
-import { effectiveMappings, htmlToText, resolveTicket, suggestCopyKeep, suggestType, type MappingContext } from './helpspot-map';
+import { changeText, effectiveMappings, htmlToText, resolveTicket, suggestCopyKeep, suggestType, type MappingContext } from './helpspot-map';
 import type { HsTicket } from './helpspot-ticket';
 
 const ctx: MappingContext = {
@@ -98,6 +98,14 @@ describe('Zuordnung aus HelpSpot', () => {
 
   it('HTML als Text', () => {
     expect(htmlToText('<p>Hallo&nbsp;Anna</p><p>Zeile 1<br>Zeile 2 &amp; mehr</p><script>x()</script>')).toBe('Hallo Anna\nZeile 1\nZeile 2 & mehr');
+  });
+
+  it('Änderung aus HelpSpot: eine Zeile je Änderung, ohne «Request Changed:»', () => {
+    const log =
+      '<div class="note-stream-item-logtext">Request Changed:</div><div class="note-stream-item-logtext">Request changed from &quot;CLOSED&quot; to &quot;OPEN&quot;</div>' +
+      '<div class="note-stream-item-logtext">Status changed from &quot;Problem Solved&quot; to &quot;Active&quot;</div>';
+    expect(changeText(log, true)).toBe('Request changed from "CLOSED" to "OPEN"\nStatus changed from "Problem Solved" to "Active"');
+    expect(changeText('Request Changed:\nStatus von Active zu Problem Solved', false)).toBe('Status von Active zu Problem Solved');
   });
 
   it('Kopie aus der Parallelphase: bleibt bei Aufgaben und mit Antworten oder Notizen der IT, sonst bleibt der HS-Vorgang', () => {

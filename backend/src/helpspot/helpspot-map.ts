@@ -121,3 +121,15 @@ export function htmlToText(html: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
+
+/**
+ * Text einer Änderung aus HelpSpot, eine Zeile je Änderung. Die Zeile «Request Changed:» fällt weg, im Verlauf steht
+ * ohnehin «in HelpSpot geändert».
+ */
+export function changeText(note: string, html: boolean): string {
+  return (html ? htmlToText(note) : note)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^Request Changed:?$/i.test(line))
+    .join('\n');
+}

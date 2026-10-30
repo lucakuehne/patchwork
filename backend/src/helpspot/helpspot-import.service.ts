@@ -29,7 +29,7 @@ import { StatusesService } from '../statuses/statuses.service';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { HelpSpotClient, HelpSpotError } from './helpspot-client';
-import { effectiveMappings, htmlToText, resolveTicket, suggestCopyKeep, type MappingContext } from './helpspot-map';
+import { changeText, effectiveMappings, htmlToText, resolveTicket, suggestCopyKeep, type MappingContext } from './helpspot-map';
 import { normalizeTicket, type HsFile, type HsHistoryItem, type HsTicket } from './helpspot-ticket';
 
 /** Zeitzone, in der HelpSpot die Zeiten der API formatiert */
@@ -387,6 +387,8 @@ export class HelpSpotImportService implements OnModuleInit {
         if (h === initial || done.has(entryId(h))) continue;
         // Ohne Text und ohne Anhang (z.B. nur ein Protokoll von HelpSpot) gibt es nichts zu zeigen
         if (!h.note.trim() && h.files.length === 0) continue;
+        // Änderung ohne Inhalt, z.B. nur «Request Changed:»
+        if (h.change && !changeText(h.note, h.html) && h.files.length === 0) continue;
         await this.addEntry(tx, item, h, authors.get(h) ?? null, stored);
       }
 
@@ -427,7 +429,7 @@ export class HelpSpotImportService implements OnModuleInit {
         authorId,
         kind: h.change ? 'change' : h.public ? 'reply' : 'note',
         body: h.change ? '' : text,
-        meta: h.change ? { ...meta, field: 'helpspot', text } : meta,
+        meta: h.change ? { ...meta, field: 'helpspot', text: changeText(h.note, h.html) } : meta,
         externalId: entryId(h),
         createdAt: h.at ?? item.createdAt,
       })

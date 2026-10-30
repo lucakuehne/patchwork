@@ -288,6 +288,13 @@
       "when": 1793346751950,
       "tag": "0040_mailbox_fetch_enabled",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793359426723,
+      "tag": "0041_helpspot_html_cleanup",
+      "breakpoints": true
     }
   ]
 }

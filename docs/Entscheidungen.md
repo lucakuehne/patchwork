@@ -341,6 +341,11 @@ abschalten.
     Namen aus HelpSpot; Antworten des Melders gehören seinem Kontakt. Änderungen aus HelpSpot («Request Changed»)
     erscheinen als graue Zeile «in HelpSpot geändert: …». Im Vorgang steht «Aus HelpSpot übernommen · Status in
     HelpSpot «…»», Einträge tragen «aus HelpSpot» und lassen sich nicht bearbeiten.
+  - Korrektur nach dem Probeimport (30.10.2026): HelpSpot liefert die Protokolle «Request Changed» als HTML, ohne sie
+    als HTML zu kennzeichnen. Der Import behandelt Text, der mit einem Tag beginnt, als HTML und zeigt Änderungen als
+    Text, eine Zeile je Änderung, ohne die Zeile «Request Changed:». Migration 0041 bereinigt bereits übernommene
+    Änderungen, Notizen, Antworten und Beschreibungen. Bestätigt am 30.10.2026: Der Text der Änderungen bleibt so, wie
+    HelpSpot ihn schreibt (englisch, z.B. «Status changed from "Problem Solved" to "Active"»), ohne Übersetzung.
   - Bestätigt am 29.10.2026: Mails an Melder zu HS-Vorgängen ohne Link-Zeile zum Portal, weil das Portal sie nicht zeigt.
 - Bestätigt am 30.10.2026: **Umfang eines Laufs** wählbar: «Nur geschlossene Tickets» (Probeimport, bis zum Stichtag) oder
   «Geschlossene und offene Tickets» (am Stichtag). Mit offenen holt der Lauf alle offenen Tickets, auch die seit dem
