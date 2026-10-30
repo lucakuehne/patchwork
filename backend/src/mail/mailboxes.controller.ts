@@ -1,10 +1,12 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
   HttpCode,
+  Logger,
   Param,
   ParseUUIDPipe,
   Post,
@@ -14,8 +16,11 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { AdminOnly, Public } from '../auth/auth.decorators';
+import { AdminOnly, CurrentUser, Public } from '../auth/auth.decorators';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
+import { appConfig } from '../config';
+import type { User } from '../db/schema';
+import { SettingsService } from '../settings/settings.service';
 import { GraphMailService } from './graph-mail.service';
 import { explainMailError } from './mail-errors';
 import { MailFetcherService } from './mail-fetcher.service';
@@ -93,6 +98,32 @@ export class MailboxOptionsController {
     return (await this.mailboxes.list())
       .filter((m) => m.active)
       .map((m) => ({ id: m.id, name: m.name, address: m.address, isDefault: m.id === fallback?.id }));
+  }
+}
+
+const mailFetchSchema = z.object({ enabled: z.boolean() });
+
+/**
+ * Mail-Abruf für alle Postfächer ein- und ausschalten (Entscheid vom 30.10.2026). «automatic» = false: der Abruf jede
+ * Minute ist zusätzlich mit MAIL_POLLING=false abgeschaltet (z.B. im Test-Stack), dann gibt es nur «Jetzt abrufen».
+ */
+@AdminOnly()
+@Controller('admin/mail-fetch')
+export class MailFetchController {
+  private readonly logger = new Logger(MailFetchController.name);
+
+  constructor(private readonly settings: SettingsService) {}
+
+  @Get()
+  async view() {
+    return { enabled: (await this.settings.get('mailFetch')).enabled, automatic: appConfig.mailPolling };
+  }
+
+  @Put()
+  async save(@Body(new ZodPipe(mailFetchSchema)) body: z.infer<typeof mailFetchSchema>, @CurrentUser() user: User) {
+    await this.settings.set('mailFetch', { enabled: body.enabled });
+    this.logger.log(`Mail-Abruf ${body.enabled ? 'eingeschaltet' : 'ausgeschaltet'} von ${user.name}`);
+    return this.view();
   }
 }
 
@@ -190,10 +221,11 @@ export class MailboxesController {
     }
   }
 
-  /** Ruft das Postfach sofort ab. */
+  /** Ruft das Postfach sofort ab, sofern der Mail-Abruf eingeschaltet ist. */
   @Post(':id/poll')
   @HttpCode(200)
   async poll(@Param('id', ParseUUIDPipe) id: string) {
+    if (!(await this.fetcher.fetchEnabled())) throw new ConflictException('Der Mail-Abruf ist ausgeschaltet (Verwaltung → Postfächer)');
     await this.fetcher.poll(await this.mailboxes.get(id));
     return toPublicMailbox(await this.mailboxes.get(id));
   }

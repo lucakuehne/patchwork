@@ -18,6 +18,9 @@ const settingsSchema = z.object({
   channels: z.record(z.string().max(200), z.uuid().nullable()).default({}),
 });
 
+/** Umfang eines Laufs: nur geschlossene Tickets (Standard) oder am Stichtag auch offene (Entscheid vom 30.10.2026) */
+const importSchema = z.object({ includeOpen: z.boolean().default(false) }).optional();
+
 /** Verwaltung → HelpSpot-Import (nur Admins, Entscheid vom 29.10.2026) */
 @Controller('admin/helpspot')
 @AdminOnly()
@@ -43,8 +46,8 @@ export class HelpSpotController {
 
   @Post('import')
   @HttpCode(202)
-  start(@CurrentUser() user: User) {
-    return this.helpspot.start(user);
+  start(@Body(new ZodPipe(importSchema)) body: z.infer<typeof importSchema>, @CurrentUser() user: User) {
+    return this.helpspot.start(user, body?.includeOpen ?? false);
   }
 
   @Get('copies')

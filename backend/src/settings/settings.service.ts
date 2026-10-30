@@ -82,6 +82,14 @@ export type MailSettings = Record<DeliveryBlock, DeliveryCircles>;
 const LIVE: DeliveryCircles = { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] };
 
 /**
+ * Mail-Abruf für alle Postfächer ein oder aus (Verwaltung → Postfächer, Entscheid vom 30.10.2026), z.B. vom Probeimport
+ * aus HelpSpot bis zum Umstieg. Aus heisst: kein Abruf, auch nicht «Jetzt abrufen»; der Versand läuft weiter.
+ */
+export interface MailFetchSettings {
+  enabled: boolean;
+}
+
+/**
  * Portal: wer es nutzen darf. «selected»: die ausgewählten Personen und die Mitglieder der AD-Gruppe.
  * IT und Admins sind nicht betroffen.
  */
@@ -150,6 +158,7 @@ interface SettingsMap {
   logo: LogoSettings | null;
   ldap: LdapSettings;
   mail: MailSettings;
+  mailFetch: MailFetchSettings;
   portal: PortalSettings;
   statusFlow: StatusFlowSettings;
   microsoft: MicrosoftSettings;
@@ -166,6 +175,7 @@ const DEFAULTS: SettingsMap = {
   logo: null,
   ldap: DEFAULT_LDAP,
   mail: { general: LIVE, incident: LIVE, task: LIVE },
+  mailFetch: { enabled: true },
   // Ohne Einstellung ist das Portal aus (Entscheid vom 20.10.2026)
   portal: { access: 'none', emails: [], groupDn: '' },
   // Solange kein Ablauf festgelegt ist, sind alle Wechsel erlaubt

@@ -622,11 +622,15 @@ export const helpspotImportRuns = pgTable('helpspot_import_runs', {
   status: text('status').notNull().default('running'),
   /** Tickets, die sich seit diesem Zeitpunkt geändert haben; null = alle */
   since: timestamp('since', { withTimezone: true }),
+  /** Auch offene Tickets übernehmen (am Stichtag), sonst nur geschlossene (Entscheid vom 30.10.2026) */
+  includeOpen: boolean('include_open').notNull().default(false),
   total: integer('total').notNull().default(0),
   processed: integer('processed').notNull().default(0),
   created: integer('created').notNull().default(0),
   updated: integer('updated').notNull().default(0),
   skipped: integer('skipped').notNull().default(0),
+  /** Offene Tickets, die ein Lauf nur mit geschlossenen ausgelassen hat */
+  skippedOpen: integer('skipped_open').notNull().default(0),
   failed: integer('failed').notNull().default(0),
   /** Fehler einzelner Tickets (höchstens 50) */
   errors: jsonb('errors').$type<{ number: number; message: string }[]>().notNull().default([]),

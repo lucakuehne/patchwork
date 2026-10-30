@@ -11,7 +11,8 @@ import type { HelpSpotCopy, HelpSpotImportRun, HelpSpotView, ItemType } from '..
 /**
  * Import aus HelpSpot (Entscheid vom 29.10.2026): Tickets werden Vorgänge HS-<Nummer> mit Verlauf und Anhängen. Zuerst
  * Verbindung und Übersicht, dann die Zuordnungen von Typ, Status und Meldeweg, dann der Import; er lässt sich jederzeit
- * wiederholen und holt nur, was sich in HelpSpot geändert hat.
+ * wiederholen und holt nur, was sich in HelpSpot geändert hat. Ein Lauf nimmt nur geschlossene Tickets oder, am Stichtag,
+ * auch offene (Entscheid vom 30.10.2026).
  */
 const session = useSession();
 const toast = useToast();
@@ -25,6 +26,8 @@ const statuses = ref<Record<string, string | null>>({});
 const channels = ref<Record<string, string | null>>({});
 const copies = ref<HelpSpotCopy[]>([]);
 const busy = ref(false);
+/** Umfang des nächsten Laufs: nur geschlossene Tickets oder auch offene (Stichtag) */
+const includeOpen = ref(false);
 let pollTimer: number | undefined;
 
 const running = computed(() => (view.value?.runs[0]?.status === 'running' ? view.value.runs[0] : null));
@@ -101,9 +104,19 @@ const analyze = () =>
   }, 'Verbindung in Ordnung, Übersicht geladen');
 
 async function startImport() {
+  if (includeOpen.value) {
+    const ok = await confirm.ask({
+      title: 'Mit offenen Tickets importieren',
+      message:
+        'Die offenen Tickets aus HelpSpot werden als offene Vorgänge übernommen, mit Status nach Zuordnung und den Zuständigen. ' +
+        'Das ist für den Stichtag gedacht, wenn HelpSpot keine Mails mehr abholt.',
+      confirmLabel: 'Importieren',
+    });
+    if (!ok) return;
+  }
   await run(async () => {
     await api.put<HelpSpotView>('/admin/helpspot', payload());
-    await api.post('/admin/helpspot/import');
+    await api.post('/admin/helpspot/import', { includeOpen: includeOpen.value });
     return api.get<HelpSpotView>('/admin/helpspot');
   }, 'Import gestartet');
   schedulePoll();
@@ -132,6 +145,15 @@ const statusRows = computed(() =>
 );
 const statusOptions = (type: ItemType, open: boolean) => session.statusesOf(type).filter((s) => s.closed === !open);
 const runLabel: Record<HelpSpotImportRun['status'], string> = { running: 'läuft', done: 'fertig', failed: 'abgebrochen' };
+const scopeLabel = (r: HelpSpotImportRun) => (r.includeOpen ? 'geschlossene und offene' : 'nur geschlossene');
+const runResult = (r: HelpSpotImportRun) =>
+  [
+    `${r.processed} von ${r.total} · ${r.created} neu`,
+    `${r.updated} ergänzt`,
+    `${r.skipped} übersprungen`,
+    ...(r.includeOpen ? [] : [`${r.skippedOpen} offene ausgelassen`]),
+    `${r.failed} Fehler`,
+  ].join(', ');
 </script>
 
 <template>
@@ -237,10 +259,22 @@ const runLabel: Record<HelpSpotImportRun['status'], string> = { running: 'läuft
       <div v-if="running" class="progress" role="status">
         <div class="bar"><div class="fill" :style="{ width: `${percent(running)}%` }" /></div>
         <span class="faint">
-          {{ running.processed }} von {{ running.total }} · {{ running.created }} neu, {{ running.updated }} ergänzt,
-          {{ running.skipped }} übersprungen, {{ running.failed }} Fehler
+          {{ runResult(running) }}
         </span>
       </div>
+      <div class="segmented scope" role="group" aria-label="Umfang des Imports">
+        <button type="button" :class="{ active: !includeOpen }" :aria-pressed="!includeOpen" @click="includeOpen = false">Nur geschlossene Tickets</button>
+        <button type="button" :class="{ active: includeOpen }" :aria-pressed="includeOpen" @click="includeOpen = true">Geschlossene und offene Tickets</button>
+      </div>
+      <span class="hint faint">
+        <template v-if="includeOpen">
+          Für den Stichtag: übernimmt auch alle offenen Tickets, auch die seit dem letzten Import unveränderten, als offene Vorgänge.
+        </template>
+        <template v-else>
+          Offene Tickets lässt der Import aus; ein früher übernommenes Ticket, das in HelpSpot wieder offen ist, bleibt auf dem Stand
+          des letzten Imports. Vorher den Mail-Abruf unter Postfächer ausschalten.
+        </template>
+      </span>
       <div class="row">
         <button class="btn btn-primary" type="button" :disabled="busy || !!running || !view.hasApiKey" @click="startImport">Importieren</button>
         <span class="faint">Läuft im Hintergrund; HelpSpot erlaubt etwa eine Anfrage pro Sekunde, der erste Import dauert einige Stunden.</span>
@@ -249,6 +283,7 @@ const runLabel: Record<HelpSpotImportRun['status'], string> = { running: 'läuft
         <thead>
           <tr>
             <th>Beginn</th>
+            <th>Umfang</th>
             <th>Status</th>
             <th>Ergebnis</th>
           </tr>
@@ -256,10 +291,10 @@ const runLabel: Record<HelpSpotImportRun['status'], string> = { running: 'läuft
         <tbody>
           <tr v-for="r in view.runs" :key="r.id">
             <td class="nowrap">{{ formatDateTime(r.startedAt) }}</td>
+            <td>{{ scopeLabel(r) }}</td>
             <td>{{ runLabel[r.status] }}</td>
             <td>
-              {{ r.processed }} von {{ r.total }} · {{ r.created }} neu, {{ r.updated }} ergänzt, {{ r.skipped }} übersprungen,
-              {{ r.failed }} Fehler
+              {{ runResult(r) }}
               <div v-if="r.error" class="error-text">{{ r.error }}</div>
               <details v-if="r.errors.length" class="small">
                 <summary>Fehler einzelner Tickets</summary>

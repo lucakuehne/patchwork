@@ -5,6 +5,7 @@ import { AdminOnly } from '../auth/auth.decorators';
 import { appConfig } from '../config';
 import { InjectDb, type Db } from '../db/db.module';
 import { mailboxes, outgoingMails } from '../db/schema';
+import { SettingsService } from '../settings/settings.service';
 import { systemAlerts } from './system-alerts';
 
 /** Hinweise bei Störungen für den Balken oben (nur Admins), siehe system-alerts.ts */
@@ -13,11 +14,14 @@ import { systemAlerts } from './system-alerts';
 export class AlertsController {
   private readonly logger = new Logger(AlertsController.name);
 
-  constructor(@InjectDb() private readonly db: Db) {}
+  constructor(
+    @InjectDb() private readonly db: Db,
+    private readonly settings: SettingsService,
+  ) {}
 
   @Get()
   async alerts() {
-    const [boxes, [failed], disk] = await Promise.all([
+    const [boxes, [failed], disk, mailFetch] = await Promise.all([
       this.db
         .select({
           id: mailboxes.id,
@@ -32,8 +36,9 @@ export class AlertsController {
         .from(outgoingMails)
         .where(and(eq(outgoingMails.status, 'failed'), isNull(outgoingMails.dismissedAt))),
       this.disk(),
+      this.settings.get('mailFetch'),
     ]);
-    return systemAlerts({ mailboxes: boxes, failedMails: failed?.count ?? 0, disk });
+    return systemAlerts({ mailboxes: boxes, mailFetchEnabled: mailFetch.enabled, failedMails: failed?.count ?? 0, disk });
   }
 
   /** Freier und gesamter Platz auf dem Datenträger der Ablage; null, wenn das System es nicht verrät */

@@ -400,6 +400,8 @@ export interface ItemDetail {
 
 /** Hinweise bei Störungen für Admins (Balken oben) */
 export interface SystemAlerts {
+  /** Mail-Abruf unter Verwaltung → Postfächer ausgeschaltet (Störungen der Postfächer fehlen dann) */
+  mailFetchOff: boolean;
   /** Postfächer, deren Abruf seit mindestens 60 Minuten fehlschlägt */
   mailboxes: { id: string; name: string; error: string; since: string }[];
   /** Fehlgeschlagene ausgehende Mails, weder erneut gesendet noch als erledigt markiert */
@@ -773,11 +775,15 @@ export interface HelpSpotImportRun {
   finishedAt: string | null;
   status: 'running' | 'done' | 'failed';
   since: string | null;
+  /** Auch offene Tickets (Stichtag), sonst nur geschlossene */
+  includeOpen: boolean;
   total: number;
   processed: number;
   created: number;
   updated: number;
   skipped: number;
+  /** Offene Tickets, die ein Lauf nur mit geschlossenen ausgelassen hat */
+  skippedOpen: number;
   failed: number;
   errors: { number: number; message: string }[];
   error: string | null;

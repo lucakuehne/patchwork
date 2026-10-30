@@ -46,11 +46,13 @@ export interface HelpSpotSettingsInput {
   channels: HelpSpotSettings['channels'];
 }
 
-type Outcome = 'created' | 'updated' | 'skipped';
+type Outcome = 'created' | 'updated' | 'skipped' | 'skippedOpen';
 
 /** Was ein Lauf für alle Tickets einmal lädt */
 interface RunContext extends MappingContext {
   settings: HelpSpotSettings;
+  /** Auch offene Tickets übernehmen, sonst nur geschlossene */
+  includeOpen: boolean;
   /** Name (klein) → E-Mail der Mitarbeitenden in HelpSpot */
   staffEmail: Map<string, string>;
   users: Map<string, User | null>;
@@ -59,7 +61,9 @@ interface RunContext extends MappingContext {
 /**
  * Import aus HelpSpot (Entscheid vom 29.10.2026): Tickets werden Vorgänge mit Präfix HS und der Nummer aus HelpSpot,
  * mit Verlauf und Anhängen, ohne Regeln, Mails oder Benachrichtigungen. Jeder Lauf holt die Tickets, die sich seit dem
- * letzten erfolgreichen Lauf geändert haben; bereits übernommene werden ergänzt statt doppelt angelegt.
+ * letzten erfolgreichen Lauf geändert haben; bereits übernommene werden ergänzt statt doppelt angelegt. Ein Lauf nimmt
+ * nur geschlossene Tickets oder (am Stichtag) auch offene; dann holt er alle offenen, auch die seither unveränderten,
+ * weil frühere Läufe sie ausgelassen haben (Entscheid vom 30.10.2026).
  */
 @Injectable()
 export class HelpSpotImportService implements OnModuleInit {
@@ -188,7 +192,7 @@ export class HelpSpotImportService implements OnModuleInit {
   // ---------------------------------------------------------------- Import
 
   /** Startet einen Lauf im Hintergrund; die Seite fragt den Fortschritt ab */
-  async start(actor: User): Promise<HelpSpotImportRun> {
+  async start(actor: User, includeOpen: boolean): Promise<HelpSpotImportRun> {
     if (this.running) throw new ConflictException('Es läuft bereits ein Import');
     const client = await this.client();
     const [last] = await this.db
@@ -199,7 +203,7 @@ export class HelpSpotImportService implements OnModuleInit {
       .limit(1);
     const [run] = await this.db
       .insert(helpspotImportRuns)
-      .values({ startedById: actor.id, since: last?.startedAt ?? null })
+      .values({ startedById: actor.id, since: last?.startedAt ?? null, includeOpen })
       .returning();
     this.running = this.run(run!, client).finally(() => (this.running = null));
     return run!;
@@ -211,17 +215,19 @@ export class HelpSpotImportService implements OnModuleInit {
   }
 
   private async run(run: HelpSpotImportRun, client: HelpSpotClient): Promise<void> {
-    const counts = { created: 0, updated: 0, skipped: 0, failed: 0, processed: 0 };
+    const counts = { created: 0, updated: 0, skipped: 0, skippedOpen: 0, failed: 0, processed: 0 };
     const errors: { number: number; message: string }[] = [];
     const progress = () => this.db.update(helpspotImportRuns).set({ ...counts, errors }).where(eq(helpspotImportRuns.id, run.id));
     try {
       // Kleiner Überlapp, damit nichts zwischen zwei Läufen verloren geht
       const since = run.since ? Math.floor(run.since.getTime() / 1000) - 300 : 1;
-      const numbers = await client.changedSince(since);
+      const changed = await client.changedSince(since);
+      const numbers = run.includeOpen ? [...new Set([...changed, ...(await this.openNumbers(client))])].sort((a, b) => a - b) : changed;
       await this.db.update(helpspotImportRuns).set({ total: numbers.length }).where(eq(helpspotImportRuns.id, run.id));
       const context: RunContext = {
         ...(await this.mappingContext()),
         settings: await this.settings.get('helpspot'),
+        includeOpen: run.includeOpen,
         staffEmail: new Map((await client.staff()).filter((s) => s.email).map((s) => [s.name.toLowerCase(), s.email])),
         users: new Map(),
       };
@@ -240,7 +246,10 @@ export class HelpSpotImportService implements OnModuleInit {
         .update(helpspotImportRuns)
         .set({ ...counts, errors, status: 'done', finishedAt: new Date() })
         .where(eq(helpspotImportRuns.id, run.id));
-      this.logger.log(`Import aus HelpSpot: ${counts.created} neu, ${counts.updated} ergänzt, ${counts.skipped} übersprungen, ${counts.failed} Fehler`);
+      this.logger.log(
+        `Import aus HelpSpot (${run.includeOpen ? 'mit offenen' : 'nur geschlossene'}): ${counts.created} neu, ${counts.updated} ergänzt, ` +
+          `${counts.skipped} übersprungen, ${counts.skippedOpen} offene ausgelassen, ${counts.failed} Fehler`,
+      );
     } catch (err) {
       await this.db
         .update(helpspotImportRuns)
@@ -250,12 +259,25 @@ export class HelpSpotImportService implements OnModuleInit {
     }
   }
 
+  /** Nummern aller offenen Tickets (ohne Spam und Papierkorb), über die Suche je Status wie bei der Übersicht */
+  private async openNumbers(client: HelpSpotClient): Promise<number[]> {
+    const numbers: number[] = [];
+    for (const status of (await client.statusTypes()).filter((s) => !/^spam$/i.test(s.name))) {
+      for (const row of await client.search({ xStatus: status.id })) {
+        if (String(row.fOpen) === '1' && String(row.fTrash) !== '1') numbers.push(Number(row.xRequest));
+      }
+    }
+    return numbers.filter((n) => Number.isInteger(n) && n > 0);
+  }
+
   /** Ein Ticket übernehmen oder ergänzen */
   private async importTicket(client: HelpSpotClient, number: number, ctx: RunContext): Promise<Outcome> {
     const raw = await client.request(number);
     const t = normalizeTicket(raw, TIME_ZONE);
     // Zusammengeführt (HelpSpot liefert das Ziel), im Papierkorb oder Spam: nicht übernehmen
     if (t.number !== number || t.trash || t.spam) return 'skipped';
+    // Offene Tickets erst am Stichtag; ein früher übernommenes bleibt bis dahin auf dem Stand des letzten Imports
+    if (t.open && !ctx.includeOpen) return 'skippedOpen';
     const { type, statusId, channelId } = resolveTicket(t, ctx.settings, ctx);
     const reporter = await this.reporterFor(t);
     const assignee = t.assignedTo ? await this.staffUser(t.assignedTo, ctx) : null;

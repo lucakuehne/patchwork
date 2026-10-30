@@ -1059,6 +1059,13 @@ await step('helpspot-import', async () => {
   if ((await page.locator('tr[data-hs-type="Changes"] select').inputValue()) !== 'task') throw new Error('Changes nicht als Aufgabe zugeordnet');
   if (!(await page.locator('table.runs tbody tr').count())) throw new Error('Verlauf der Importe fehlt');
   if ((await page.locator('#hs-key').inputValue()) !== '') throw new Error('Schlüssel im Feld sichtbar');
+  // Umfang: Standard nur geschlossene Tickets; der Verlauf zeigt den Umfang je Lauf
+  const scope = page.getByRole('group', { name: 'Umfang des Imports' });
+  if ((await scope.getByRole('button', { name: 'Nur geschlossene Tickets' }).getAttribute('aria-pressed')) !== 'true') {
+    throw new Error('Umfang nicht «nur geschlossene» vorgewählt');
+  }
+  await page.locator('table.runs td', { hasText: 'geschlossene und offene' }).first().waitFor();
+  await page.locator('table.runs td', { hasText: 'offene ausgelassen' }).first().waitFor();
   await shot('89-helpspot-import', true);
   // Übernommener Vorgang: Hinweis auf HelpSpot, Einträge «aus HelpSpot»
   await page.goto(`${BASE}/items/HS-12401`);
@@ -1070,6 +1077,21 @@ await step('helpspot-import', async () => {
     throw new Error('Übernommene Notiz lässt sich bearbeiten');
   }
   await shot('90-helpspot-vorgang', true);
+});
+
+await step('mail-abruf', async () => {
+  // Mail-Abruf für alle Postfächer ausschalten: Hinweis oben für Admins, «Jetzt abrufen» gesperrt; danach wieder ein
+  await page.goto(`${BASE}/admin/mailboxes`);
+  const card = page.locator('.mail-fetch');
+  await card.locator('.badge', { hasText: 'eingeschaltet' }).waitFor();
+  await card.getByRole('button', { name: 'Ausschalten' }).click();
+  await card.locator('.badge', { hasText: 'ausgeschaltet' }).waitFor();
+  await page.goto(`${BASE}/admin/mailboxes`);
+  await page.locator('.alert', { hasText: 'Mail-Abruf ausgeschaltet' }).waitFor();
+  if (!(await page.getByRole('button', { name: 'Jetzt abrufen' }).first().isDisabled())) throw new Error('«Jetzt abrufen» trotz ausgeschaltetem Abruf');
+  await shot('91-mail-abruf-aus');
+  await page.locator('.mail-fetch').getByRole('button', { name: 'Einschalten' }).click();
+  await page.locator('.mail-fetch .badge', { hasText: 'eingeschaltet' }).waitFor();
 });
 
 await step('auswertung', async () => {

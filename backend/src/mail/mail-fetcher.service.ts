@@ -24,6 +24,7 @@ import { GraphMailService } from './graph-mail.service';
 import { ItemsService } from '../items/items.service';
 import { BossService, QUEUE_MAIL_POLL } from '../jobs/boss.service';
 import { RulesService } from '../rules/rules.service';
+import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { byKey, itemKeyFromSubject } from '../items/item-ref';
@@ -87,6 +88,7 @@ export class MailFetcherService implements OnModuleInit {
     private readonly rules: RulesService,
     private readonly graph: GraphMailService,
     private readonly channels: ChannelsService,
+    private readonly settings: SettingsService,
   ) {}
 
   async onModuleInit() {
@@ -101,7 +103,13 @@ export class MailFetcherService implements OnModuleInit {
     void this.backfillLog().catch((err: Error) => this.logger.warn(`Nachtragen ins Protokoll fehlgeschlagen: ${err.message}`));
   }
 
+  /** Mail-Abruf in der Verwaltung eingeschaltet (gilt für alle Postfächer) */
+  async fetchEnabled(): Promise<boolean> {
+    return (await this.settings.get('mailFetch')).enabled;
+  }
+
   async pollAll(): Promise<void> {
+    if (!(await this.fetchEnabled())) return;
     for (const mailbox of await this.mailboxes.list()) {
       if (mailbox.active) await this.poll(mailbox);
     }

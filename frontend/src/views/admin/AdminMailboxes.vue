@@ -14,6 +14,13 @@ const toast = useToast();
 const mailboxes = ref<Mailbox[]>([]);
 const busyId = ref<string | null>(null);
 const testResult = ref<Record<string, { ok: boolean; imap: string; smtp: string }>>({});
+/** Mail-Abruf für alle Postfächer (Entscheid vom 30.10.2026); automatic = false: Abruf jede Minute mit MAIL_POLLING=false aus */
+interface MailFetch {
+  enabled: boolean;
+  automatic: boolean;
+}
+const mailFetch = ref<MailFetch | null>(null);
+const mailFetchBusy = ref(false);
 
 const AUTH_LABELS: Record<Mailbox['authType'], string> = {
   password: 'Passwort',
@@ -63,7 +70,29 @@ async function load() {
     toast.error(err);
   }
 }
-onMounted(() => Promise.all([load(), loadMicrosoft()]));
+onMounted(() => Promise.all([load(), loadMicrosoft(), loadMailFetch()]));
+
+async function loadMailFetch() {
+  try {
+    mailFetch.value = await api.get<MailFetch>('/admin/mail-fetch');
+  } catch (err) {
+    toast.error(err);
+  }
+}
+
+async function toggleMailFetch() {
+  if (!mailFetch.value) return;
+  const enabled = !mailFetch.value.enabled;
+  mailFetchBusy.value = true;
+  try {
+    mailFetch.value = await api.put<MailFetch>('/admin/mail-fetch', { enabled });
+    toast.success(enabled ? 'Mail-Abruf eingeschaltet' : 'Mail-Abruf ausgeschaltet');
+  } catch (err) {
+    toast.error(err);
+  } finally {
+    mailFetchBusy.value = false;
+  }
+}
 
 // Rücksprung von Microsoft in einem neuen Tab: Ergebnis melden. Den Dialog im ursprünglichen Tab schliesst die Abfrage.
 const route = useRoute();
@@ -556,6 +585,21 @@ function openMicrosoft() {
       Antworten gehen über das Postfach, in dem der Vorgang angekommen ist; intern erfasste Vorgänge nutzen das Standard-Postfach.
     </p>
 
+    <div v-if="mailFetch" class="card card-body row mail-fetch">
+      <h2>Mail-Abruf</h2>
+      <span v-if="mailFetch.enabled" class="badge st-green">eingeschaltet</span>
+      <span v-else class="badge st-red">ausgeschaltet</span>
+      <span class="muted small">
+        Gilt für alle Postfächer. Ausgeschaltet holt Patchwork keine Mails ab, auch nicht über «Jetzt abrufen»; der Versand läuft
+        weiter. Beim Einschalten holt Patchwork nach, was seit dem letzten Abruf angekommen ist.
+        <template v-if="!mailFetch.automatic">Der Abruf jede Minute ist mit MAIL_POLLING=false abgeschaltet.</template>
+      </span>
+      <div class="spacer" />
+      <button class="btn btn-sm" :class="{ 'btn-primary': !mailFetch.enabled }" type="button" :disabled="mailFetchBusy" @click="toggleMailFetch">
+        {{ mailFetch.enabled ? 'Ausschalten' : 'Einschalten' }}
+      </button>
+    </div>
+
     <div class="card card-body row microsoft">
       <h2>Microsoft 365</h2>
       <span v-if="microsoftClientId" class="badge st-green">eingerichtet</span>
@@ -588,7 +632,15 @@ function openMicrosoft() {
           {{ m.microsoftConnected ? 'Neu anmelden' : 'Mit Microsoft anmelden' }}
         </button>
         <button class="btn btn-sm" type="button" :disabled="busyId === m.id" @click="test(m)">Verbindung testen</button>
-        <button class="btn btn-sm" type="button" :disabled="busyId === m.id || !m.active" @click="poll(m)">Jetzt abrufen</button>
+        <button
+          class="btn btn-sm"
+          type="button"
+          :disabled="busyId === m.id || !m.active || mailFetch?.enabled === false"
+          :title="mailFetch?.enabled === false ? 'Der Mail-Abruf ist ausgeschaltet' : undefined"
+          @click="poll(m)"
+        >
+          Jetzt abrufen
+        </button>
         <button class="btn btn-sm" type="button" @click="edit(m)">Bearbeiten</button>
         <button class="btn btn-sm btn-danger" type="button" @click="remove(m)">Löschen</button>
       </div>
@@ -938,7 +990,8 @@ function openMicrosoft() {
   flex-direction: column;
   gap: 8px;
 }
-.microsoft {
+.microsoft,
+.mail-fetch {
   flex-wrap: wrap;
 }
 .small {

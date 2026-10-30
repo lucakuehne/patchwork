@@ -118,9 +118,9 @@ function helpspot(req, res) {
 const server = http.createServer(helpspot);
 await new Promise((resolve) => server.listen(PORT, '127.0.0.1', resolve));
 
-/** Import starten und auf sein Ende warten */
-async function importNow() {
-  await api('POST', '/admin/helpspot/import', undefined, { expect: [202] });
+/** Import starten (nur geschlossene oder auch offene Tickets) und auf sein Ende warten */
+async function importNow(includeOpen = false) {
+  await api('POST', '/admin/helpspot/import', { includeOpen }, { expect: [202] });
   for (let i = 0; i < 120; i++) {
     const run = (await api('GET', '/admin/helpspot')).runs[0];
     if (run.status !== 'running') return run;
@@ -154,7 +154,7 @@ try {
   });
 
   let copyNumber;
-  await step('HelpSpot-Import: Tickets mit Verlauf und Anhängen, ohne Spam, Papierkorb und Zusammengeführte, ohne Mails', async () => {
+  await step('HelpSpot-Import: geschlossene, dann offene Tickets mit Verlauf und Anhängen, ohne Spam, Papierkorb und Zusammengeführte, ohne Mails', async () => {
     // Kopie aus der Parallelphase: dieselbe erste Mail kam auch in Patchwork an
     await sendMail({ from: ANNA, to: MAILBOX, subject: `Kopie aus der Parallelphase ${RUN}`, text: 'Der Drucker druckt nicht.', messageId: FIRST_MAIL });
     for (let i = 0; i < 20 && !copyNumber; i++) {
@@ -167,9 +167,12 @@ try {
     await waitForMail(ANNA, (m) => m.subject.includes(`Kopie aus der Parallelphase ${RUN}`), 'Eingangsbestätigung der Kopie');
     const mailsBefore = (await inbox(ANNA)).length;
 
+    // Probeimport: nur geschlossene Tickets, das offene 12402 kommt erst am Stichtag
     const run = await importNow();
     assert.equal(run.status, 'done', run.error ?? '');
-    assert.deepEqual([run.total, run.created, run.updated, run.skipped, run.failed], [5, 2, 0, 3, 0], JSON.stringify(run));
+    assert.equal(run.includeOpen, false);
+    assert.deepEqual([run.total, run.created, run.updated, run.skipped, run.skippedOpen, run.failed], [5, 1, 0, 3, 1, 0], JSON.stringify(run));
+    await api('GET', '/items/HS-12402', undefined, { expect: [404] });
 
     const hs = await api('GET', '/items/HS-12401');
     assert.equal(hs.prefix, 'HS');
@@ -193,6 +196,13 @@ try {
     assert.equal(hs.entries[1].attachments[0].filename, 'Protokoll.txt');
     assert.equal(hs.entries[2].meta.field, 'helpspot');
 
+    // Stichtag: mit offenen Tickets, auch wenn sie sich seit dem letzten Lauf nicht geändert haben
+    const withOpen = await importNow(true);
+    assert.deepEqual(
+      [withOpen.status, withOpen.includeOpen, withOpen.total, withOpen.created, withOpen.skippedOpen, withOpen.failed],
+      ['done', true, 1, 1, 0, 0],
+      JSON.stringify(withOpen),
+    );
     const task = await api('GET', '/items/HS-12402');
     assert.equal(task.type, 'task');
     assert.equal(task.status.closed, false);
@@ -231,8 +241,12 @@ try {
       tNote: `Nachtrag ${RUN}`,
     });
     changed.set(12401, Math.floor(Date.now() / 1000));
+    // Das offene 12402 ändert sich auch: ein Lauf nur mit geschlossenen lässt es auf dem Stand des letzten Imports
+    tickets[12402].request_history.item[6002] = entry(6002, { xPerson: 'Ivan IT', person_type: 'staff', dtGMTChange: '4. Mar 2025, 09:00 Uhr', fPublic: 0, tNote: `Offen geändert ${RUN}` });
+    changed.set(12402, Math.floor(Date.now() / 1000));
     const run = await importNow();
-    assert.deepEqual([run.status, run.total, run.created, run.updated, run.failed], ['done', 1, 0, 1, 0], JSON.stringify(run));
+    assert.deepEqual([run.status, run.total, run.created, run.updated, run.skippedOpen, run.failed], ['done', 2, 0, 1, 1, 0], JSON.stringify(run));
+    assert.ok(!(await api('GET', '/items/HS-12402')).entries.some((e) => e.body === `Offen geändert ${RUN}`), 'offenes Ticket unverändert');
     const hs = await api('GET', '/items/HS-12401');
     assert.equal(hs.entries.length, 5);
     assert.equal(hs.entries.filter((e) => e.body === `Nachtrag ${RUN}`).length, 1);

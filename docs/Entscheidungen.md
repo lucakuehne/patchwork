@@ -342,22 +342,43 @@ abschalten.
     erscheinen als graue Zeile «in HelpSpot geändert: …». Im Vorgang steht «Aus HelpSpot übernommen · Status in
     HelpSpot «…»», Einträge tragen «aus HelpSpot» und lassen sich nicht bearbeiten.
   - Bestätigt am 29.10.2026: Mails an Melder zu HS-Vorgängen ohne Link-Zeile zum Portal, weil das Portal sie nicht zeigt.
+- Bestätigt am 30.10.2026: **Umfang eines Laufs** wählbar: «Nur geschlossene Tickets» (Probeimport, bis zum Stichtag) oder
+  «Geschlossene und offene Tickets» (am Stichtag). Mit offenen holt der Lauf alle offenen Tickets, auch die seit dem
+  letzten Lauf unveränderten, weil frühere Läufe sie ausgelassen haben. Ohne offene lässt er sie aus; ein früher
+  übernommenes Ticket, das in HelpSpot wieder offen ist, bleibt bis zum Stichtag auf dem Stand des letzten Imports.
+  - Bestätigt am 30.10.2026: Vorgewählt ist immer «Nur geschlossene Tickets»; «Geschlossene und offene» fragt vor dem Start
+    nach. Der Verlauf zeigt den Umfang je Lauf und die Anzahl ausgelassener offener Tickets.
+  - Technisch: `helpspot_import_runs.include_open` und `skipped_open` (Migration 0039); die offenen Tickets kommen
+    über die Suche je Status wie die Übersicht.
 - **Umstieg von HelpSpot** (bestätigt am 29.10.2026):
   - Vorbereitung: Import bauen und prüfen; Probeimport in der Produktion mit allen geschlossenen Tickets (läuft einige
     Stunden im Hintergrund). Kein automatisches Nachziehen (bestätigt am 29.10.2026): «Importieren» holt bei jedem Lauf nur, was sich seit dem
     letzten geändert hat, und lässt sich jederzeit von Hand starten. Offene HelpSpot-Tickets möglichst abschliessen.
-  - Mit dem Probeimport wird der Mail-Abruf in Patchwork ausgeschaltet; bis zum Stichtag kommen keine Mails in Patchwork
-    an (auch keine Antworten auf Mails von Patchwork). Deshalb braucht es keinen Schalter: Antworten mit
+  - Mit dem Probeimport wird der Mail-Abruf in Patchwork ausgeschaltet (Verwaltung → Postfächer → Mail-Abruf); bis zum
+    Stichtag kommen keine Mails in Patchwork an (auch keine Antworten auf Mails von Patchwork). Deshalb braucht es keinen Schalter: Antworten mit
     «Ticket:{12345}» ordnet Patchwork immer dem HS-Vorgang zu.
   - Stichtag (an einem Morgen, Datum noch offen, Admin anwesend): 1. In HelpSpot den Mail-Abruf ausschalten. 2. Die
     Regel im Postfach löschen, die nach «Inbox-Patchwork» kopiert; in Patchwork den Posteingang wählen, «Mails abholen
-    ab» = Stichtag, Abruf wieder einschalten. 3. Letzter Import mit den offenen Tickets. 4. Kopien aus der Parallelphase
+    ab» = Stichtag, Mail-Abruf wieder einschalten. 3. Letzter Import mit «Geschlossene und offene Tickets». 4. Kopien aus der Parallelphase
     bereinigen. 5. Testbetrieb in allen Blöcken auf «an alle». 6. Kontrolle: Testmail, Antwort auf ein altes Ticket,
     Mail an einen Melder. Das Portal bleibt aus und kommt später.
   - Kopien aus der Parallelphase (dieselbe erste Mail in Patchwork und HelpSpot, erkannt über die Message-ID): beim
     Stichtag ohne Mails geschlossen bzw. verworfen und mit dem HS-Vorgang verknüpft.
   - Danach: HelpSpot etwa eine Woche nur noch lesbar (ohne Mail-Abruf), dann abschalten; Sicherung der
     HelpSpot-Datenbank aufbewahren.
+
+## Mail-Abruf ein und aus (bestätigt am 30.10.2026)
+
+- Unter Verwaltung → Postfächer lässt sich der Mail-Abruf für alle Postfächer ein- und ausschalten (Anlass: Probeimport
+  aus HelpSpot bis zum Stichtag). Ausgeschaltet holt Patchwork keine Mails ab, der Versand läuft weiter. Den Haken
+  «Aktiv» beim Postfach braucht es dafür nicht; ein inaktives Postfach versendet auch nicht.
+- Bestätigt am 30.10.2026:
+  - Auch «Jetzt abrufen» ist gesperrt, solange der Abruf aus ist.
+  - Admins sehen oben den Balken «Mail-Abruf ausgeschaltet» mit Link zu den Postfächern; Störungen des Abrufs zeigt er
+    dann nicht.
+  - Beim Einschalten holt Patchwork nach, was seit dem letzten Abruf im gewählten Ordner angekommen ist (wie nach einem
+    Ausfall). Soll das nicht geschehen, vorher «Mails abholen ab» beim Postfach anpassen.
+- Technisch: Einstellung `mailFetch`; `MAIL_POLLING=false` schaltet weiterhin den Abruf jede Minute ab (Test-Stack).
 
 ## Testbetrieb je Typ, im Namen anderer antworten, Backlog im Board (bestätigt am 28.10.2026)
 

@@ -1,0 +1,2 @@
+ALTER TABLE "helpspot_import_runs" ADD COLUMN "include_open" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "helpspot_import_runs" ADD COLUMN "skipped_open" integer DEFAULT 0 NOT NULL;
