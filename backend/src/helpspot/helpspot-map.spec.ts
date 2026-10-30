@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HelpSpotSettings } from '../settings/settings.service';
-import { effectiveMappings, htmlToText, resolveTicket, suggestType, type MappingContext } from './helpspot-map';
+import { effectiveMappings, htmlToText, resolveTicket, suggestCopyKeep, suggestType, type MappingContext } from './helpspot-map';
 import type { HsTicket } from './helpspot-ticket';
 
 const ctx: MappingContext = {
@@ -98,5 +98,16 @@ describe('Zuordnung aus HelpSpot', () => {
 
   it('HTML als Text', () => {
     expect(htmlToText('<p>Hallo&nbsp;Anna</p><p>Zeile 1<br>Zeile 2 &amp; mehr</p><script>x()</script>')).toBe('Hallo Anna\nZeile 1\nZeile 2 & mehr');
+  });
+
+  it('Kopie aus der Parallelphase: bleibt bei Aufgaben und mit Antworten oder Notizen der IT, sonst bleibt der HS-Vorgang', () => {
+    const copy = (type: 'incident' | 'task' | null, discarded = false) => ({ type, discarded });
+    expect(suggestCopyKeep(copy('task'), 0)).toEqual({ keep: 'copy', reason: 'task' });
+    expect(suggestCopyKeep(copy('incident'), 2)).toEqual({ keep: 'copy', reason: 'staffEntries' });
+    expect(suggestCopyKeep(copy(null), 1)).toEqual({ keep: 'copy', reason: 'staffEntries' });
+    expect(suggestCopyKeep(copy('incident'), 0)).toEqual({ keep: 'original', reason: null });
+    expect(suggestCopyKeep(copy(null), 0)).toEqual({ keep: 'original', reason: null });
+    // Verworfen: Antworten landen dort nie, also bleibt der HS-Vorgang
+    expect(suggestCopyKeep(copy(null, true), 3)).toEqual({ keep: 'original', reason: null });
   });
 });

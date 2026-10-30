@@ -21,6 +21,11 @@ const settingsSchema = z.object({
 /** Umfang eines Laufs: nur geschlossene Tickets (Standard) oder am Stichtag auch offene (Entscheid vom 30.10.2026) */
 const importSchema = z.object({ includeOpen: z.boolean().default(false) }).optional();
 
+/** Kopien bereinigen: je Paar, welcher Vorgang bleibt; fehlende Paare bleiben unverändert, ohne Auswahl gilt der Vorschlag */
+const resolveSchema = z
+  .object({ choices: z.array(z.object({ copyId: z.uuid(), keep: z.enum(['copy', 'original']) })).max(10_000).optional() })
+  .optional();
+
 /** Verwaltung → HelpSpot-Import (nur Admins, Entscheid vom 29.10.2026) */
 @Controller('admin/helpspot')
 @AdminOnly()
@@ -57,7 +62,7 @@ export class HelpSpotController {
 
   @Post('copies/resolve')
   @HttpCode(200)
-  resolveCopies(@CurrentUser() user: User) {
-    return this.helpspot.resolveCopies(user);
+  resolveCopies(@Body(new ZodPipe(resolveSchema)) body: z.infer<typeof resolveSchema>, @CurrentUser() user: User) {
+    return this.helpspot.resolveCopies(user, body?.choices);
   }
 }

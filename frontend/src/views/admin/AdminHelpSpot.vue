@@ -25,6 +25,8 @@ const types = ref<Record<string, ItemType>>({});
 const statuses = ref<Record<string, string | null>>({});
 const channels = ref<Record<string, string | null>>({});
 const copies = ref<HelpSpotCopy[]>([]);
+/** Je Paar (ID der Kopie): welcher Vorgang bleibt, oder nicht bereinigen */
+const choices = ref<Record<string, 'copy' | 'original' | 'skip'>>({});
 const busy = ref(false);
 /** Umfang des nächsten Laufs: nur geschlossene Tickets oder auch offene (Stichtag) */
 const includeOpen = ref(false);
@@ -45,7 +47,7 @@ async function load() {
   try {
     const [next, list] = await Promise.all([api.get<HelpSpotView>('/admin/helpspot'), api.get<HelpSpotCopy[]>('/admin/helpspot/copies')]);
     apply(next);
-    copies.value = list;
+    setCopies(list);
     schedulePoll();
   } catch (err) {
     toast.error(err);
@@ -63,7 +65,7 @@ function schedulePoll() {
       const next = await api.get<HelpSpotView>('/admin/helpspot', { background: true });
       view.value = next;
       if (next.runs[0]?.status !== 'running') {
-        copies.value = await api.get<HelpSpotCopy[]>('/admin/helpspot/copies');
+        setCopies(await api.get<HelpSpotCopy[]>('/admin/helpspot/copies'));
         toast.success('Import aus HelpSpot beendet');
       }
     } catch {
@@ -122,17 +124,37 @@ async function startImport() {
   schedulePoll();
 }
 
+/** Paare neu setzen, die Wahl je Paar nach dem Vorschlag */
+function setCopies(list: HelpSpotCopy[]) {
+  copies.value = list;
+  choices.value = Object.fromEntries(list.map((c) => [c.copy.id, c.suggestion.keep]));
+}
+
+const COPY_REASONS: Record<NonNullable<HelpSpotCopy['suggestion']['reason']>, string> = {
+  task: 'Aufgabe in Patchwork',
+  staffEntries: 'Antworten oder Notizen der IT',
+};
+const copyState = (c: HelpSpotCopy['copy']) =>
+  c.discarded ? 'verworfen' : c.type ? `${TYPE_LABELS[c.type]} · ${c.status?.label ?? ''}` : 'Eingang';
+
 async function resolveCopies() {
+  const picked = copies.value.filter((c) => choices.value[c.copy.id] !== 'skip');
+  const keepCopy = picked.filter((c) => choices.value[c.copy.id] === 'copy').length;
+  const skipped = copies.value.length - picked.length;
   const ok = await confirm.ask({
     title: 'Kopien bereinigen',
-    message: `${copies.value.length} Vorgänge aus der Parallelphase werden geschlossen (im Eingang verworfen) und als Duplikat mit dem Vorgang aus HelpSpot verknüpft. Es gehen keine Mails hinaus.`,
+    message:
+      `${picked.length - keepCopy} Vorgänge aus Patchwork und ${keepCopy} aus HelpSpot werden geschlossen (im Eingang verworfen) ` +
+      `und als Duplikat mit dem bleibenden verknüpft.${skipped ? ` ${skipped} Paare bleiben unverändert.` : ''} Es gehen keine Mails hinaus.`,
     confirmLabel: 'Bereinigen',
   });
   if (!ok) return;
   await run(async () => {
-    const result = await api.post<{ resolved: number }>('/admin/helpspot/copies/resolve');
-    copies.value = await api.get<HelpSpotCopy[]>('/admin/helpspot/copies');
-    toast.success(`${result.resolved} Kopien bereinigt`);
+    const result = await api.post<{ resolved: number }>('/admin/helpspot/copies/resolve', {
+      choices: picked.map((c) => ({ copyId: c.copy.id, keep: choices.value[c.copy.id] })),
+    });
+    setCopies(await api.get<HelpSpotCopy[]>('/admin/helpspot/copies'));
+    toast.success(`${result.resolved} Paare bereinigt`);
   });
 }
 
@@ -309,19 +331,38 @@ const runResult = (r: HelpSpotImportRun) =>
     <div v-if="view" class="card card-body stack">
       <h2>Kopien aus der Parallelphase</h2>
       <span class="faint">
-        Vorgänge, die Patchwork aus derselben ersten Mail angelegt hat wie HelpSpot sein Ticket. Beim Umstieg werden sie ohne Mails
-        geschlossen bzw. verworfen und als Duplikat mit dem Vorgang aus HelpSpot verknüpft.
+        Vorgänge, die Patchwork aus derselben ersten Mail angelegt hat wie HelpSpot sein Ticket. Beim Umstieg wählst du je Paar, welcher
+        bleibt; der andere wird ohne Mails geschlossen (im Eingang verworfen) und als Duplikat mit dem bleibenden verknüpft. Vorgeschlagen
+        bleibt der Vorgang aus Patchwork, wenn er eine Aufgabe ist oder Antworten bzw. Notizen der IT hat, sonst der aus HelpSpot.
       </span>
-      <table v-if="copies.length" class="table">
+      <table v-if="copies.length" class="table copies">
+        <thead>
+          <tr>
+            <th>Patchwork</th>
+            <th>HelpSpot</th>
+            <th>Bleibt</th>
+          </tr>
+        </thead>
         <tbody>
-          <tr v-for="c in copies" :key="c.copy.id">
+          <tr v-for="c in copies" :key="c.copy.id" :data-copy="itemRef(c.copy)">
             <td>
               <ItemLink :item-key="c.copy" :type="c.copy.type" class="mono">{{ itemRef(c.copy) }}</ItemLink> {{ c.copy.title }}
-              <span class="faint">({{ c.copy.discarded ? 'verworfen' : (c.copy.status?.label ?? 'Eingang') }})</span>
+              <div class="faint small">
+                {{ copyState(c.copy) }}<template v-if="c.suggestion.reason"> · {{ COPY_REASONS[c.suggestion.reason] }}</template>
+              </div>
             </td>
-            <td class="faint">→</td>
             <td>
-              <ItemLink :item-key="c.original" class="mono">{{ itemRef(c.original) }}</ItemLink> {{ c.original.title }}
+              <ItemLink :item-key="c.original" :type="c.original.type" class="mono">{{ itemRef(c.original) }}</ItemLink> {{ c.original.title }}
+              <div class="faint small">
+                {{ c.original.type ? TYPE_LABELS[c.original.type] : '' }} · {{ c.original.status?.label ?? '' }}
+              </div>
+            </td>
+            <td>
+              <select v-model="choices[c.copy.id]" class="select" :aria-label="`Was bleibt bei ${itemRef(c.copy)}`">
+                <option value="original">{{ itemRef(c.original) }} bleibt</option>
+                <option value="copy">{{ itemRef(c.copy) }} bleibt</option>
+                <option value="skip">nicht bereinigen</option>
+              </select>
             </td>
           </tr>
         </tbody>
@@ -373,5 +414,8 @@ h3 {
 }
 .nowrap {
   white-space: nowrap;
+}
+.copies .select {
+  min-width: 170px;
 }
 </style>

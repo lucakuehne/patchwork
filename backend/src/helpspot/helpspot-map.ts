@@ -92,7 +92,23 @@ export function effectiveMappings(settings: HelpSpotSettings, analysis: HelpSpot
   return { types, statuses, channels };
 }
 
-const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'", nbsp: ' ' };
+/**
+ * Kopie aus der Parallelphase: Vorschlag, welcher Vorgang bleibt (Entscheid vom 30.10.2026). Die Kopie in Patchwork,
+ * wenn sie dort eine Aufgabe ist (Aufgaben laufen seit dem 28.10.2026 in Patchwork) oder Antworten bzw. Notizen der IT
+ * hat; sonst der HS-Vorgang mit dem Verlauf aus HelpSpot. Eine verworfene Kopie bleibt nicht: Antworten landen nie bei
+ * einem verworfenen Vorgang.
+ */
+export function suggestCopyKeep(
+  copy: { type: ItemType | null; discarded: boolean },
+  staffEntries: number,
+): { keep: 'copy' | 'original'; reason: 'task' | 'staffEntries' | null } {
+  if (copy.discarded) return { keep: 'original', reason: null };
+  if (copy.type === 'task') return { keep: 'copy', reason: 'task' };
+  if (staffEntries > 0) return { keep: 'copy', reason: 'staffEntries' };
+  return { keep: 'original', reason: null };
+}
+
+const ENTITIES: Record<string, string> ={ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'", nbsp: ' ' };
 
 /** HTML einer Notiz als Text (für Suche und Vorschau): Absätze und Umbrüche bleiben, Tags und Skripte fallen weg */
 export function htmlToText(html: string): string {

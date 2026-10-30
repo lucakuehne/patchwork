@@ -808,5 +808,7 @@ export interface HelpSpotView {
 /** Vorgang, den Patchwork in der Parallelphase aus derselben Mail angelegt hat wie HelpSpot sein Ticket */
 export interface HelpSpotCopy {
   copy: { id: string; prefix: string; number: number; title: string; type: ItemType | null; discarded: boolean; status: { label: string; closed: boolean } | null };
-  original: { id: string; prefix: string; number: number; title: string };
+  original: { id: string; prefix: string; number: number; title: string; type: ItemType | null; status: { label: string; closed: boolean } | null };
+  /** Vorschlag, welcher bleibt: die Kopie bei Aufgaben und bei Antworten oder Notizen der IT, sonst der HS-Vorgang */
+  suggestion: { keep: 'copy' | 'original'; reason: 'task' | 'staffEntries' | null };
 }

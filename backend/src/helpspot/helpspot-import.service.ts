@@ -13,6 +13,7 @@ import {
   links,
   mailMessages,
   statuses,
+  users,
   type HelpSpotImportRun,
   type Item,
   type ItemType,
@@ -28,7 +29,7 @@ import { StatusesService } from '../statuses/statuses.service';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { HelpSpotClient, HelpSpotError } from './helpspot-client';
-import { effectiveMappings, htmlToText, resolveTicket, type MappingContext } from './helpspot-map';
+import { effectiveMappings, htmlToText, resolveTicket, suggestCopyKeep, type MappingContext } from './helpspot-map';
 import { normalizeTicket, type HsFile, type HsHistoryItem, type HsTicket } from './helpspot-ticket';
 
 /** Zeitzone, in der HelpSpot die Zeiten der API formatiert */
@@ -47,6 +48,22 @@ export interface HelpSpotSettingsInput {
 }
 
 type Outcome = 'created' | 'updated' | 'skipped' | 'skippedOpen';
+
+type ItemRefFields = { id: string; prefix: string; number: number; title: string; status: { label: string; closed: boolean } | null };
+
+/** Paar aus der Parallelphase: Vorgang aus Patchwork (Kopie) und HS-Vorgang aus derselben ersten Mail */
+export interface CopyPair {
+  copy: ItemRefFields & { type: ItemType | null; discarded: boolean };
+  original: ItemRefFields & { type: ItemType | null };
+  /** Vorschlag, welcher bleibt: «copy» bei Aufgaben und Kopien mit Antworten oder Notizen der IT */
+  suggestion: { keep: 'copy' | 'original'; reason: 'task' | 'staffEntries' | null };
+}
+
+/** Wahl beim Bereinigen: welcher Vorgang eines Paars bleibt */
+export interface CopyChoice {
+  copyId: string;
+  keep: 'copy' | 'original';
+}
 
 /** Was ein Lauf für alle Tickets einmal lädt */
 interface RunContext extends MappingContext {
@@ -473,22 +490,32 @@ export class HelpSpotImportService implements OnModuleInit {
 
   /**
    * Vorgänge, die Patchwork während der Parallelphase aus derselben ersten Mail angelegt hat wie HelpSpot sein Ticket
-   * (gleiche Message-ID), und die noch nicht mit dem HS-Vorgang verknüpft sind.
+   * (gleiche Message-ID), und die noch nicht mit dem HS-Vorgang verknüpft sind. Je Paar ein Vorschlag, welcher bleibt
+   * (Entscheid vom 30.10.2026): die Kopie, wenn sie in Patchwork eine Aufgabe ist oder Antworten bzw. Notizen der IT
+   * hat, sonst der HS-Vorgang.
    */
-  async copies() {
+  async copies(): Promise<CopyPair[]> {
     const copy = alias(items, 'copy');
     const original = alias(items, 'original');
+    const copyStatus = alias(statuses, 'copy_status');
+    const originalStatus = alias(statuses, 'original_status');
     const rows = await this.db
       .select({
         copy: { id: copy.id, prefix: copy.prefix, number: copy.number, title: copy.title, type: copy.type, discarded: copy.discarded },
-        copyStatus: { label: statuses.label, closed: statuses.closed },
-        original: { id: original.id, prefix: original.prefix, number: original.number, title: original.title },
+        copyStatus: { label: copyStatus.label, closed: copyStatus.closed },
+        original: { id: original.id, prefix: original.prefix, number: original.number, title: original.title, type: original.type },
+        originalStatus: { label: originalStatus.label, closed: originalStatus.closed },
+        staffEntries: sql<number>`(
+          select count(*)::int from ${entries} e join ${users} u on u.id = e.author_id
+          where e.item_id = ${copy.id} and e.kind in ('reply', 'note') and u.role in ('it', 'admin')
+        )`,
       })
       .from(helpspotTickets)
       .innerJoin(original, eq(original.id, helpspotTickets.itemId))
       .innerJoin(mailMessages, and(eq(mailMessages.messageId, helpspotTickets.messageId), eq(mailMessages.direction, 'in')))
       .innerJoin(copy, and(eq(copy.id, mailMessages.itemId), sql`${copy.prefix} <> ${HELPSPOT_PREFIX}`))
-      .leftJoin(statuses, eq(statuses.id, copy.statusId))
+      .leftJoin(copyStatus, eq(copyStatus.id, copy.statusId))
+      .leftJoin(originalStatus, eq(originalStatus.id, original.statusId))
       .where(
         sql`not exists (select 1 from ${links} l where (l.from_id = ${copy.id} and l.to_id = ${original.id}) or (l.from_id = ${original.id} and l.to_id = ${copy.id}))`,
       )
@@ -497,55 +524,75 @@ export class HelpSpotImportService implements OnModuleInit {
     const seen = new Set<string>();
     return rows
       .filter((r) => !seen.has(r.copy.id) && seen.add(r.copy.id))
-      .map((r) => ({ copy: { ...r.copy, status: r.copyStatus?.label ? r.copyStatus : null }, original: r.original }));
+      .map((r) => ({
+        copy: { ...r.copy, status: r.copyStatus?.label ? r.copyStatus : null },
+        original: { ...r.original, status: r.originalStatus?.label ? r.originalStatus : null },
+        suggestion: suggestCopyKeep(r.copy, r.staffEntries),
+      }));
   }
 
-  /** Kopien ohne Mails schliessen (im Eingang verwerfen) und als Duplikat mit dem HS-Vorgang verknüpfen */
-  async resolveCopies(actor: User): Promise<{ resolved: number }> {
+  /**
+   * Paare bereinigen, ohne Mails: Der Vorgang, der nicht bleibt, wird geschlossen (im Eingang verworfen) und als Duplikat
+   * mit dem bleibenden verknüpft. Ohne Auswahl gilt je Paar der Vorschlag; Paare, die in der Auswahl fehlen, bleiben
+   * unverändert.
+   */
+  async resolveCopies(actor: User, choices?: CopyChoice[]): Promise<{ resolved: number; keptCopies: number }> {
     const pairs = await this.copies();
+    const keep = new Map(choices ? choices.map((c) => [c.copyId, c.keep]) : pairs.map((p) => [p.copy.id, p.suggestion.keep]));
+    const done: string[] = [];
+    let keptCopies = 0;
     for (const pair of pairs) {
+      const choice = keep.get(pair.copy.id);
+      if (!choice) continue;
+      const [duplicateId, survivorId] = choice === 'copy' ? [pair.original.id, pair.copy.id] : [pair.copy.id, pair.original.id];
       await this.db.transaction(async (tx) => {
-        const [copy] = await tx.select().from(items).where(eq(items.id, pair.copy.id)).for('update').limit(1);
-        const [original] = await tx.select().from(items).where(eq(items.id, pair.original.id)).limit(1);
-        if (!copy || !original) return;
-        const now = new Date();
-        if (!copy.type) {
-          if (!copy.discarded) {
-            await tx.update(items).set({ discarded: true, closedAt: now, updatedAt: now }).where(eq(items.id, copy.id));
-            await this.items.addEntry(tx, copy.id, actor.id, 'change', '', { field: 'discarded' });
-          }
-        } else {
-          const current = copy.statusId ? await this.statuses.get(copy.statusId, tx) : undefined;
-          if (!current?.closed) {
-            const target = await this.statuses.targetStatus(copy.type as ItemType, 'close', tx);
-            await tx.update(items).set({ statusId: target.id, closedAt: now, updatedAt: now }).where(eq(items.id, copy.id));
-            await this.items.addEntry(tx, copy.id, actor.id, 'status', '', {
-              from: current?.label ?? null,
-              to: target.label,
-              ...referenceMeta('duplicateOf', original),
-              merged: false,
-            });
-          }
-        }
-        await tx.insert(links).values({ fromId: copy.id, toId: original.id, kind: 'duplicate', createdById: actor.id });
-        await this.items.addEntry(tx, copy.id, actor.id, 'change', '', {
-          field: 'linkAdded',
-          role: 'duplicateOf',
-          roleLabel: LINK_ROLE_LABELS.duplicateOf,
-          ...referenceMeta('other', original),
-          otherTitle: original.title,
-        });
-        await this.items.addEntry(tx, original.id, actor.id, 'change', '', {
-          field: 'linkAdded',
-          role: 'hasDuplicate',
-          roleLabel: LINK_ROLE_LABELS.hasDuplicate,
-          ...referenceMeta('other', copy),
-          otherTitle: copy.title,
-        });
+        const [duplicate] = await tx.select().from(items).where(eq(items.id, duplicateId)).for('update').limit(1);
+        const [survivor] = await tx.select().from(items).where(eq(items.id, survivorId)).limit(1);
+        if (duplicate && survivor) await this.closeAsDuplicate(tx, duplicate, survivor, actor);
       });
+      done.push(`${itemRef(choice === 'copy' ? pair.original : pair.copy)} → ${itemRef(choice === 'copy' ? pair.copy : pair.original)}`);
+      if (choice === 'copy') keptCopies++;
     }
-    this.logger.log(`Kopien aus der Parallelphase bereinigt: ${pairs.length} (${pairs.map((p) => itemRef(p.copy)).join(', ')})`);
-    return { resolved: pairs.length };
+    this.logger.log(`Kopien aus der Parallelphase bereinigt: ${done.length} (${done.join(', ')})`);
+    return { resolved: done.length, keptCopies };
+  }
+
+  /** Vorgang ohne Mails schliessen bzw. im Eingang verwerfen und als «Duplikat von» mit dem bleibenden verknüpfen */
+  private async closeAsDuplicate(tx: Tx, duplicate: Item, survivor: Item, actor: User) {
+    const now = new Date();
+    if (!duplicate.type) {
+      if (!duplicate.discarded) {
+        await tx.update(items).set({ discarded: true, closedAt: now, updatedAt: now }).where(eq(items.id, duplicate.id));
+        await this.items.addEntry(tx, duplicate.id, actor.id, 'change', '', { field: 'discarded' });
+      }
+    } else {
+      const current = duplicate.statusId ? await this.statuses.get(duplicate.statusId, tx) : undefined;
+      if (!current?.closed) {
+        const target = await this.statuses.targetStatus(duplicate.type as ItemType, 'close', tx);
+        await tx.update(items).set({ statusId: target.id, closedAt: now, updatedAt: now }).where(eq(items.id, duplicate.id));
+        await this.items.addEntry(tx, duplicate.id, actor.id, 'status', '', {
+          from: current?.label ?? null,
+          to: target.label,
+          ...referenceMeta('duplicateOf', survivor),
+          merged: false,
+        });
+      }
+    }
+    await tx.insert(links).values({ fromId: duplicate.id, toId: survivor.id, kind: 'duplicate', createdById: actor.id });
+    await this.items.addEntry(tx, duplicate.id, actor.id, 'change', '', {
+      field: 'linkAdded',
+      role: 'duplicateOf',
+      roleLabel: LINK_ROLE_LABELS.duplicateOf,
+      ...referenceMeta('other', survivor),
+      otherTitle: survivor.title,
+    });
+    await this.items.addEntry(tx, survivor.id, actor.id, 'change', '', {
+      field: 'linkAdded',
+      role: 'hasDuplicate',
+      roleLabel: LINK_ROLE_LABELS.hasDuplicate,
+      ...referenceMeta('other', duplicate),
+      otherTitle: duplicate.title,
+    });
   }
 }
 

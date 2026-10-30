@@ -1066,6 +1066,13 @@ await step('helpspot-import', async () => {
   }
   await page.locator('table.runs td', { hasText: 'geschlossene und offene' }).first().waitFor();
   await page.locator('table.runs td', { hasText: 'offene ausgelassen' }).first().waitFor();
+  // Kopien aus der Parallelphase: das im Smoke-Test übersprungene Paar, je Paar die Wahl, welcher Vorgang bleibt
+  const pair = page.locator('table.copies tbody tr').first();
+  await pair.waitFor();
+  const options = await pair.locator('select option').allInnerTexts();
+  if (!/^HS-\d+ bleibt$/.test(options[0]) || !/^PW-\d+ bleibt$/.test(options[1]) || options[2] !== 'nicht bereinigen') {
+    throw new Error(`Wahl beim Paar: ${options.join(' / ')}`);
+  }
   await shot('89-helpspot-import', true);
   // Übernommener Vorgang: Hinweis auf HelpSpot, Einträge «aus HelpSpot»
   await page.goto(`${BASE}/items/HS-12401`);

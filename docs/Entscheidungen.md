@@ -364,6 +364,15 @@ abschalten.
     Mail an einen Melder. Das Portal bleibt aus und kommt später.
   - Kopien aus der Parallelphase (dieselbe erste Mail in Patchwork und HelpSpot, erkannt über die Message-ID): beim
     Stichtag ohne Mails geschlossen bzw. verworfen und mit dem HS-Vorgang verknüpft.
+  - Bestätigt am 30.10.2026 (ersetzt «immer die Kopie schliessen»): Beim Bereinigen wählt man **je Paar, welcher
+    Vorgang bleibt**; der andere wird ohne Mails geschlossen (im Eingang verworfen) und als «Duplikat von» mit dem
+    bleibenden verknüpft. Vorschlag: Der Vorgang aus Patchwork bleibt, wenn er eine Aufgabe ist oder Antworten bzw.
+    Notizen der IT hat (seit dem 28.10.2026 laufen die Aufgaben in Patchwork), sonst der HS-Vorgang. Bleibt der Vorgang
+    aus Patchwork, landen Antworten mit «Ticket:{12345}» über die Umleitung des Duplikats bei ihm.
+  - Bestätigt am 30.10.2026: Je Paar gibt es zusätzlich «nicht bereinigen»; solche Paare bleiben unverändert in der Liste.
+    Vor dem Bereinigen fragt Patchwork mit der Anzahl, wie viele Vorgänge aus Patchwork bzw. HelpSpot geschlossen werden.
+    Ist die Kopie im Eingang verworfen, ist «HS-Vorgang bleibt» vorgeschlagen, auch mit Notizen der IT (Antworten landen
+    nie bei einem verworfenen Vorgang).
   - Danach: HelpSpot etwa eine Woche nur noch lesbar (ohne Mail-Abruf), dann abschalten; Sicherung der
     HelpSpot-Datenbank aufbewahren.
 

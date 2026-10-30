@@ -1,7 +1,7 @@
 // Smoke-Test, Bereich «Import aus HelpSpot» gegen einen nachgebauten HelpSpot (läuft über test/smoke.mjs).
 // Patchwork und der Runner teilen im Test-Stack das Netz: Patchwork erreicht den Server hier über 127.0.0.1.
 import http from 'node:http';
-import { ANNA, api, assert, channel, detail, inbox, IVAN, loginAs, MAILBOX, PNG, poll, RUN, sendMail, sleep, step, waitForMail } from './lib.mjs';
+import { ANNA, api, assert, channel, detail, inbox, IVAN, loginAs, MAILBOX, PNG, poll, reply, RUN, sendMail, sleep, status, step, waitForMail } from './lib.mjs';
 
 const PORT = 18181;
 const URL_HS = `http://127.0.0.1:${PORT}`;
@@ -79,9 +79,41 @@ const tickets = {
   12403: { xRequest: 12403, fOpen: 0, xStatus: 'SPAM', fTrash: 0, sTitle: 'Gewinnspiel', sEmail: 'spam@test.local', Custom1: '', request_history: { item: {} } },
   12404: { xRequest: 12404, fOpen: 0, xStatus: 'Problem Solved', fTrash: 1, sTitle: 'Im Papierkorb', sEmail: ANNA, Custom1: 'Incident', request_history: { item: {} } },
 };
+// Weitere Tickets, deren erste Mail auch in Patchwork ankam (Kopien aus der Parallelphase)
+const copyTicket = (number, title, messageId) => ({
+  xRequest: number,
+  fOpenedVia: 'Email',
+  xPersonAssignedTo: 'Ivan IT',
+  fOpen: 0,
+  xStatus: 'Problem Solved',
+  fUrgent: 0,
+  fTrash: 0,
+  sTitle: title,
+  sFirstName: 'Anna',
+  sLastName: 'Muster',
+  sEmail: ANNA,
+  Custom1: 'Incident',
+  request_history: {
+    item: {
+      [number * 10]: entry(number * 10, {
+        xPerson: 'Anna Muster',
+        person_type: 'customer',
+        dtGMTChange: '2. Feb 2024, 10:00 Uhr',
+        fPublic: 1,
+        fInitial: 1,
+        tNote: title,
+        tEmailHeaders: `a:1:{s:10:"message-id";s:${messageId.length}:"${messageId}";}`,
+      }),
+    },
+  },
+});
+const TASK_MAIL = `<hs-task-${RUN}@test.local>`;
+const NOTE_MAIL = `<hs-note-${RUN}@test.local>`;
+tickets[12406] = copyTicket(12406, `Zugang aus HelpSpot ${RUN}`, TASK_MAIL);
+tickets[12407] = copyTicket(12407, `Laufwerk aus HelpSpot ${RUN}`, NOTE_MAIL);
 const documents = { 9101: PNG.toString('base64'), 9102: Buffer.from('Protokoll').toString('base64') };
 // 12405 wurde in HelpSpot in 12401 zusammengeführt: die API liefert dann 12401
-const changed = new Map([12401, 12402, 12403, 12404, 12405].map((n) => [n, OLD]));
+const changed = new Map([12401, 12402, 12403, 12404, 12405, 12406, 12407].map((n) => [n, OLD]));
 
 function helpspot(req, res) {
   const send = (status, body) => {
@@ -118,6 +150,21 @@ function helpspot(req, res) {
 const server = http.createServer(helpspot);
 await new Promise((resolve) => server.listen(PORT, '127.0.0.1', resolve));
 
+/** Mail, die in der Parallelphase auch in Patchwork ankam: Nummer des Vorgangs im Eingang, nach der Eingangsbestätigung */
+async function mailCopy(subject, messageId) {
+  await sendMail({ from: ANNA, to: MAILBOX, subject, text: subject, messageId });
+  let number;
+  for (let i = 0; i < 20 && !number; i++) {
+    await poll();
+    number = (await api('GET', '/items?view=inbox')).items.find((x) => x.title === subject)?.number;
+    if (!number) await sleep(1000);
+  }
+  assert.ok(number, `${subject} im Eingang`);
+  // Eingangsbestätigung abwarten, sonst zählt sie unten als Mail des Imports
+  await waitForMail(ANNA, (m) => m.subject.includes(subject), `Eingangsbestätigung ${subject}`);
+  return number;
+}
+
 /** Import starten (nur geschlossene oder auch offene Tickets) und auf sein Ende warten */
 async function importNow(includeOpen = false) {
   await api('POST', '/admin/helpspot/import', { includeOpen }, { expect: [202] });
@@ -139,7 +186,7 @@ try {
     assert.equal(saved.hasApiKey, true);
     assert.ok(!JSON.stringify(saved).includes(KEY), 'Schlüssel nicht in der Antwort');
     const view = await api('POST', '/admin/helpspot/analysis');
-    assert.equal(view.analysis.total, 2, 'ohne Spam und Papierkorb');
+    assert.equal(view.analysis.total, 4, 'ohne Spam und Papierkorb');
     assert.deepEqual(view.mappings.types, { Incident: 'incident', Changes: 'task' });
     assert.equal(view.mappings.channels.Phone, channel('Telefon').id);
     assert.ok(view.mappings.channels.Email, 'Mail → Meldeweg der Mails');
@@ -153,25 +200,22 @@ try {
     await loginAs('ada@test.local', 'geheim-geheim');
   });
 
-  let copyNumber;
+  let copyNumber, taskCopy, noteCopy;
   await step('HelpSpot-Import: geschlossene, dann offene Tickets mit Verlauf und Anhängen, ohne Spam, Papierkorb und Zusammengeführte, ohne Mails', async () => {
-    // Kopie aus der Parallelphase: dieselbe erste Mail kam auch in Patchwork an
-    await sendMail({ from: ANNA, to: MAILBOX, subject: `Kopie aus der Parallelphase ${RUN}`, text: 'Der Drucker druckt nicht.', messageId: FIRST_MAIL });
-    for (let i = 0; i < 20 && !copyNumber; i++) {
-      await poll();
-      copyNumber = (await api('GET', '/items?view=inbox')).items.find((x) => x.title === `Kopie aus der Parallelphase ${RUN}`)?.number;
-      if (!copyNumber) await sleep(1000);
-    }
-    assert.ok(copyNumber, 'Kopie im Eingang');
-    // Eingangsbestätigung der Kopie abwarten, sonst zählt sie unten als Mail des Imports
-    await waitForMail(ANNA, (m) => m.subject.includes(`Kopie aus der Parallelphase ${RUN}`), 'Eingangsbestätigung der Kopie');
+    // Kopien aus der Parallelphase: dieselbe erste Mail kam auch in Patchwork an. Eine bleibt im Eingang, eine wird in
+    // Patchwork zur Aufgabe, eine erhält eine Notiz der IT
+    copyNumber = await mailCopy(`Kopie aus der Parallelphase ${RUN}`, FIRST_MAIL);
+    taskCopy = await mailCopy(`Zugang Kopie ${RUN}`, TASK_MAIL);
+    noteCopy = await mailCopy(`Laufwerk Kopie ${RUN}`, NOTE_MAIL);
+    await api('POST', `/items/${taskCopy}/type`, { type: 'task', statusId: status('task', 'in_progress').id });
+    await reply(`/items/${noteCopy}/entries`, `Geprüft ${RUN}`, 'note');
     const mailsBefore = (await inbox(ANNA)).length;
 
     // Probeimport: nur geschlossene Tickets, das offene 12402 kommt erst am Stichtag
     const run = await importNow();
     assert.equal(run.status, 'done', run.error ?? '');
     assert.equal(run.includeOpen, false);
-    assert.deepEqual([run.total, run.created, run.updated, run.skipped, run.skippedOpen, run.failed], [5, 1, 0, 3, 1, 0], JSON.stringify(run));
+    assert.deepEqual([run.total, run.created, run.updated, run.skipped, run.skippedOpen, run.failed], [7, 3, 0, 3, 1, 0], JSON.stringify(run));
     await api('GET', '/items/HS-12402', undefined, { expect: [404] });
 
     const hs = await api('GET', '/items/HS-12401');
@@ -218,7 +262,7 @@ try {
     assert.deepEqual(found.map((x) => `${x.prefix}-${x.number}`), ['HS-12401']);
     await sleep(1500);
     const mails = await inbox(ANNA);
-    const imported = new RegExp(`HS-1240\\d|Drucker aus HelpSpot ${RUN}|Neuer Bildschirm ${RUN}`);
+    const imported = new RegExp(`HS-1240\\d|(Drucker|Zugang|Laufwerk) aus HelpSpot ${RUN}|Neuer Bildschirm ${RUN}`);
     assert.ok(!mails.some((m) => imported.test(m.subject)), mails.map((m) => m.subject).join(' | '));
     assert.equal(mails.length, mailsBefore, 'keine Mails beim Import');
   });
@@ -253,19 +297,45 @@ try {
     assert.equal(hs.attachments.length, 1, 'Anhänge nicht doppelt');
   });
 
-  await step('HelpSpot-Import: Kopien aus der Parallelphase ohne Mails schliessen und verknüpfen', async () => {
+  await step('HelpSpot-Import: Kopien aus der Parallelphase je Paar bereinigen, ohne Mails; Antworten gehen zum bleibenden', async () => {
     const copies = await api('GET', '/admin/helpspot/copies');
-    const pair = copies.find((c) => c.copy.number === copyNumber);
-    assert.ok(pair, JSON.stringify(copies));
-    assert.equal(`${pair.original.prefix}-${pair.original.number}`, 'HS-12401');
+    const pair = (n) => copies.find((c) => c.copy.number === n);
+    // Vorschlag: Aufgaben und Kopien mit Notizen der IT bleiben in Patchwork, sonst bleibt der HS-Vorgang
+    assert.deepEqual(
+      [copyNumber, taskCopy, noteCopy].map((n) => [pair(n)?.original.number, pair(n)?.suggestion.keep, pair(n)?.suggestion.reason]),
+      [
+        [12401, 'original', null],
+        [12406, 'copy', 'task'],
+        [12407, 'copy', 'staffEntries'],
+      ],
+      JSON.stringify(copies),
+    );
     const mailsBefore = (await inbox(ANNA)).length;
-    assert.ok((await api('POST', '/admin/helpspot/copies/resolve')).resolved >= 1);
+    // Drucker bleibt in HelpSpot, Zugang in Patchwork; Laufwerk wird nicht bereinigt
+    const result = await api('POST', '/admin/helpspot/copies/resolve', {
+      choices: [
+        { copyId: pair(copyNumber).copy.id, keep: 'original' },
+        { copyId: pair(taskCopy).copy.id, keep: 'copy' },
+      ],
+    });
+    assert.deepEqual(result, { resolved: 2, keptCopies: 1 });
     const copy = await detail(copyNumber);
     assert.equal(copy.discarded, true, 'im Eingang verworfen');
     assert.ok(copy.links.some((l) => l.role === 'duplicateOf' && l.other.prefix === 'HS' && l.other.number === 12401));
-    assert.ok(!(await api('GET', '/admin/helpspot/copies')).some((c) => c.copy.number === copyNumber), 'erledigt');
+    const kept = await detail(taskCopy);
+    assert.equal(kept.status.closed, false, 'Aufgabe in Patchwork bleibt offen');
+    assert.ok(kept.links.some((l) => l.role === 'hasDuplicate' && l.other.prefix === 'HS' && l.other.number === 12406));
+    const hsDuplicate = await api('GET', '/items/HS-12406');
+    assert.equal(hsDuplicate.status.closed, true);
+    assert.ok(hsDuplicate.links.some((l) => l.role === 'duplicateOf' && l.other.prefix === 'PW' && l.other.number === taskCopy));
+    assert.deepEqual((await api('GET', '/admin/helpspot/copies')).map((c) => c.copy.number), [noteCopy], 'nur das übersprungene Paar bleibt');
     await sleep(1500);
     assert.equal((await inbox(ANNA)).length, mailsBefore, 'keine Mails');
+    // Antwort auf das alte HelpSpot-Ticket landet beim Vorgang, der bleibt
+    await sendMail({ from: ANNA, to: MAILBOX, subject: 'AW: Zugang - Ticket:{12406}', text: `Antwort auf HelpSpot ${RUN}` });
+    await sleep(500);
+    await poll();
+    assert.ok((await detail(taskCopy)).entries.some((e) => e.body.includes(`Antwort auf HelpSpot ${RUN}`)), 'Antwort beim bleibenden Vorgang');
   });
 } finally {
   server.close();
