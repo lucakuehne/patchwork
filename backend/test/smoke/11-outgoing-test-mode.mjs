@@ -369,4 +369,54 @@ await step('Testbetrieb je Typ: Störungen zurückgehalten, Aufgaben versendet, 
   assert.equal((await api('GET', '/public/info')).testMode, false);
 });
 
+await step('Testbetrieb je Auslöser: weicht vom Block ab, in beide Richtungen', async () => {
+  const none = { staff: 'none', others: 'none', staffEmails: [], otherEmails: [] };
+  const live = { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] };
+  await api('PUT', '/settings/mail', {
+    // Eingang: alles an alle, nur keine Eingangsbestätigung
+    general: { ...live, triggers: { confirmation: 'none' } },
+    // Störungen: nichts, ausser öffentlichen Antworten
+    incident: { ...none, triggers: { reply: 'all', assigned: 'selected' } },
+    // Auslöser, die es im Block nicht gibt, fallen weg
+    task: { ...live, triggers: { welcome: 'none', unknown: 'none' } },
+  });
+  const settings = await api('GET', '/settings/mail');
+  assert.deepEqual(settings.general.triggers, { confirmation: 'none' });
+  assert.deepEqual(settings.incident.triggers, { reply: 'all', assigned: 'selected' });
+  assert.deepEqual(settings.task.triggers, {});
+  const info = await api('GET', '/public/info');
+  assert.equal(info.testMode, true);
+  // Für den Vermerk im Antwortfeld: die Kreise der öffentlichen Antwort
+  assert.deepEqual(info.delivery.incident, { staff: 'all', others: 'all' });
+  assert.deepEqual(info.delivery.general, { staff: 'all', others: 'all' });
+  await api('PUT', '/settings/mail', { ...settings, incident: { ...settings.incident, triggers: { reply: 'later' } } }, { expect: [400] });
+
+  // Störung: Die Antwort geht trotz «an niemanden» im Block hinaus
+  assert.equal((await detail(itemNo)).type, 'incident');
+  const text = `Antwort je Auslöser ${RUN}`;
+  const f = new FormData();
+  f.append('kind', 'reply');
+  f.append('body', text);
+  await api('POST', `/items/${itemNo}/entries`, f);
+  await waitForMail(ANNA, (m) => m.text.includes(text), 'Öffentliche Antwort trotz Block «an niemanden»');
+
+  // Eingang: Eingangsbestätigung zurückgehalten, obwohl der Block an alle geht
+  const subject = `Neu im Eingang je Auslöser ${RUN}`;
+  await sendMail({ from: BOB, to: MAILBOX, subject, text: 'Hallo' });
+  await poll();
+  let confirmation;
+  for (let i = 0; i < 30 && !confirmation; i++) {
+    confirmation = (await api('GET', '/admin/outgoing-mails')).find(
+      (m) => m.template === 'confirmation' && m.item?.title === subject && m.status !== 'queued',
+    );
+    if (!confirmation) await sleep(1000);
+  }
+  assert.ok(confirmation, 'Eingangsbestätigung im Protokoll');
+  assert.equal(confirmation.status, 'held', 'Auslöser «an niemanden»');
+
+  await api('PUT', '/settings/mail', everyBlock({ staff: 'all', others: 'all' }));
+  assert.equal((await api('GET', '/public/info')).testMode, false);
+  assert.deepEqual((await api('GET', '/settings/mail')).incident.triggers, {});
+});
+
 Object.assign(state, { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule });

@@ -281,6 +281,13 @@
       "when": 1793340233942,
       "tag": "0039_helpspot_import_open",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793346751950,
+      "tag": "0040_mailbox_fetch_enabled",
+      "breakpoints": true
     }
   ]
 }

@@ -18,9 +18,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { AdminOnly, CurrentUser, Public } from '../auth/auth.decorators';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
-import { appConfig } from '../config';
 import type { User } from '../db/schema';
-import { SettingsService } from '../settings/settings.service';
 import { GraphMailService } from './graph-mail.service';
 import { explainMailError } from './mail-errors';
 import { MailFetcherService } from './mail-fetcher.service';
@@ -37,6 +35,8 @@ const mailboxSchema = z.object({
   address: emailSchema,
   active: z.boolean(),
   isDefault: z.boolean(),
+  /** Mails abrufen; fehlt = unverändert bzw. beim Anlegen an */
+  fetchEnabled: z.boolean().optional(),
   imapHost: z.string().trim().min(1, 'IMAP-Server fehlt').max(255),
   imapPort: port,
   imapSecure: z.boolean(),
@@ -101,35 +101,13 @@ export class MailboxOptionsController {
   }
 }
 
-const mailFetchSchema = z.object({ enabled: z.boolean() });
-
-/**
- * Mail-Abruf für alle Postfächer ein- und ausschalten (Entscheid vom 30.10.2026). «automatic» = false: der Abruf jede
- * Minute ist zusätzlich mit MAIL_POLLING=false abgeschaltet (z.B. im Test-Stack), dann gibt es nur «Jetzt abrufen».
- */
-@AdminOnly()
-@Controller('admin/mail-fetch')
-export class MailFetchController {
-  private readonly logger = new Logger(MailFetchController.name);
-
-  constructor(private readonly settings: SettingsService) {}
-
-  @Get()
-  async view() {
-    return { enabled: (await this.settings.get('mailFetch')).enabled, automatic: appConfig.mailPolling };
-  }
-
-  @Put()
-  async save(@Body(new ZodPipe(mailFetchSchema)) body: z.infer<typeof mailFetchSchema>, @CurrentUser() user: User) {
-    await this.settings.set('mailFetch', { enabled: body.enabled });
-    this.logger.log(`Mail-Abruf ${body.enabled ? 'eingeschaltet' : 'ausgeschaltet'} von ${user.name}`);
-    return this.view();
-  }
-}
+const fetchSchema = z.object({ enabled: z.boolean() });
 
 @AdminOnly()
 @Controller('admin/mailboxes')
 export class MailboxesController {
+  private readonly logger = new Logger(MailboxesController.name);
+
   constructor(
     private readonly mailboxes: MailboxesService,
     private readonly transport: MailTransportService,
@@ -221,13 +199,26 @@ export class MailboxesController {
     }
   }
 
-  /** Ruft das Postfach sofort ab, sofern der Mail-Abruf eingeschaltet ist. */
+  /** Ruft das Postfach sofort ab, sofern sein Mail-Abruf eingeschaltet ist. */
   @Post(':id/poll')
   @HttpCode(200)
   async poll(@Param('id', ParseUUIDPipe) id: string) {
-    if (!(await this.fetcher.fetchEnabled())) throw new ConflictException('Der Mail-Abruf ist ausgeschaltet (Verwaltung → Postfächer)');
-    await this.fetcher.poll(await this.mailboxes.get(id));
+    const mailbox = await this.mailboxes.get(id);
+    if (!mailbox.fetchEnabled) throw new ConflictException('Der Mail-Abruf dieses Postfachs ist ausgeschaltet');
+    await this.fetcher.poll(mailbox);
     return toPublicMailbox(await this.mailboxes.get(id));
+  }
+
+  /** Mail-Abruf des Postfachs ein- oder ausschalten (Entscheid vom 30.10.2026); der Versand läuft weiter */
+  @Put(':id/fetch')
+  async setFetch(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(fetchSchema)) body: z.infer<typeof fetchSchema>,
+    @CurrentUser() user: User,
+  ) {
+    const mailbox = await this.mailboxes.setFetchEnabled(id, body.enabled);
+    this.logger.log(`Mail-Abruf für «${mailbox.name}» ${body.enabled ? 'eingeschaltet' : 'ausgeschaltet'} von ${user.name}`);
+    return toPublicMailbox(mailbox);
   }
 
   /** Startet die Anmeldung mit einem Microsoft-Konto im Browser (Adresse der Anmeldeseite). */

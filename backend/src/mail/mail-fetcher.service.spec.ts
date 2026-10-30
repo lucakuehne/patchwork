@@ -63,7 +63,6 @@ function setup(serverUidValidity = 7) {
     unused,
     unused,
     unused,
-    unused,
   );
   const ingested: number[] = [];
   vi.spyOn(fetcher, 'ingest').mockImplementation(async (_mailbox, raw) => {

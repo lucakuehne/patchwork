@@ -3,13 +3,13 @@ import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
-import { DELIVERY_BLOCKS, testModeText } from '../test-mode';
-import type { DeliveryBlock, MailSettings, PersonPick, User } from '../types';
+import { blockTriggers, DELIVERY_BLOCKS, testModeText } from '../test-mode';
+import type { DeliveryBlock, DeliveryScope, DeliveryTrigger, MailSettings, PersonPick, User } from '../types';
 import PersonSearch from './PersonSearch.vue';
 
 /**
- * Testbetrieb: Empfängerkreise für IT-Mitarbeitende und alle übrigen, je Block Generell, Störungen und Aufgaben
- * (Verwaltung → Ausgehende Mails).
+ * Testbetrieb: Empfängerkreise für IT-Mitarbeitende und alle übrigen, je Block Generell, Störungen und Aufgaben, dazu
+ * abweichend je Auslöser (Verwaltung → Ausgehende Mails).
  */
 const emit = defineEmits<{ saved: [] }>();
 const session = useSession();
@@ -17,12 +17,20 @@ const toast = useToast();
 const delivery = ref<MailSettings | null>(null);
 const staffUsers = ref<User[]>([]);
 const saving = ref(false);
+/** Auslöser eines Blocks aufgeklappt, wenn beim Laden einer abweicht; danach klappt nur man selbst */
+const triggersOpen = ref<Partial<Record<DeliveryBlock, boolean>>>({});
+
+const TRIGGER_GROUPS = [
+  { value: 'reporter', label: 'An Melder und Beteiligte' },
+  { value: 'staff', label: 'An IT-Mitarbeitende' },
+] as const;
 
 onMounted(async () => {
   try {
     const [mail, staff] = await Promise.all([api.get<MailSettings>('/settings/mail'), api.get<User[]>('/users/staff')]);
     delivery.value = mail;
     staffUsers.value = staff;
+    triggersOpen.value = Object.fromEntries(DELIVERY_BLOCKS.map((b) => [b.value, differing(b.value) > 0]));
   } catch (err) {
     toast.error(err);
   }
@@ -31,6 +39,30 @@ onMounted(async () => {
 const summary = computed(() =>
   delivery.value ? (testModeText(delivery.value) ?? 'Normaler Betrieb: Alle Mails werden versendet.') : '',
 );
+
+/** Anzahl Auslöser mit eigener Einstellung */
+function differing(block: DeliveryBlock): number {
+  const triggers = delivery.value?.[block].triggers ?? {};
+  return blockTriggers(block).filter((t) => triggers[t.value]).length;
+}
+
+function setTrigger(block: DeliveryBlock, trigger: DeliveryTrigger, value: string) {
+  const d = delivery.value?.[block];
+  if (!d) return;
+  const triggers = { ...d.triggers };
+  if (value === 'block') delete triggers[trigger];
+  else triggers[trigger] = value as DeliveryScope;
+  d.triggers = triggers;
+}
+
+/**
+ * Auswahl der Personen auch dann zeigen, wenn nur ein Auslöser «nur an ausgewählte» geht: IT-Mitarbeitende können bei
+ * jedem Auslöser Empfänger sein (auch als Melder), die übrigen nur bei Mails an Melder und Beteiligte.
+ */
+function selectedByTrigger(block: DeliveryBlock, circle: 'staff' | 'others'): boolean {
+  const triggers = delivery.value?.[block].triggers ?? {};
+  return blockTriggers(block).some((t) => triggers[t.value] === 'selected' && (circle === 'staff' || t.group === 'reporter'));
+}
 
 function toggleStaff(block: DeliveryBlock, email: string, checked: boolean) {
   const d = delivery.value?.[block];
@@ -71,8 +103,9 @@ async function save() {
       Legt fest, wer Mails tatsächlich erhält. Alle übrigen Mails stellt Patchwork wie gewohnt zusammen, versendet sie aber
       nicht; sie stehen unten in der Liste und werden später nicht nachträglich versendet. Massgebend ist der Empfänger:
       IT-Mitarbeitende sind Benutzer mit der Rolle IT oder Admin. Geht eine Mail nur an einen Teil der Empfänger, stehen im Kopf
-      nur diese. Massgebend ist der Typ des Vorgangs beim Versand. Solange nicht in allen Blöcken beide Kreise auf «an alle»
-      stehen, sehen alle Benutzer oben einen Hinweis.
+      nur diese. Massgebend ist der Typ des Vorgangs beim Versand. Je Auslöser lässt sich davon abweichen: Die Wahl gilt
+      dann für beide Kreise, «nur an ausgewählte» mit den Personen des Blocks. Solange nicht in allen Blöcken beide Kreise
+      und alle Auslöser auf «an alle» stehen, sehen alle Benutzer oben einen Hinweis.
     </span>
     <template v-if="delivery">
       <section v-for="b in DELIVERY_BLOCKS" :key="b.value" class="block stack" :data-block="b.value">
@@ -88,7 +121,10 @@ async function save() {
               <option value="selected">nur an ausgewählte</option>
               <option value="all">an alle</option>
             </select>
-            <div v-if="delivery[b.value].staff === 'selected'" class="choices">
+            <div v-if="delivery[b.value].staff === 'selected' || selectedByTrigger(b.value, 'staff')" class="choices">
+              <span v-if="delivery[b.value].staff !== 'selected'" class="hint faint">
+                Ausgewählte für Auslöser mit «nur an ausgewählte»:
+              </span>
               <label v-for="u in staffUsers" :key="u.id" class="checkbox">
                 <input
                   type="checkbox"
@@ -107,7 +143,10 @@ async function save() {
               <option value="selected">nur an ausgewählte</option>
               <option value="all">an alle</option>
             </select>
-            <div v-if="delivery[b.value].others === 'selected'" class="choices">
+            <div v-if="delivery[b.value].others === 'selected' || selectedByTrigger(b.value, 'others')" class="choices">
+              <span v-if="delivery[b.value].others !== 'selected'" class="hint faint">
+                Ausgewählte für Auslöser mit «nur an ausgewählte»:
+              </span>
               <div v-if="delivery[b.value].otherEmails.length" class="chips">
                 <span v-for="email in delivery[b.value].otherEmails" :key="email" class="chip">
                   {{ email }}
@@ -125,6 +164,32 @@ async function save() {
             </div>
           </div>
         </div>
+        <details class="triggers" :open="triggersOpen[b.value]" @toggle="triggersOpen[b.value] = ($event.target as HTMLDetailsElement).open">
+          <summary>
+            Je Auslöser:
+            {{ differing(b.value) ? `${differing(b.value)} abweichend` : 'alle wie Block' }}
+          </summary>
+          <div class="grid-2 trigger-groups">
+            <div v-for="g in TRIGGER_GROUPS" :key="g.value" class="trigger-group">
+              <span class="group-label">{{ g.label }}</span>
+              <div v-for="t in blockTriggers(b.value).filter((t) => t.group === g.value)" :key="t.value" class="trigger">
+                <label :for="`tm-${b.value}-${t.value}`">{{ t.label }}</label>
+                <select
+                  :id="`tm-${b.value}-${t.value}`"
+                  class="select trigger-scope"
+                  :class="{ changed: !!delivery[b.value].triggers[t.value] }"
+                  :value="delivery[b.value].triggers[t.value] ?? 'block'"
+                  @change="setTrigger(b.value, t.value, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="block">wie Block</option>
+                  <option value="none">an niemanden</option>
+                  <option value="selected">nur an ausgewählte</option>
+                  <option value="all">an alle</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </details>
       </section>
     </template>
     <div v-if="delivery" class="row">
@@ -183,5 +248,38 @@ async function save() {
 }
 .chip-remove:hover {
   color: var(--danger);
+}
+.triggers summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.trigger-groups {
+  margin-top: 8px;
+  align-items: start;
+}
+.trigger-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.group-label {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.trigger-scope {
+  width: 170px;
+  flex: none;
+  height: 28px;
+}
+.trigger-scope.changed {
+  border-color: var(--accent);
 }
 </style>

@@ -8,8 +8,8 @@ import type { SystemAlerts } from '../types';
 
 /**
  * Hinweise bei Störungen, nur für Admins (Entscheid vom 26.10.2026): Mail-Abruf seit mindestens 60 Minuten gestört,
- * fehlgeschlagene ausgehende Mails (bis erneut gesendet oder als erledigt markiert), wenig Speicherplatz. Dazu, solange
- * der Mail-Abruf ausgeschaltet ist (Entscheid vom 30.10.2026).
+ * fehlgeschlagene ausgehende Mails (bis erneut gesendet oder als erledigt markiert), wenig Speicherplatz. Dazu die
+ * Postfächer, deren Mail-Abruf ausgeschaltet ist (Entscheid vom 30.10.2026).
  * Lädt beim Seitenwechsel und jede Minute neu.
  */
 const session = useSession();
@@ -39,8 +39,10 @@ const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1).replace('.', ','
 
 <template>
   <template v-if="session.isAdmin && alerts">
-    <div v-if="alerts.mailFetchOff" class="alert" role="alert">
-      <strong>Mail-Abruf ausgeschaltet:</strong> Patchwork holt keine Mails ab, der Versand läuft weiter.
+    <div v-if="alerts.mailFetchOff.length" class="alert" role="alert">
+      <strong>Mail-Abruf ausgeschaltet:</strong>
+      {{ alerts.mailFetchOff.length === 1 ? 'Postfach' : 'Postfächer' }} {{ alerts.mailFetchOff.map((m) => `«${m.name}»`).join(', ') }},
+      der Versand läuft weiter.
       <RouterLink to="/admin/mailboxes">Postfächer</RouterLink>
     </div>
     <div v-for="m in alerts.mailboxes" :key="m.id" class="alert" role="alert">

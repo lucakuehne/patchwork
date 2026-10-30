@@ -24,13 +24,13 @@ import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import { appConfig } from '../config';
 import type { UploadedFile as UploadedFileData } from '../items/items.service';
 import { callbackUrl } from '../mail/microsoft';
-import { isLive } from '../mail/test-delivery';
+import { isLive, triggerCircles } from '../mail/test-delivery';
 import { PortalAccessService } from '../portal/portal-access.service';
 import { StorageService } from '../storage/storage.service';
 import { TlsService } from '../tls/tls.service';
 import type { User } from '../db/schema';
 import { AREAS, AreasService } from './areas';
-import { DELIVERY_BLOCKS, SettingsService, type LdapSettings } from './settings.service';
+import { BLOCK_TRIGGERS, DELIVERY_BLOCKS, SettingsService, type DeliveryBlock, type LdapSettings } from './settings.service';
 
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
 
@@ -41,10 +41,23 @@ const addressList = z
   .max(1000)
   .default([])
   .transform((list) => [...new Set(list)]);
-/** Testbetrieb: Empfängerkreise für IT-Mitarbeitende und alle übrigen (beide «all» = normaler Betrieb) */
-const circlesSchema = z.object({ staff: scope, others: scope, staffEmails: addressList, otherEmails: addressList });
+/**
+ * Testbetrieb: Empfängerkreise für IT-Mitarbeitende und alle übrigen (beide «all» = normaler Betrieb), dazu abweichende
+ * Kreise je Auslöser; Auslöser, die im Block nicht vorkommen, fallen weg.
+ */
+const circlesSchema = (block: DeliveryBlock) =>
+  z.object({
+    staff: scope,
+    others: scope,
+    staffEmails: addressList,
+    otherEmails: addressList,
+    triggers: z
+      .record(z.string(), scope)
+      .default({})
+      .transform((t) => Object.fromEntries(BLOCK_TRIGGERS[block].filter((k) => t[k]).map((k) => [k, t[k]!]))),
+  });
 /** Je ein Block für Mails ohne Typ, zu Störungen und zu Aufgaben */
-const mailSchema = z.object({ general: circlesSchema, incident: circlesSchema, task: circlesSchema });
+const mailSchema = z.object({ general: circlesSchema('general'), incident: circlesSchema('incident'), task: circlesSchema('task') });
 /** Portal: niemand, ausgewählte (Personen und AD-Gruppe) oder alle */
 const portalSchema = z.object({
   access: scope,
@@ -144,9 +157,14 @@ export class SettingsController {
       hasLogo: !!logo,
       logoVersion: logo?.storageKey.slice(-8) ?? null,
       setupRequired,
-      // Testbetrieb: Wer bekommt Mails, je Block (für den Hinweis oben und im Antwortfeld)?
+      // Testbetrieb: Hinweis oben; je Block die Kreise der öffentlichen Antwort für den Vermerk im Antwortfeld
       testMode: !isLive(mail),
-      delivery: Object.fromEntries(DELIVERY_BLOCKS.map((b) => [b, { staff: mail[b].staff, others: mail[b].others }])),
+      delivery: Object.fromEntries(
+        DELIVERY_BLOCKS.map((b) => {
+          const reply = triggerCircles(mail[b], 'reply');
+          return [b, { staff: reply.staff, others: reply.others }];
+        }),
+      ),
       // Für den Hinweis an Admins vor Ablauf; das Zertifikat ist ohnehin öffentlich
       certificateExpiresAt: this.tls.expiresAt,
     };
@@ -179,8 +197,10 @@ export class SettingsController {
 
   @AdminOnly()
   @Get('settings/mail')
-  mail() {
-    return this.settings.get('mail');
+  async mail() {
+    const mail = await this.settings.get('mail');
+    // Ältere Einstellungen haben noch keine Auslöser
+    return Object.fromEntries(DELIVERY_BLOCKS.map((b) => [b, { ...mail[b], triggers: mail[b].triggers ?? {} }]));
   }
 
   /** Testbetrieb: Empfängerkreise. Zurückgehaltene Mails werden später nicht nachträglich versendet. */

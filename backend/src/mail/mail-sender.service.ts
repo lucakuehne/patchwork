@@ -12,7 +12,7 @@ import { GraphMailService } from './graph-mail.service';
 import { explainMailError } from './mail-errors';
 import { MailboxesService } from './mailboxes.service';
 import { MailTransportService } from './mail-transport.service';
-import { deliveryBlock, deliveryFilter, isBlockLive } from './test-delivery';
+import { deliveryBlock, deliveryFilter, isBlockLive, triggerCircles } from './test-delivery';
 
 export interface OutgoingMail {
   mailboxId: string;
@@ -140,8 +140,9 @@ export class MailSenderService implements OnModuleInit {
 
     const { files, fromName, build } = await this.compose(mail, mailbox);
 
-    // Testbetrieb: nur an freigegebene Empfänger, nach dem Block des Vorgangstyps beim Versand
-    const circles = (await this.settings.get('mail'))[deliveryBlock(await this.itemType(mail.itemId))];
+    // Testbetrieb: nur an freigegebene Empfänger, nach dem Block des Vorgangstyps beim Versand und dem Auslöser
+    const block = (await this.settings.get('mail'))[deliveryBlock(await this.itemType(mail.itemId))];
+    const circles = triggerCircles(block, mail.template);
     const allowed = isBlockLive(circles)
       ? () => true
       : deliveryFilter(circles, await this.staffAddresses([...mail.to, ...mail.cc]));

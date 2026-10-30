@@ -1010,6 +1010,52 @@ await step('testbetrieb-je-typ', async () => {
   await api('PUT', '/settings/mail', { general: circles('all', 'all'), incident: circles('all', 'all'), task: circles('all', 'all') });
 });
 
+await step('testbetrieb-je-ausloeser', async () => {
+  // Störungen an niemanden ausser öffentlichen Antworten, Aufgaben an alle ohne Eingangsbestätigung
+  const circles = (staff, others, triggers = {}) => ({ staff, others, staffEmails: [], otherEmails: [], triggers });
+  await api('PUT', '/settings/mail', {
+    general: circles('all', 'all'),
+    incident: circles('none', 'none', { reply: 'all' }),
+    task: circles('all', 'all', { confirmation: 'none' }),
+  });
+  await page.goto(`${BASE}/admin/outgoing-mails`);
+  const block = (b) => page.locator(`section.block[data-block="${b}"]`);
+  await block('incident').waitFor();
+  // Aufgeklappt nur, wo ein Auslöser abweicht
+  if (await block('general').locator('details.triggers').evaluate((d) => d.open)) throw new Error('Generell ohne Abweichung aufgeklappt');
+  if (!(await block('incident').locator('details.triggers').evaluate((d) => d.open))) throw new Error('Störungen nicht aufgeklappt');
+  const incidentSummary = (await block('incident').locator('details.triggers summary').innerText()).trim();
+  if (incidentSummary !== 'Je Auslöser: 1 abweichend') throw new Error(`Störungen: ${incidentSummary}`);
+  if ((await page.locator('#tm-incident-reply').inputValue()) !== 'all') throw new Error('Öffentliche Antwort nicht «an alle»');
+  // Nur Auslöser, die im Block vorkommen
+  if (await page.locator('#tm-incident-dueReminder').count()) throw new Error('«Fällig» bei Störungen');
+  if (!(await page.locator('#tm-task-dueReminder').count())) throw new Error('«Fällig» fehlt bei Aufgaben');
+  if (!(await page.locator('#tm-general-welcome').count()) || (await page.locator('#tm-general-done').count())) {
+    throw new Error('Auslöser bei Generell falsch');
+  }
+  const summary = (await page.locator('.card', { has: page.locator('section.block') }).locator('.row .faint').innerText()).trim();
+  const expected =
+    'Generell: alle Mails. Störungen: keine Mails, abweichend Öffentliche Antwort an alle. ' +
+    'Aufgaben: alle Mails, abweichend Eingangsbestätigung an niemanden.';
+  if (summary !== expected) throw new Error(`Übersicht neben «Speichern»: ${summary}`);
+  // Über die Oberfläche: «Zugewiesen» nur an ausgewählte, die Auswahl der IT erscheint im Block
+  await page.locator('#tm-incident-assigned').selectOption('selected');
+  await block('incident').locator('.choices', { hasText: 'Ausgewählte für Auslöser' }).first().waitFor();
+  await block('incident').screenshot({ path: `${OUT}/92-testbetrieb-je-ausloeser.png` });
+  console.log('Bild 92-testbetrieb-je-ausloeser');
+  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await page.locator('.toast', { hasText: 'Testbetrieb gespeichert' }).waitFor();
+  const saved = (await api('GET', '/settings/mail')).data.incident.triggers;
+  if (JSON.stringify(saved) !== JSON.stringify({ reply: 'all', assigned: 'selected' })) throw new Error(`Gespeichert: ${JSON.stringify(saved)}`);
+  // Antwortfeld einer Störung: kein Vermerk, die öffentliche Antwort geht an alle
+  const incident = (await api('GET', '/items?view=incidents')).data.items[0];
+  await page.goto(`${BASE}/items/${incident.prefix}-${incident.number}`);
+  await page.getByRole('button', { name: 'Öffentlich', exact: true }).click();
+  await page.locator('.composer .faint.small').first().waitFor();
+  if (await page.locator('.composer .test-mode').count()) throw new Error('Vermerk im Antwortfeld, obwohl die Antwort an alle geht');
+  await api('PUT', '/settings/mail', { general: circles('all', 'all'), incident: circles('all', 'all'), task: circles('all', 'all') });
+});
+
 await step('simulieren', async () => {
   const none = { staff: 'none', others: 'none', staffEmails: [], otherEmails: [] };
   await api('PUT', '/settings/mail', { general: none, incident: none, task: none });
@@ -1087,18 +1133,23 @@ await step('helpspot-import', async () => {
 });
 
 await step('mail-abruf', async () => {
-  // Mail-Abruf für alle Postfächer ausschalten: Hinweis oben für Admins, «Jetzt abrufen» gesperrt; danach wieder ein
+  // Mail-Abruf eines Postfachs ausschalten: Hinweis auf der Karte und oben für Admins, «Jetzt abrufen» gesperrt; danach
+  // wieder ein
   await page.goto(`${BASE}/admin/mailboxes`);
-  const card = page.locator('.mail-fetch');
-  await card.locator('.badge', { hasText: 'eingeschaltet' }).waitFor();
-  await card.getByRole('button', { name: 'Ausschalten' }).click();
-  await card.locator('.badge', { hasText: 'ausgeschaltet' }).waitFor();
+  const card = page.locator('.mailbox').first();
+  await card.getByRole('button', { name: 'Abruf ausschalten' }).click();
+  await card.locator('.badge', { hasText: 'Abruf aus' }).waitFor();
+  if (!(await card.getByRole('button', { name: 'Jetzt abrufen' }).isDisabled())) throw new Error('«Jetzt abrufen» trotz ausgeschaltetem Abruf');
   await page.goto(`${BASE}/admin/mailboxes`);
   await page.locator('.alert', { hasText: 'Mail-Abruf ausgeschaltet' }).waitFor();
-  if (!(await page.getByRole('button', { name: 'Jetzt abrufen' }).first().isDisabled())) throw new Error('«Jetzt abrufen» trotz ausgeschaltetem Abruf');
   await shot('91-mail-abruf-aus');
-  await page.locator('.mail-fetch').getByRole('button', { name: 'Einschalten' }).click();
-  await page.locator('.mail-fetch .badge', { hasText: 'eingeschaltet' }).waitFor();
+  // Im Dialog: Häkchen «Mails abrufen»
+  await page.locator('.mailbox').first().getByRole('button', { name: 'Bearbeiten' }).click();
+  if (await page.locator('.dialog').getByLabel('Mails abrufen').isChecked()) throw new Error('«Mails abrufen» im Dialog angehakt');
+  await page.keyboard.press('Escape');
+  await page.locator('.dialog').waitFor({ state: 'detached' });
+  await page.locator('.mailbox').first().getByRole('button', { name: 'Abruf einschalten' }).click();
+  await page.locator('.mailbox').first().getByRole('button', { name: 'Abruf ausschalten' }).waitFor();
 });
 
 await step('auswertung', async () => {

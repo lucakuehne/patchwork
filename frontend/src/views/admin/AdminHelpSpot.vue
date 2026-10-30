@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { api } from '../../api';
 import ItemLink from '../../components/ItemLink.vue';
 import { formatDateTime, itemRef, TYPE_LABELS } from '../../format';
+import { formatDuration, remainingMs } from '../../import-estimate';
 import { useConfirm } from '../../stores/confirm';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
@@ -34,7 +35,6 @@ let pollTimer: number | undefined;
 
 const running = computed(() => (view.value?.runs[0]?.status === 'running' ? view.value.runs[0] : null));
 const percent = (run: HelpSpotImportRun) => (run.total ? Math.round((run.processed / run.total) * 100) : 0);
-
 function apply(next: HelpSpotView) {
   view.value = next;
   url.value = next.url;
@@ -283,6 +283,8 @@ const runResult = (r: HelpSpotImportRun) =>
         <span class="faint">
           {{ runResult(running) }}
         </span>
+        <!-- Hochrechnung: rechnet bei jedem Abholen des Fortschritts (alle 3 Sekunden) neu -->
+        <span v-if="remainingMs(running) !== null" class="estimate">Voraussichtlich noch {{ formatDuration(remainingMs(running)!) }}</span>
       </div>
       <div class="segmented scope" role="group" aria-label="Umfang des Imports">
         <button type="button" :class="{ active: !includeOpen }" :aria-pressed="!includeOpen" @click="includeOpen = false">Nur geschlossene Tickets</button>
@@ -405,6 +407,9 @@ h3 {
   height: 100%;
   background: var(--accent);
   transition: width 0.4s;
+}
+.estimate {
+  font-size: 13px;
 }
 .error-text {
   color: var(--danger);

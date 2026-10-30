@@ -102,6 +102,8 @@ export const mailboxes = pgTable('mailboxes', {
   address: text('address').notNull().unique(),
   active: boolean('active').notNull().default(true),
   isDefault: boolean('is_default').notNull().default(false),
+  /** Mails abrufen (Entscheid vom 30.10.2026): aus = kein Abruf, auch nicht «Jetzt abrufen»; der Versand läuft weiter */
+  fetchEnabled: boolean('fetch_enabled').notNull().default(true),
   imapHost: text('imap_host').notNull(),
   imapPort: integer('imap_port').notNull().default(993),
   imapSecure: boolean('imap_secure').notNull().default(true),

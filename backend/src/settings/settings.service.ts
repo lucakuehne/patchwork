@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
 import { settings, type ItemType } from '../db/schema';
+import type { TemplateKey } from '../mail/mail-templates';
 import type { AreaSettings } from './areas';
 
 export interface GeneralSettings {
@@ -69,7 +70,15 @@ export interface DeliveryCircles {
   staffEmails: string[];
   /** Ausgewählte Melder, Beteiligte und Kunden (E-Mail-Adressen, klein geschrieben) */
   otherEmails: string[];
+  /**
+   * Abweichend je Auslöser (Entscheid vom 30.10.2026): gilt für beide Kreise, «selected» mit den ausgewählten Personen
+   * des Blocks. Fehlt ein Auslöser (auch in älteren Einstellungen ohne das Feld), gelten die Kreise des Blocks.
+   */
+  triggers?: Partial<Record<DeliveryTrigger, DeliveryScope>>;
 }
+
+/** Auslöser im Testbetrieb: die Mails mit eigener Vorlage, ohne Link- und Fusszeilen */
+export type DeliveryTrigger = Exclude<TemplateKey, 'reporterLink' | 'reporterFooter' | 'staffLink' | 'staffFooter'>;
 
 /**
  * Blöcke des Testbetriebs je Typ des Vorgangs (Entscheid vom 28.10.2026). «general» gilt für Vorgänge ohne Typ
@@ -77,17 +86,34 @@ export interface DeliveryCircles {
  */
 export const DELIVERY_BLOCKS = ['general', 'incident', 'task'] as const;
 export type DeliveryBlock = (typeof DELIVERY_BLOCKS)[number];
+
+const TYPED_TRIGGERS: DeliveryTrigger[] = [
+  'confirmation',
+  'reply',
+  'done',
+  'rejected',
+  'duplicateMerged',
+  'duplicateRedirected',
+  'waitingReminder',
+  'waitingClosed',
+  'assigned',
+  'inboundReply',
+  'fixCompleted',
+  'mentioned',
+];
+
+/**
+ * Auslöser, die im Block vorkommen: Abschliessen, Ablehnen und Erinnerungen brauchen einen Status und damit einen Typ,
+ * «Fällig» gibt es nur bei Aufgaben, «Willkommen» ist eine Mail ohne Vorgang.
+ */
+export const BLOCK_TRIGGERS: Record<DeliveryBlock, readonly DeliveryTrigger[]> = {
+  general: ['confirmation', 'reply', 'duplicateMerged', 'duplicateRedirected', 'assigned', 'inboundReply', 'fixCompleted', 'mentioned', 'welcome'],
+  incident: TYPED_TRIGGERS,
+  task: [...TYPED_TRIGGERS, 'dueReminder'],
+};
 export type MailSettings = Record<DeliveryBlock, DeliveryCircles>;
 
 const LIVE: DeliveryCircles = { staff: 'all', others: 'all', staffEmails: [], otherEmails: [] };
-
-/**
- * Mail-Abruf für alle Postfächer ein oder aus (Verwaltung → Postfächer, Entscheid vom 30.10.2026), z.B. vom Probeimport
- * aus HelpSpot bis zum Umstieg. Aus heisst: kein Abruf, auch nicht «Jetzt abrufen»; der Versand läuft weiter.
- */
-export interface MailFetchSettings {
-  enabled: boolean;
-}
 
 /**
  * Portal: wer es nutzen darf. «selected»: die ausgewählten Personen und die Mitglieder der AD-Gruppe.
@@ -158,7 +184,6 @@ interface SettingsMap {
   logo: LogoSettings | null;
   ldap: LdapSettings;
   mail: MailSettings;
-  mailFetch: MailFetchSettings;
   portal: PortalSettings;
   statusFlow: StatusFlowSettings;
   microsoft: MicrosoftSettings;
@@ -175,7 +200,6 @@ const DEFAULTS: SettingsMap = {
   logo: null,
   ldap: DEFAULT_LDAP,
   mail: { general: LIVE, incident: LIVE, task: LIVE },
-  mailFetch: { enabled: true },
   // Ohne Einstellung ist das Portal aus (Entscheid vom 20.10.2026)
   portal: { access: 'none', emails: [], groupDn: '' },
   // Solange kein Ablauf festgelegt ist, sind alle Wechsel erlaubt

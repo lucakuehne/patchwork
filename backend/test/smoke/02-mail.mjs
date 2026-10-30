@@ -110,11 +110,10 @@ await step('Doppelt abgerufene Mail wird nicht doppelt erfasst', async () => {
   assert.equal((await api('GET', '/items?view=inbox')).items.length, 1);
 });
 
-await step('Mail-Abruf ausgeschaltet: kein Abruf, auch nicht von Hand, Hinweis für Admins; eingeschaltet holt er nach', async () => {
-  // Im Test-Stack ist der Abruf jede Minute mit MAIL_POLLING=false aus
-  assert.deepEqual(await api('GET', '/admin/mail-fetch'), { enabled: true, automatic: false });
-  assert.equal((await api('PUT', '/admin/mail-fetch', { enabled: false })).enabled, false);
-  assert.equal((await api('GET', '/admin/alerts')).mailFetchOff, true);
+await step('Mail-Abruf eines Postfachs ausgeschaltet: kein Abruf, auch nicht von Hand, Hinweis für Admins; eingeschaltet holt er nach', async () => {
+  const off = await api('PUT', `/admin/mailboxes/${mailboxId}/fetch`, { enabled: false });
+  assert.equal(off.fetchEnabled, false);
+  assert.deepEqual((await api('GET', '/admin/alerts')).mailFetchOff.map((m) => m.id), [mailboxId]);
   // Mail von der eigenen Adresse: wird nur ins Protokoll geschrieben (ignoriert), legt keinen Vorgang an
   const subject = `Abruf aus ${RUN}`;
   await sendMail({ from: MAILBOX, subject, text: 'Kommt erst nach dem Einschalten' });
@@ -122,11 +121,14 @@ await step('Mail-Abruf ausgeschaltet: kein Abruf, auch nicht von Hand, Hinweis f
   const blocked = await api('POST', `/admin/mailboxes/${mailboxId}/poll`, undefined, { expect: [409] });
   assert.match(blocked.message, /ausgeschaltet/);
   assert.ok(!(await api('GET', '/admin/incoming-mails')).some((m) => m.subject === subject), 'nicht abgeholt');
+  // Speichern ohne Angabe zum Abruf lässt ihn, wie er ist
+  const { fetchEnabled: _fetch, fetchFrom: _from, ...current } = (await api('GET', '/admin/mailboxes')).find((m) => m.id === mailboxId);
+  assert.equal((await api('PUT', `/admin/mailboxes/${mailboxId}`, current)).fetchEnabled, false);
   await loginAs(IVAN, 'geheim-geheim');
-  await api('PUT', '/admin/mail-fetch', { enabled: true }, { expect: [403] });
+  await api('PUT', `/admin/mailboxes/${mailboxId}/fetch`, { enabled: true }, { expect: [403] });
   await loginAs('ada@test.local', 'geheim-geheim');
-  assert.equal((await api('PUT', '/admin/mail-fetch', { enabled: true })).enabled, true);
-  assert.equal((await api('GET', '/admin/alerts')).mailFetchOff, false);
+  assert.equal((await api('PUT', `/admin/mailboxes/${mailboxId}/fetch`, { enabled: true })).fetchEnabled, true);
+  assert.deepEqual((await api('GET', '/admin/alerts')).mailFetchOff, []);
   await poll();
   assert.ok((await api('GET', '/admin/incoming-mails')).some((m) => m.subject === subject), 'nach dem Einschalten abgeholt');
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeliveryCircles } from '../settings/settings.service';
-import { deliveryBlock, deliveryFilter, isBlockLive, isLive } from './test-delivery';
+import { deliveryBlock, deliveryFilter, isBlockLive, isLive, triggerCircles } from './test-delivery';
 
 const staff = new Set(['ivan@firma.ch', 'ada@firma.ch']);
 const circles = (patch: Partial<DeliveryCircles>): DeliveryCircles => ({
@@ -49,5 +49,32 @@ describe('Testbetrieb: Empfängerkreise', () => {
     const c = circles({ others: 'selected', otherEmails: ['ivan@firma.ch', 'bob@kunde.ch'] });
     expect(receivers(c)).toEqual(['bob@kunde.ch']);
     expect(deliveryFilter(c, staff)(' BOB@kunde.ch ')).toBe(true);
+  });
+});
+
+describe('Testbetrieb je Auslöser', () => {
+  const live = { staff: 'all', others: 'all' } as const;
+
+  it('ohne Abweichung (auch ohne Vorlage oder ältere Einstellung) gelten die Kreise des Blocks', () => {
+    const block = circles({ staff: 'selected', staffEmails: ['ivan@firma.ch'] });
+    expect(triggerCircles(block, 'reply')).toBe(block);
+    expect(triggerCircles(block, null)).toBe(block);
+    expect(triggerCircles({ ...block, triggers: { confirmation: 'none' } }, 'reply')).toEqual({ ...block, triggers: { confirmation: 'none' } });
+  });
+
+  it('abweichender Auslöser gilt für beide Kreise, «ausgewählte» mit den Personen des Blocks', () => {
+    const block = circles({ staffEmails: ['ivan@firma.ch'], otherEmails: ['anna@kunde.ch'], triggers: { reply: 'all', assigned: 'selected' } });
+    expect(receivers(block)).toEqual([]);
+    expect(receivers(triggerCircles(block, 'reply'))).toEqual(['ivan@firma.ch', 'ada@firma.ch', 'anna@kunde.ch', 'bob@kunde.ch']);
+    expect(receivers(triggerCircles(block, 'assigned'))).toEqual(['ivan@firma.ch', 'anna@kunde.ch']);
+    const open = circles({ staff: 'all', others: 'all', triggers: { confirmation: 'none' } });
+    expect(receivers(triggerCircles(open, 'confirmation'))).toEqual([]);
+    expect(receivers(triggerCircles(open, 'done'))).toHaveLength(4);
+  });
+
+  it('normaler Betrieb nur, wenn kein Auslöser weniger als «an alle» bekommt', () => {
+    expect(isLive({ general: live, incident: { ...live, triggers: { reply: 'all' } }, task: live })).toBe(true);
+    expect(isLive({ general: live, incident: { ...live, triggers: { confirmation: 'none' } }, task: live })).toBe(false);
+    expect(isLive({ general: live, incident: live, task: { ...live, triggers: { dueReminder: 'selected' } } })).toBe(false);
   });
 });

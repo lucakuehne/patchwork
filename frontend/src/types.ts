@@ -87,7 +87,26 @@ export interface DeliveryCircles {
   others: DeliveryScope;
   staffEmails: string[];
   otherEmails: string[];
+  /** Abweichend je Auslöser für beide Kreise (mit den ausgewählten Personen des Blocks); fehlt er, gilt der Block */
+  triggers: Partial<Record<DeliveryTrigger, DeliveryScope>>;
 }
+
+/** Auslöser im Testbetrieb: Mails mit eigener Vorlage (Schlüssel der Vorlage) */
+export type DeliveryTrigger =
+  | 'confirmation'
+  | 'reply'
+  | 'done'
+  | 'rejected'
+  | 'duplicateMerged'
+  | 'duplicateRedirected'
+  | 'waitingReminder'
+  | 'waitingClosed'
+  | 'assigned'
+  | 'inboundReply'
+  | 'fixCompleted'
+  | 'mentioned'
+  | 'dueReminder'
+  | 'welcome';
 
 /** Blöcke des Testbetriebs: «general» für Vorgänge ohne Typ (Eingang) und Mails ohne Vorgang */
 export type DeliveryBlock = 'general' | ItemType;
@@ -103,7 +122,7 @@ export interface PublicInfo {
   setupRequired: boolean;
   /** Testbetrieb: Patchwork versendet nicht alle Mails */
   testMode: boolean;
-  /** Testbetrieb: Empfängerkreise je Block (überall beide «all» = normaler Betrieb) */
+  /** Testbetrieb: Empfängerkreise der öffentlichen Antwort je Block (Block oder abweichend beim Auslöser) */
   delivery: Record<DeliveryBlock, DeliveryScopes>;
   /** Ablauf des HTTPS-Zertifikats, null ohne HTTPS */
   certificateExpiresAt: string | null;
@@ -400,8 +419,8 @@ export interface ItemDetail {
 
 /** Hinweise bei Störungen für Admins (Balken oben) */
 export interface SystemAlerts {
-  /** Mail-Abruf unter Verwaltung → Postfächer ausgeschaltet (Störungen der Postfächer fehlen dann) */
-  mailFetchOff: boolean;
+  /** Aktive Postfächer mit ausgeschaltetem Mail-Abruf (ihre Störungen fehlen dann) */
+  mailFetchOff: { id: string; name: string }[];
   /** Postfächer, deren Abruf seit mindestens 60 Minuten fehlschlägt */
   mailboxes: { id: string; name: string; error: string; since: string }[];
   /** Fehlgeschlagene ausgehende Mails, weder erneut gesendet noch als erledigt markiert */
@@ -429,6 +448,8 @@ export interface Mailbox {
   address: string;
   active: boolean;
   isDefault: boolean;
+  /** Mails abrufen; aus = kein Abruf, der Versand läuft weiter */
+  fetchEnabled: boolean;
   imapHost: string;
   imapPort: number;
   imapSecure: boolean;

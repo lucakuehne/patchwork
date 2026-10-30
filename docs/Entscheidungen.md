@@ -354,7 +354,7 @@ abschalten.
   - Vorbereitung: Import bauen und prüfen; Probeimport in der Produktion mit allen geschlossenen Tickets (läuft einige
     Stunden im Hintergrund). Kein automatisches Nachziehen (bestätigt am 29.10.2026): «Importieren» holt bei jedem Lauf nur, was sich seit dem
     letzten geändert hat, und lässt sich jederzeit von Hand starten. Offene HelpSpot-Tickets möglichst abschliessen.
-  - Mit dem Probeimport wird der Mail-Abruf in Patchwork ausgeschaltet (Verwaltung → Postfächer → Mail-Abruf); bis zum
+  - Mit dem Probeimport wird der Mail-Abruf in Patchwork ausgeschaltet (Verwaltung → Postfächer, je Postfach); bis zum
     Stichtag kommen keine Mails in Patchwork an (auch keine Antworten auf Mails von Patchwork). Deshalb braucht es keinen Schalter: Antworten mit
     «Ticket:{12345}» ordnet Patchwork immer dem HS-Vorgang zu.
   - Stichtag (an einem Morgen, Datum noch offen, Admin anwesend): 1. In HelpSpot den Mail-Abruf ausschalten. 2. Die
@@ -378,16 +378,50 @@ abschalten.
 
 ## Mail-Abruf ein und aus (bestätigt am 30.10.2026)
 
-- Unter Verwaltung → Postfächer lässt sich der Mail-Abruf für alle Postfächer ein- und ausschalten (Anlass: Probeimport
-  aus HelpSpot bis zum Stichtag). Ausgeschaltet holt Patchwork keine Mails ab, der Versand läuft weiter. Den Haken
-  «Aktiv» beim Postfach braucht es dafür nicht; ein inaktives Postfach versendet auch nicht.
+- Unter Verwaltung → Postfächer lässt sich der Mail-Abruf ein- und ausschalten (Anlass: Probeimport aus HelpSpot bis
+  zum Stichtag). Ausgeschaltet holt Patchwork keine Mails ab, der Versand läuft weiter. Den Haken «Aktiv» beim Postfach
+  braucht es dafür nicht; ein inaktives Postfach versendet auch nicht.
+- Bestätigt am 30.10.2026 (ersetzt den Schalter für alle Postfächer): **je Postfach** mit dem Knopf «Abruf ausschalten»
+  bzw. «Abruf einschalten» auf der Karte (dort der Hinweis «Abruf aus») und dem Häkchen «Mails abrufen» im Dialog
+  «Bearbeiten». Beim Update übernimmt jedes Postfach den bisherigen Stand: War der Abruf für alle aus, ist er danach bei
+  allen Postfächern aus.
 - Bestätigt am 30.10.2026:
-  - Auch «Jetzt abrufen» ist gesperrt, solange der Abruf aus ist.
-  - Admins sehen oben den Balken «Mail-Abruf ausgeschaltet» mit Link zu den Postfächern; Störungen des Abrufs zeigt er
-    dann nicht.
+  - Auch «Jetzt abrufen» ist gesperrt, solange der Abruf des Postfachs aus ist.
+  - Admins sehen oben den Balken «Mail-Abruf ausgeschaltet» mit den betroffenen Postfächern und Link zu den Postfächern;
+    Störungen des Abrufs dieser Postfächer zeigt er dann nicht.
   - Beim Einschalten holt Patchwork nach, was seit dem letzten Abruf im gewählten Ordner angekommen ist (wie nach einem
     Ausfall). Soll das nicht geschehen, vorher «Mails abholen ab» beim Postfach anpassen.
-- Technisch: Einstellung `mailFetch`; `MAIL_POLLING=false` schaltet weiterhin den Abruf jede Minute ab (Test-Stack).
+- Technisch: `mailboxes.fetch_enabled` (Migration 0040 übernimmt die frühere Einstellung `mailFetch` und löscht sie);
+  `MAIL_POLLING=false` schaltet weiterhin den Abruf jede Minute ab (Test-Stack).
+
+## Hochrechnung beim HelpSpot-Import (bestätigt am 30.10.2026)
+
+- Während ein Import läuft, zeigt die Seite unter dem Fortschritt «Voraussichtlich noch etwa …»: die restlichen Tickets
+  im bisherigen Tempo, ab einer Stunde auf 5 Minuten gerundet. Wie lange er schon läuft, zeigt sie nicht (der Beginn
+  steht im Verlauf). Die Hochrechnung erscheint nach den ersten Tickets.
+
+## Testbetrieb je Auslöser (bestätigt am 30.10.2026)
+
+- Wunsch: nicht nur je Typ, sondern auch je Auslöser festlegen, welche Mail an wen geht. Ergänzt «Testbetrieb je Typ …».
+- Teil des Testbetriebs: Mails eines Auslösers, der nicht an alle geht, stellt Patchwork zusammen und protokolliert sie
+  wie bisher als «nicht versendet» bzw. «teilweise versendet». Normaler Betrieb (ohne Hinweis oben) ist erst, wenn in
+  allen Blöcken beide Kreise auf «an alle» stehen und kein Auslöser weniger bekommt. Nach dem Update weicht kein
+  Auslöser ab.
+- In jedem Block (Generell, Störungen, Aufgaben) eine eigene Auswahl je Auslöser: «wie Block» (Standard),
+  «an niemanden», «nur an ausgewählte» oder «an alle». Sie gilt für beide Kreise und kann auch mehr freigeben als der
+  Block (z.B. Störungen an niemanden, öffentliche Antworten aber an alle). «Nur an ausgewählte» meint die ausgewählten
+  Personen des Blocks; deren Auswahl erscheint auch, wenn nur ein Auslöser sie braucht.
+- Auslöser sind die Mails mit eigener Vorlage: an Melder und Beteiligte Eingangsbestätigung, Öffentliche Antwort,
+  Abgeschlossen, Abgelehnt, Duplikat (beide Fassungen), Erinnerung, Automatisch geschlossen; an IT-Mitarbeitende
+  Zugewiesen, Neue Antwort, Behebender Vorgang erledigt, Erwähnt, Fällig, Willkommen. Je Block nur die, die dort
+  vorkommen: Abgeschlossen, Abgelehnt, Erinnerung und Automatisch geschlossen nicht bei Generell (ohne Typ kein Status),
+  Fällig nur bei Aufgaben, Willkommen nur bei Generell.
+- Der Vermerk zum Testbetrieb im Antwortfeld richtet sich nach dem Auslöser «Öffentliche Antwort» im Block des Vorgangs.
+- Darstellung (bestätigt am 30.10.2026): Die Auslöser stehen je Block in einem aufklappbaren Bereich «Je Auslöser: alle wie
+  Block» bzw. «… 2 abweichend», beim Öffnen der Seite aufgeklappt, wenn einer abweicht. Die Übersicht neben «Speichern»
+  nennt die Abweichungen, z.B. «Störungen: keine Mails, abweichend Öffentliche Antwort an alle.»
+- Technisch: in der Einstellung `mail` je Block das Feld `triggers` (Vorlage → Kreis), ohne Eintrag gilt der Block;
+  ältere Einstellungen ohne das Feld gelten unverändert. Massgebend ist die Vorlage der Mail beim Versand.
 
 ## Testbetrieb je Typ, im Namen anderer antworten, Backlog im Board (bestätigt am 28.10.2026)
 
@@ -678,6 +712,7 @@ Bestätigt am 19.10.2026:
     - Bestehende Einstellung: eingeschaltet wird «an niemanden / an niemanden», ausgeschaltet «an alle / an alle».
     - Gewünscht am 20.10.2026: Die Einstellung steht auf der Seite «Ausgehende Mails» über der Liste, nicht mehr unter «Allgemein».
     - Seit 28.10.2026 je Vorgangstyp (Generell, Störungen, Aufgaben), siehe «Testbetrieb je Typ, im Namen anderer antworten, Backlog im Board».
+    - Seit 30.10.2026 zusätzlich je Auslöser, siehe «Testbetrieb je Auslöser».
 15. Bestätigt am 20.10.2026: **Alle ausgehenden Mails werden protokolliert**, nicht nur die im Testbetrieb zurückgehaltenen:
     - Seite Verwaltung → «Ausgehende Mails» (ersetzt «Nicht versendete Mails», nur Admin) mit Status «versendet», «teilweise versendet», «nicht versendet», «Fehler» oder «wird versendet», Filter nach Status und vollständiger Ansicht (Text, Anhänge, .eml).
     - Jede Mail wird vollständig gespeichert, ohne automatische Löschung.

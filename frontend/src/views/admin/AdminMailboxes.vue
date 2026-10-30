@@ -14,13 +14,6 @@ const toast = useToast();
 const mailboxes = ref<Mailbox[]>([]);
 const busyId = ref<string | null>(null);
 const testResult = ref<Record<string, { ok: boolean; imap: string; smtp: string }>>({});
-/** Mail-Abruf für alle Postfächer (Entscheid vom 30.10.2026); automatic = false: Abruf jede Minute mit MAIL_POLLING=false aus */
-interface MailFetch {
-  enabled: boolean;
-  automatic: boolean;
-}
-const mailFetch = ref<MailFetch | null>(null);
-const mailFetchBusy = ref(false);
 
 const AUTH_LABELS: Record<Mailbox['authType'], string> = {
   password: 'Passwort',
@@ -34,6 +27,7 @@ interface Draft {
   address: string;
   active: boolean;
   isDefault: boolean;
+  fetchEnabled: boolean;
   imapHost: string;
   imapPort: number;
   imapSecure: boolean;
@@ -70,27 +64,20 @@ async function load() {
     toast.error(err);
   }
 }
-onMounted(() => Promise.all([load(), loadMicrosoft(), loadMailFetch()]));
+onMounted(() => Promise.all([load(), loadMicrosoft()]));
 
-async function loadMailFetch() {
+/** Mail-Abruf eines Postfachs ein- oder ausschalten (Entscheid vom 30.10.2026); der Versand läuft weiter */
+async function toggleFetch(m: Mailbox) {
+  const enabled = !m.fetchEnabled;
+  busyId.value = m.id;
   try {
-    mailFetch.value = await api.get<MailFetch>('/admin/mail-fetch');
-  } catch (err) {
-    toast.error(err);
-  }
-}
-
-async function toggleMailFetch() {
-  if (!mailFetch.value) return;
-  const enabled = !mailFetch.value.enabled;
-  mailFetchBusy.value = true;
-  try {
-    mailFetch.value = await api.put<MailFetch>('/admin/mail-fetch', { enabled });
-    toast.success(enabled ? 'Mail-Abruf eingeschaltet' : 'Mail-Abruf ausgeschaltet');
+    await api.put(`/admin/mailboxes/${m.id}/fetch`, { enabled });
+    await load();
+    toast.success(enabled ? `Mail-Abruf für «${m.name}» eingeschaltet` : `Mail-Abruf für «${m.name}» ausgeschaltet`);
   } catch (err) {
     toast.error(err);
   } finally {
-    mailFetchBusy.value = false;
+    busyId.value = null;
   }
 }
 
@@ -116,6 +103,7 @@ function create() {
     address: '',
     active: true,
     isDefault: mailboxes.value.length === 0,
+    fetchEnabled: true,
     imapHost: '',
     imapPort: 993,
     imapSecure: true,
@@ -289,6 +277,7 @@ async function save() {
     address: d.address,
     active: d.active,
     isDefault: d.isDefault,
+    fetchEnabled: d.fetchEnabled,
     // Bei Microsoft-Konten laufen Abruf und Versand über Microsoft Graph; die Server bleiben nur als Vorgabe stehen
     imapHost: d.imapHost || (d.authType === 'microsoft' ? 'outlook.office365.com' : ''),
     imapPort: d.imapPort,
@@ -583,22 +572,9 @@ function openMicrosoft() {
       eingestellten Zeitpunkt.
       Patchwork verändert das Postfach nicht: Mails bleiben ungelesen und werden weder verschoben noch gelöscht.
       Antworten gehen über das Postfach, in dem der Vorgang angekommen ist; intern erfasste Vorgänge nutzen das Standard-Postfach.
+      Den Abruf kann man je Postfach ausschalten, der Versand läuft dann weiter; beim Einschalten holt Patchwork nach, was seither
+      angekommen ist.
     </p>
-
-    <div v-if="mailFetch" class="card card-body row mail-fetch">
-      <h2>Mail-Abruf</h2>
-      <span v-if="mailFetch.enabled" class="badge st-green">eingeschaltet</span>
-      <span v-else class="badge st-red">ausgeschaltet</span>
-      <span class="muted small">
-        Gilt für alle Postfächer. Ausgeschaltet holt Patchwork keine Mails ab, auch nicht über «Jetzt abrufen»; der Versand läuft
-        weiter. Beim Einschalten holt Patchwork nach, was seit dem letzten Abruf angekommen ist.
-        <template v-if="!mailFetch.automatic">Der Abruf jede Minute ist mit MAIL_POLLING=false abgeschaltet.</template>
-      </span>
-      <div class="spacer" />
-      <button class="btn btn-sm" :class="{ 'btn-primary': !mailFetch.enabled }" type="button" :disabled="mailFetchBusy" @click="toggleMailFetch">
-        {{ mailFetch.enabled ? 'Ausschalten' : 'Einschalten' }}
-      </button>
-    </div>
 
     <div class="card card-body row microsoft">
       <h2>Microsoft 365</h2>
@@ -620,6 +596,7 @@ function openMicrosoft() {
         <span class="muted">{{ m.address }}</span>
         <span v-if="m.isDefault" class="badge st-blue">Standard</span>
         <span v-if="!m.active" class="badge">inaktiv</span>
+        <span v-else-if="!m.fetchEnabled" class="badge st-red">Abruf aus</span>
         <span class="badge">{{ AUTH_LABELS[m.authType] }}</span>
         <div class="spacer" />
         <button
@@ -635,11 +612,14 @@ function openMicrosoft() {
         <button
           class="btn btn-sm"
           type="button"
-          :disabled="busyId === m.id || !m.active || mailFetch?.enabled === false"
-          :title="mailFetch?.enabled === false ? 'Der Mail-Abruf ist ausgeschaltet' : undefined"
+          :disabled="busyId === m.id || !m.active || !m.fetchEnabled"
+          :title="m.fetchEnabled ? undefined : 'Der Mail-Abruf dieses Postfachs ist ausgeschaltet'"
           @click="poll(m)"
         >
           Jetzt abrufen
+        </button>
+        <button class="btn btn-sm" type="button" :disabled="busyId === m.id || !m.active" @click="toggleFetch(m)">
+          {{ m.fetchEnabled ? 'Abruf ausschalten' : 'Abruf einschalten' }}
         </button>
         <button class="btn btn-sm" type="button" @click="edit(m)">Bearbeiten</button>
         <button class="btn btn-sm btn-danger" type="button" @click="remove(m)">Löschen</button>
@@ -678,6 +658,9 @@ function openMicrosoft() {
       </div>
       <div class="row">
         <label class="checkbox"><input v-model="draft.active" type="checkbox" /> Aktiv</label>
+        <label class="checkbox" title="Ausgeschaltet holt Patchwork aus diesem Postfach keine Mails ab; der Versand läuft weiter">
+          <input v-model="draft.fetchEnabled" type="checkbox" /> Mails abrufen
+        </label>
         <label class="checkbox"><input v-model="draft.isDefault" type="checkbox" /> Standard-Postfach</label>
       </div>
 
@@ -990,8 +973,7 @@ function openMicrosoft() {
   flex-direction: column;
   gap: 8px;
 }
-.microsoft,
-.mail-fetch {
+.microsoft {
   flex-wrap: wrap;
 }
 .small {

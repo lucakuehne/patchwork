@@ -12,6 +12,8 @@ export interface MailboxInput {
   address: string;
   active: boolean;
   isDefault: boolean;
+  /** Mails abrufen; undefined = unverändert bzw. beim Anlegen an */
+  fetchEnabled?: boolean;
   imapHost: string;
   imapPort: number;
   imapSecure: boolean;
@@ -59,6 +61,13 @@ export class MailboxesService {
 
   async get(id: string, tx: Tx = this.db): Promise<Mailbox> {
     const [mailbox] = await tx.select().from(mailboxes).where(eq(mailboxes.id, id)).limit(1);
+    if (!mailbox) throw new NotFoundException('Postfach nicht gefunden');
+    return mailbox;
+  }
+
+  /** Mail-Abruf des Postfachs ein- oder ausschalten; der Abruf geht danach dort weiter, wo er stand */
+  async setFetchEnabled(id: string, enabled: boolean): Promise<Mailbox> {
+    const [mailbox] = await this.db.update(mailboxes).set({ fetchEnabled: enabled }).where(eq(mailboxes.id, id)).returning();
     if (!mailbox) throw new NotFoundException('Postfach nicht gefunden');
     return mailbox;
   }
@@ -223,6 +232,7 @@ export class MailboxesService {
       address,
       active: input.active,
       isDefault: input.isDefault,
+      fetchEnabled: input.fetchEnabled ?? current?.fetchEnabled ?? true,
       imapHost: input.imapHost.trim(),
       imapPort: input.imapPort,
       imapSecure: input.imapSecure,

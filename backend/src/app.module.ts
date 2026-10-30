@@ -29,7 +29,7 @@ import { MailTemplatesController } from './mail/mail-templates.controller';
 import { MailTemplatesService } from './mail/mail-templates.service';
 import { MailSenderService } from './mail/mail-sender.service';
 import { MailTransportService } from './mail/mail-transport.service';
-import { MailboxesController, MailboxOptionsController, MailFetchController, MicrosoftCallbackController } from './mail/mailboxes.controller';
+import { MailboxesController, MailboxOptionsController, MicrosoftCallbackController } from './mail/mailboxes.controller';
 import { MailboxesService } from './mail/mailboxes.service';
 import { MicrosoftAuthService } from './mail/microsoft-auth.service';
 import { NotificationsService } from './mail/notifications.service';
@@ -75,7 +75,6 @@ import { UsersService } from './users/users.service';
     PortalController,
     MailboxesController,
     MailboxOptionsController,
-    MailFetchController,
     MicrosoftCallbackController,
     OutgoingMailsController,
     IncomingMailsController,
