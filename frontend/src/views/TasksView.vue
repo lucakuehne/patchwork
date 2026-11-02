@@ -20,7 +20,7 @@ const NewItemDialog = defineAsyncComponent(() => import('../components/NewItemDi
 
 /**
  * Offene Aufgaben als Board (Standard) oder Liste, pro Benutzer gespeichert. Die Liste ist nach Status sortiert, dann
- * wie im Board; das Board zeigt dazu die abgeschlossenen der letzten 14 Tage.
+ * wie im Board; das Board zeigt dazu die abgeschlossenen der letzten 7 Tage.
  */
 const session = useSession();
 const toast = useToast();

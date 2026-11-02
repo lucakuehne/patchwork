@@ -18,10 +18,10 @@ describe('viewQuery', () => {
     expect(where('incidents-closed')!.params).toEqual(['incident', true]);
   });
 
-  it('Board: ohne Ablehnen-Status, abgeschlossene nur der letzten 14 Tage', () => {
+  it('Board: ohne Ablehnen-Status, abgeschlossene nur der letzten 7 Tage', () => {
     const board = where('board')!;
     expect(board.sql).toMatch(new RegExp(`not ${IN_REJECT.source}`));
-    expect(board.sql).toContain("interval '14 days'");
+    expect(board.sql).toContain("interval '7 days'");
     expect(board.params).toEqual(['task', 'reject', false, true]);
   });
 

@@ -66,8 +66,8 @@ export const summaryColumns = {
   checklistDone: sql<number>`(select count(*)::int from ${checklistItems} ci join ${checklists} c on c.id = ci.checklist_id where c.item_id = ${items.id} and ci.done)`,
 };
 
-/** Abgeschlossene Spalten des Boards zeigen nur so viele Tage zurück. */
-const BOARD_CLOSED_DAYS = 14;
+/** Abgeschlossene Spalten des Boards zeigen nur so viele Tage zurück (seit 02.11.2026 7 statt 14). */
+const BOARD_CLOSED_DAYS = 7;
 
 /** Status offen bzw. abgeschlossen (die Ansichten verbinden statuses mit dem Status des Vorgangs). */
 const OPEN = eq(statuses.closed, false);

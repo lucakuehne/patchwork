@@ -52,7 +52,7 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
 
 - Tab Störungen: Unteransichten «Offen» und «Gelöst».
 - Tab Aufgaben: «Board», «Erledigt», «Abgelehnt». «Erledigt» zeigt abgeschlossene Aufgaben ausser dem Ablehnen-Status, «Abgelehnt» den Ablehnen-Status (ohne Ablehnen-Status entfällt die Ansicht, ein direkter Aufruf führt zu «Erledigt»; bestätigt am 20.10.2026).
-- Board: Der Ablehnen-Status ist keine Spalte. Abgeschlossene Spalten zeigen nur die letzten 14 Tage.
+- Board: Der Ablehnen-Status ist keine Spalte. Abgeschlossene Spalten zeigen nur die letzten 7 Tage (seit 02.11.2026, gewünscht vom Benutzer; vorher 14 Tage), bei Aufgaben und Störungen.
 - Ansichten für Abgeschlossenes sind Listen mit Suche und Filter «Nur meine».
 - Volltextsuche über alle Vorgänge.
 
@@ -648,7 +648,7 @@ abschalten.
   anzeigen, Umschalter in der Kopfzeile. Abgeschlossene (Gelöst, Erledigt, Abgelehnt) nur als Liste. Standard: Aufgaben als
   Board, Störungen als Liste. Die Wahl gilt pro Benutzer (auf dem Server gespeichert, in jedem Browser).
   - Board der Störungen wie das der Aufgaben: alle offenen Status, dazu die abgeschlossenen (ohne Ablehnen-Status) mit
-    den Störungen der letzten 14 Tage. Karten nach Priorität, dann Alter («dringend zuerst»); Drag & Drop wechselt nur den
+    den Störungen der letzten 7 Tage (bis 02.11.2026: 14 Tage). Karten nach Priorität, dann Alter («dringend zuerst»); Drag & Drop wechselt nur den
     Status, die Reihenfolge in der Spalte ergibt sich von selbst.
   - Liste der offenen Aufgaben: nach Status (Reihenfolge der Spalten), innerhalb eines Status wie auf dem Board;
     per Spaltenkopf umsortierbar wie jede Liste.

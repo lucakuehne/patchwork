@@ -142,7 +142,7 @@ await step('Status: anlegen mit «abgeschlossen», umschalten, löschen mit Ersa
   assert.equal((await api('GET', '/items/counts')).tasks, openTasks - 1, 'Zähler nur für Offenes');
   assert.ok((await api('GET', '/items?view=tasks-done')).items.some((i) => i.number === t1), 'abgeschlossen ausser Ablehnen: «Erledigt»');
   assert.ok(!(await api('GET', '/items?view=tasks-rejected')).items.some((i) => i.number === t1));
-  assert.ok((await api('GET', '/items?view=board')).items.some((i) => i.number === t1), 'abgeschlossene Spalte (letzte 14 Tage)');
+  assert.ok((await api('GET', '/items?view=board')).items.some((i) => i.number === t1), 'abgeschlossene Spalte (letzte 7 Tage)');
   await api('PATCH', `/statuses/${created.id}`, { closed: false });
   item = await detail(t1);
   assert.equal(item.status.closed, false);

@@ -19,7 +19,7 @@ const NewItemDialog = defineAsyncComponent(() => import('../components/NewItemDi
 
 /**
  * Störungen: offene als Liste (Standard) oder Board, pro Benutzer gespeichert; gelöste immer als Liste. Das Board zeigt
- * dazu die gelösten der letzten 14 Tage, nach Priorität und Alter.
+ * dazu die gelösten der letzten 7 Tage, nach Priorität und Alter.
  */
 const props = defineProps<{ closed: boolean }>();
 const session = useSession();

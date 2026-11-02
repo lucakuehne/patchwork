@@ -745,7 +745,7 @@ await step('aufgaben-neu', async () => {
   // «+» nur in offenen Spalten; öffnet «Neue Aufgabe» mit dem Status der Spalte und «Intern» vorbelegt
   const openColumn = page.locator('.column').filter({ has: page.locator('button.add') }).nth(1);
   const statusLabel = (await openColumn.locator('.column-head .badge').innerText()).trim();
-  if (await page.locator('.column').filter({ hasText: 'letzte 14 Tage' }).locator('button.add').count()) throw new Error('«+» in abgeschlossener Spalte');
+  if (await page.locator('.column').filter({ hasText: 'letzte 7 Tage' }).locator('button.add').count()) throw new Error('«+» in abgeschlossener Spalte');
   await openColumn.locator('button.add').click();
   await page.locator('#new-status').waitFor();
   const chosenStatus = await page.locator('#new-status').evaluate((s) => s.options[s.selectedIndex].text);
@@ -879,7 +879,7 @@ await step('liste-board', async () => {
   const toggle = page.getByRole('group', { name: 'Ansicht', exact: true });
   await toggle.getByRole('button', { name: 'Board' }).click();
   await page.locator('.column').first().waitFor();
-  await page.locator('.column', { hasText: 'letzte 14 Tage' }).first().waitFor();
+  await page.locator('.column', { hasText: 'letzte 7 Tage' }).first().waitFor();
   if (await page.locator('.list-filters select[aria-label="Status"]').count()) throw new Error('Status-Filter im Board der Störungen');
   await page.reload();
   await page.locator('.column').first().waitFor();

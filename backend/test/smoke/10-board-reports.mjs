@@ -53,7 +53,7 @@ import {
 
 let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
-await step('Board: abgeschlossene Spalten zeigen nur die letzten 14 Tage', async () => {
+await step('Board: abgeschlossene Spalten zeigen nur die letzten 7 Tage', async () => {
   const onBoard = async () => (await api('GET', '/items?view=board')).items.some((i) => i.number === t1);
   assert.equal((await detail(t1)).status.label, 'Erledigt');
   assert.ok(await onBoard());
@@ -65,8 +65,10 @@ await step('Board: abgeschlossene Spalten zeigen nur die letzten 14 Tage', async
   const db = new pg.Client({ connectionString: process.env.SMOKE_DATABASE_URL });
   await db.connect();
   try {
-    await db.query(`update items set closed_at = now() - interval '15 days' where prefix = 'PW' and number = $1`, [t1]);
-    assert.ok(!(await onBoard()), 'vor mehr als 14 Tagen abgeschlossen');
+    await db.query(`update items set closed_at = now() - interval '6 days' where prefix = 'PW' and number = $1`, [t1]);
+    assert.ok(await onBoard(), 'vor 6 Tagen abgeschlossen');
+    await db.query(`update items set closed_at = now() - interval '8 days' where prefix = 'PW' and number = $1`, [t1]);
+    assert.ok(!(await onBoard()), 'vor mehr als 7 Tagen abgeschlossen');
     assert.ok((await api('GET', '/items?view=tasks-done')).items.some((i) => i.number === t1), 'bleibt unter «Erledigt»');
   } finally {
     await db.end();

@@ -14,7 +14,7 @@ import type { ItemSummary, ItemType } from '../types';
 import ChecklistProgress from './ChecklistProgress.vue';
 
 /**
- * Board eines Typs: je Status eine Spalte (ohne den Ablehnen-Status), abgeschlossene zeigen nur die letzten 14 Tage.
+ * Board eines Typs: je Status eine Spalte (ohne den Ablehnen-Status), abgeschlossene zeigen nur die letzten 7 Tage.
  * Aufgaben: Reihenfolge von Hand (ziehen innerhalb und zwischen Spalten). Störungen: nach Priorität, dann Alter;
  * Ziehen wechselt nur den Status (Entscheid vom 27.10.2026). Der Status-Filter gilt hier nicht, die Spalten sind es.
  */
@@ -136,7 +136,7 @@ function open(item: ItemSummary, event: MouseEvent) {
       <header class="column-head">
         <span class="badge" :class="`st-${status.color}`">{{ status.label }}</span>
         <span class="faint">{{ columns[status.id]?.length ?? 0 }}</span>
-        <span v-if="status.closed" class="faint hint">letzte 14 Tage</span>
+        <span v-if="status.closed" class="faint hint">letzte 7 Tage</span>
         <button
           v-else
           class="btn btn-sm btn-ghost add"
