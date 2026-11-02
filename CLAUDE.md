@@ -4,16 +4,18 @@
 
 - Patchwork ersetzt Wekan bzw. Planka und HelpSpot: Vorgänge vom Typ Störung oder Aufgabe, Eingang, Mail rein und raus,
   Portal, LDAP/AD, Regeln, Textbausteine, Auswertungen, Betrieb mit Docker.
-- Stand 28.10.2026: MVP, Etappe 2 und Etappe 3 sind umgesetzt, getestet und in Produktion (zurzeit im Testbetrieb,
-  parallel zu HelpSpot). Seit 28.10.2026 führt das IT-Team seine Aufgaben in Patchwork; Wekan und Planka sind
-  abgeschaltet, die Aufgaben laufen nur noch in Patchwork. Unteraufgaben/Projekte sind bewusst zurückgestellt.
+- Stand 30.10.2026: MVP, Etappe 2 und Etappe 3 sind umgesetzt, getestet und in Produktion. Seit 28.10.2026 führt das
+  IT-Team seine Aufgaben in Patchwork (Wekan und Planka abgeschaltet), seit 30.10.2026 auch den Helpdesk: HelpSpot ist
+  abgelöst, alle Tickets sind als HS-Vorgänge importiert, HelpSpot bleibt etwa eine Woche nur lesbar. Der Testbetrieb
+  ist teilweise noch aktiv (an Melder nur Eingangsbestätigung und öffentliche Antworten). Unteraufgaben/Projekte sind
+  bewusst zurückgestellt.
 - Massgebliche Dokumente:
   - `Grundkonzept.md`: ursprüngliches Konzept.
   - `docs/Entscheidungen.md`: alle mit dem Benutzer abgestimmten Entscheidungen inkl. Randfälle. Vor jeder
     Verhaltensänderung lesen, neue Entscheidungen dort nachtragen.
   - `README.md`: Funktionsumfang, Einrichtung, Tests, Betriebsskripte, LDAP/AD, Docker. Bei neuen Funktionen nachführen.
   - `docs/helpspot-import-plan.md`: Plan für die Kennung mit Präfix (PW-/HS-) und den Import aus HelpSpot (umgesetzt am
-    29.10.2026) sowie für den Umstieg von HelpSpot (offen).
+    29.10.2026) sowie für den Umstieg von HelpSpot (umgestellt am 30.10.2026).
 
 ## Zusammenarbeit
 

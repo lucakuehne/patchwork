@@ -119,7 +119,7 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 - Kein automatisches Schliessen bei «Behebt». Verknüpfen und Lösen erscheinen in beiden Timelines. Wird eine Aufgabe erledigt, die eine Störung behebt, erhält die Störung einen Timeline-Eintrag und ihr Zuständiger eine Mail.
 - **«Duplikat von»** (bestätigt am 15.10.2026):
   - Das Duplikat wird automatisch geschlossen (Status «Automatisch schliessen in»; ohne Typ erhält es den Typ des Originals). Statt der Erledigt-Mail erhält sein Melder einen Hinweis aufs Original. Diese Mail läuft unter der Nummer des Originals.
-  - **Gleicher Melder → zusammenführen:** Die Meldung des Duplikats (Text und Anhänge) erscheint im Original als Nachricht des Melders («Zusammengeführt aus PW-…»). Hinweis-Mail «… wurde dort hinzugefügt».
+  - **Gleicher Melder → zusammenführen:** Die Meldung des Duplikats (Text und Anhänge) erscheint im Original als Nachricht des Melders («Zusammengeführt aus PW-…»). Hinweis-Mail «… wurde dort hinzugefügt». Seit 02.11.2026 wird alles übernommen, siehe «Zusammenführen».
   - **Anderer Melder → Umleitung:** Der Melder wird beim Original Beteiligter (CC) und erhält so dessen öffentliche Antworten. Hinweis-Mail «… wird dort weiterbearbeitet».
   - Antworten auf Mails zum Duplikat landen beim Original. Im Portal zeigt das Duplikat «Erledigt» mit dem Hinweis aufs Original, ohne Antwortfeld. Das Original sieht der Melder im Portal nur, wenn er auch dort Melder ist.
   - Wird die Verknüpfung gelöst, wird nichts rückgängig gemacht. Die IT öffnet das Duplikat bei Bedarf von Hand wieder.
@@ -130,6 +130,14 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
   - Die Umleitung gilt, solange das Duplikat abgeschlossen ist. Öffnet die IT es wieder, landen Antworten wieder beim Duplikat, und im Portal ist das Antwortfeld zurück.
   - Beim Zusammenführen bleibt der Status des Originals unverändert, auch wenn es auf den Melder wartet.
 - Technisch: Keine Duplikat-Ketten. Ein Vorgang kann nur Duplikat eines Vorgangs sein, der selbst kein Duplikat ist, und ein Vorgang mit Duplikaten kann nicht selbst Duplikat werden.
+- **Zusammenführen** (bestätigt am 02.11.2026), z.B. wenn jemand zwei Mails zur selben Sache schreibt:
+  - Eigener Knopf «Zusammenführen …» im Vorgang (bei den Verknüpfungen), nicht im Eingang. Der Dialog schlägt die offenen Vorgänge desselben Melders vor (neueste zuerst), andere lassen sich suchen. Dahinter steht «Duplikat von» mit allen Regeln oben.
+  - Beide im Eingang: wie bisher zuerst das Original als Störung oder Aufgabe einordnen; die Fehlermeldung sagt das jetzt klar.
+  - Bei gleichem Melder wird alles übernommen wie in HelpSpot: Meldung, Nachrichten des Melders und der Beteiligten, öffentliche Antworten der IT und interne Notizen, jeweils mit Anhängen. Gekennzeichnet mit «zusammengeführt aus PW-…»; übernommene öffentliche Antworten sieht der Melder im Portal des Originals, Notizen bleiben intern.
+  - Die übernommenen Einträge stehen zu ihrer ursprünglichen Zeit im Verlauf des Originals (chronologisch eingereiht), nicht gesammelt zum Zeitpunkt des Zusammenführens.
+  - Änderungen des Duplikats (Status, Zuständig, Verknüpfungen usw.) und Checklisten werden nicht übernommen; sie bleiben im geschlossenen Duplikat sichtbar.
+  - Im Dialog lässt sich die Richtung wählen: den aktuellen Vorgang in einen anderen übernehmen (Standard) oder einen anderen in den aktuellen. Zusammengeführt wird erst mit dem Knopf «Zusammenführen», nicht schon beim Anklicken des Vorschlags.
+  - Technisch: Die Einträge werden kopiert (das Duplikat behält seine), die Anhänge zeigen auf dieselben Dateien. Die Kopien tragen «source: merge» (ursprüngliche Herkunft in «mergedSource»), damit Regeln sie nicht als neue Antworten sehen; Mails und Wiederöffnen gibt es dabei keine. «Originalmail» und «Mail ansehen» bleiben beim Duplikat.
 
 ### Checklisten
 
@@ -402,6 +410,16 @@ abschalten.
     nie bei einem verworfenen Vorgang).
   - Danach: HelpSpot etwa eine Woche nur noch lesbar (ohne Mail-Abruf), dann abschalten; Sicherung der
     HelpSpot-Datenbank aufbewahren.
+  - Gewünscht am 30.10.2026: **Umstellung per sofort** statt an einem Stichtag. Reihenfolge angepasst: zuerst in
+    HelpSpot den Mail-Abruf ausschalten (Postfach deaktivieren, nicht den Wartungsmodus, der auch die API sperrt), dann
+    der letzte Import mit offenen Tickets, erst danach Regel löschen, Posteingang wählen und den Abruf in Patchwork
+    einschalten («Mails abholen ab» = Zeitpunkt, an dem HelpSpot aufhörte). So landet keine Antwort auf ein offenes
+    Ticket im Eingang, bevor sein HS-Vorgang existiert. Das Portal von HelpSpot bleibt stehen (kaum genutzt, kein
+    Schalter); in der Woche bis zum Abschalten läuft täglich ein Import mit offenen Tickets.
+  - Umgestellt am 30.10.2026: Mail-Abruf in HelpSpot um 14:40 aus, letzter Import mit offenen Tickets (25 offene,
+    keine Fehler), Regel nach «Inbox-Patchwork» gelöscht, Patchwork holt aus dem Posteingang ab 14:30, 16 Kopien aus
+    der Parallelphase bereinigt. Testbetrieb vorerst: an IT-Mitarbeitende alle Mails, an Melder und Beteiligte nur
+    Eingangsbestätigung und öffentliche Antworten (je Auslöser), die übrigen automatischen Mails an Melder noch nicht.
 
 ## Mail-Abruf ein und aus (bestätigt am 30.10.2026)
 

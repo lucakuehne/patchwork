@@ -7,13 +7,23 @@ import { sameItem, type ItemKey } from '../item-ref';
 import { useToast } from '../stores/toast';
 import type { ItemLink as Link, ItemSummary, LinkRole } from '../types';
 import ItemLink from './ItemLink.vue';
+import MergeDialog from './MergeDialog.vue';
 import ModalDialog from './ModalDialog.vue';
 import StatusBadge from './StatusBadge.vue';
 
-/** Verknüpfungen eines Vorgangs (Seitenleiste). */
-const props = defineProps<{ itemKey: ItemKey; links: Link[] }>();
+/**
+ * Verknüpfungen eines Vorgangs (Seitenleiste), dazu «Zusammenführen …». «mergeable»: nicht verworfen und nicht selbst
+ * Duplikat (dann wäre weder die eine noch die andere Richtung möglich).
+ */
+const props = defineProps<{ itemKey: ItemKey; links: Link[]; reporter: { id: string; name: string }; mergeable: boolean }>();
 const emit = defineEmits<{ changed: [] }>();
 const toast = useToast();
+const mergeOpen = ref(false);
+
+function onMerged() {
+  mergeOpen.value = false;
+  emit('changed');
+}
 
 const ROLE_LABELS: Record<LinkRole, string> = {
   relates: 'Bezieht sich auf',
@@ -89,6 +99,7 @@ async function unlink(l: Link) {
     <div class="row">
       <span class="label">Verknüpfungen</span>
       <span class="spacer" />
+      <button v-if="mergeable" class="link-btn" type="button" @click="mergeOpen = true">Zusammenführen …</button>
       <button class="link-btn" type="button" @click="openDialog">+ Verknüpfen</button>
     </div>
     <div v-for="l in links" :key="l.id" class="link-row">
@@ -116,7 +127,8 @@ async function unlink(l: Link) {
       </select>
       <p v-if="role === 'duplicateOf' || role === 'hasDuplicate'" class="faint small hint">
         Das Duplikat wird geschlossen und zum Original umgeleitet: Sein Melder und seine Beteiligten erhalten einen Hinweis
-        per Mail und künftig die Updates des Originals. Bei gleichem Melder wird die Meldung ins Original übernommen.
+        per Mail und künftig die Updates des Originals. Bei gleichem Melder wird alles ins Original übernommen (Meldung,
+        Nachrichten und interne Notizen).
       </p>
     </div>
     <div class="field">
@@ -133,6 +145,7 @@ async function unlink(l: Link) {
     </div>
     <div v-if="error" class="error-box">{{ error }}</div>
   </ModalDialog>
+  <MergeDialog v-if="mergeOpen" :item-key="itemKey" :reporter="reporter" @close="mergeOpen = false" @merged="onMerged" />
 </template>
 
 <style scoped>

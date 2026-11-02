@@ -1097,6 +1097,36 @@ await step('simulieren', async () => {
   await api('PUT', '/settings/mail', { general: live, incident: live, task: live });
 });
 
+await step('zusammenfuehren', async () => {
+  // Zwei Vorgänge desselben Melders: «Zusammenführen …» schlägt den anderen vor, danach steht alles im bleibenden
+  const channel = (await api('GET', '/channels')).data[0].id;
+  const create = async (title, description) => {
+    const res = await api('POST', '/items', { type: 'incident', title, description, channelId: channel });
+    if (res.status !== 201) throw new Error(`Erfassen: HTTP ${res.status}`);
+    return res.data.number;
+  };
+  const first = await create('Beamer Sitzungszimmer', 'Der Beamer zeigt kein Bild.');
+  const second = await create('Nochmals Beamer', 'Das HDMI-Kabel habe ich schon getauscht.');
+  await page.goto(`${BASE}/items/PW-${second}`);
+  await page.locator('.side').getByRole('button', { name: 'Zusammenführen …' }).click();
+  const dialog = page.locator('.dialog');
+  const proposal = dialog.locator('button.result', { hasText: `PW-${first}` }).first();
+  await proposal.waitFor();
+  await proposal.click();
+  await dialog.locator('.outcome', { hasText: `PW-${second} wird in PW-${first} übernommen und geschlossen` }).waitFor();
+  await dialog.screenshot({ path: `${OUT}/93-zusammenfuehren.png` });
+  console.log('Bild 93-zusammenfuehren');
+  await dialog.getByRole('button', { name: 'Zusammenführen', exact: true }).click();
+  await page.locator('.toast', { hasText: `PW-${second} in PW-${first} zusammengeführt` }).waitFor();
+  await page.locator('.side .link-row', { hasText: 'Duplikat von' }).waitFor();
+  if (await page.locator('.side').getByRole('button', { name: 'Zusammenführen …' }).count()) throw new Error('«Zusammenführen …» beim Duplikat');
+  await page.goto(`${BASE}/items/PW-${first}`);
+  const merged = page.locator('.timeline .message', { hasText: `zusammengeführt aus PW-${second}` });
+  await merged.waitFor();
+  if (!(await merged.innerText()).includes('HDMI-Kabel')) throw new Error('Übernommene Meldung fehlt');
+  await shot('94-zusammengefuehrt', true);
+});
+
 await step('helpspot-import', async () => {
   // Seite «HelpSpot-Import» mit den Daten aus dem Smoke-Test (nachgebauter HelpSpot, zwei übernommene Tickets)
   await page.goto(`${BASE}/admin/helpspot`);

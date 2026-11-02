@@ -113,6 +113,22 @@ await step('Duplikat vom gleichen Melder: zusammengeführt, Hinweis-Mail, Antwor
   dupSame = await inboxNumber('Nochmals Drucker');
   const confirmation = await waitForMail(ANNA, (m) => m.subject === `[PW-${dupSame}] Nochmals Drucker`, 'Bestätigung');
 
+  // Vor dem Zusammenführen: Nachricht des Melders, öffentliche Antwort und interne Notiz mit Bild im Duplikat
+  await sendMail({
+    from: ANNA,
+    subject: `Re: ${confirmation.subject}`,
+    text: 'Foto folgt.',
+    inReplyTo: confirmation.messageId,
+    references: [confirmation.messageId],
+  });
+  await sleep(500);
+  await poll();
+  await reply(`/items/${dupSame}/entries`, 'Wir schauen es uns an.', 'reply');
+  await reply(`/items/${dupSame}/entries`, `Toner prüfen ![Stau.png](${(await uploadImage('Stau.png')).ref})`, 'note');
+  const before = await detail(dupSame);
+  const proposals = (await api('GET', `/items/${dupSame}/merge-candidates`)).items.map((c) => c.number);
+  assert.ok(proposals.includes(dupOriginal) && !proposals.includes(dupSame), 'Vorschlag: offener Vorgang desselben Melders');
+
   await api('POST', `/items/${dupSame}/links`, { role: 'duplicateOf', other: dupOriginal });
   const dup = await detail(dupSame);
   assert.equal(dup.type, 'incident', 'Typ vom Original übernommen');
@@ -126,6 +142,25 @@ await step('Duplikat vom gleichen Melder: zusammengeführt, Hinweis-Mail, Antwor
   assert.equal(merged.author.email, ANNA);
   assert.equal(merged.attachments[0].filename, 'stau.txt');
   assert.equal(original.status.label, 'Neu', 'Original bleibt unverändert');
+  // Alles übernommen (Meldung, Nachrichten, Notizen) zu den ursprünglichen Zeiten, Änderungen bleiben im Duplikat
+  const copies = original.entries.filter((e) => e.meta?.mergedFrom === dupSame);
+  assert.deepEqual(
+    copies.map((e) => [e.kind, e.body.split(' ![')[0]]),
+    [
+      ['reply', 'Es kommt Papierstau.'],
+      ['reply', 'Foto folgt.'],
+      ['reply', 'Wir schauen es uns an.'],
+      ['note', 'Toner prüfen'],
+    ],
+  );
+  const messages = before.entries.filter((e) => e.kind === 'reply' || e.kind === 'note');
+  assert.deepEqual(copies.map((e) => e.createdAt), [before.createdAt, ...messages.map((e) => e.createdAt)], 'ursprüngliche Zeiten');
+  assert.deepEqual([copies[1].author.email, copies[1].meta.source, copies[1].meta.mergedSource], [ANNA, 'merge', 'mail']);
+  const image = copies[3].attachments[0];
+  assert.equal(image.filename, 'Stau.png');
+  assert.notEqual(image.id, messages[2].attachments[0].id);
+  assert.equal(copies[3].body, `Toner prüfen ![Stau.png](attachment:${image.id})`, 'Bild zeigt auf die Kopie');
+  assert.ok(!(await api('GET', `/items/${dupOriginal}/merge-candidates`)).items.some((c) => c.number === dupSame), 'kein Vorschlag mehr');
   await waitForMail(
     ANNA,
     (m) => m.subject === `[PW-${dupOriginal}] Drucker 3. OG` && m.text.includes('wurde dort hinzugefügt'),
@@ -203,7 +238,8 @@ await step('Duplikat: Original muss offen sein und einer der beiden einen Typ ha
   await poll();
   const one = await inboxNumber('Eingang eins');
   const two = await inboxNumber('Eingang zwei');
-  await api('POST', `/items/${two}/links`, { role: 'duplicateOf', other: one }, { expect: [400] });
+  const inbox2 = await api('POST', `/items/${two}/links`, { role: 'duplicateOf', other: one }, { expect: [400] });
+  assert.match(inbox2.message, new RegExp(`Beide Vorgänge liegen im Eingang. Bitte zuerst PW-${one} \\(das Original\\)`));
   assert.equal((await detail(t1)).status.closed, true);
   const closed = await api('POST', `/items/${one}/links`, { role: 'duplicateOf', other: t1 }, { expect: [400] });
   assert.match(closed.message, /bereits abgeschlossen/);

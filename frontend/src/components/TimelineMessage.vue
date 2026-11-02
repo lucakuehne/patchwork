@@ -38,18 +38,18 @@ const html = computed(() => {
 
 // Art des Eintrags: «Öffentlich» oder «Intern», dahinter, woher er kommt
 const label = computed(() => {
+  // Aus einem Duplikat übernommen (Nachrichten und Notizen); gesperrter Vorgang (Bereiche je Rolle): nur die Nummer
+  if (meta.value.source === 'merge') {
+    const from = itemRef({ prefix: String(meta.value.mergedFromPrefix ?? DEFAULT_PREFIX), number: Number(meta.value.mergedFrom) });
+    const title = meta.value.refHidden ? '' : ` «${String(meta.value.mergedTitle ?? '')}»`;
+    return `${props.entry.kind === 'note' ? 'Intern' : 'Öffentlich'} · zusammengeführt aus ${from}${title}`;
+  }
   if (meta.value.source === 'helpspot') return props.entry.kind === 'note' ? 'Intern · aus HelpSpot' : 'Öffentlich · aus HelpSpot';
   if (props.entry.kind === 'note') {
     if (meta.value.external) return 'Intern · Mail von nicht beteiligter Person';
     return fromMail.value ? 'Intern · per Mail' : 'Intern';
   }
   if (meta.value.automated) return 'Öffentlich · automatische Mail';
-  if (meta.value.source === 'merge') {
-    const from = itemRef({ prefix: String(meta.value.mergedFromPrefix ?? DEFAULT_PREFIX), number: Number(meta.value.mergedFrom) });
-    // Gesperrter Vorgang (Bereiche je Rolle): nur die Nummer
-    if (meta.value.refHidden) return `Öffentlich · zusammengeführt aus ${from}`;
-    return `Öffentlich · zusammengeführt aus ${from} «${String(meta.value.mergedTitle ?? '')}»`;
-  }
   if (meta.value.source === 'portal') return 'Öffentlich · im Portal';
   return fromMail.value ? 'Öffentlich · per Mail' : 'Öffentlich';
 });

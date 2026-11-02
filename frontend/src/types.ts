@@ -234,6 +234,17 @@ export interface ItemLink {
   };
 }
 
+/** Vorschlag zum Zusammenführen: offener Vorgang desselben Melders */
+export interface MergeCandidate {
+  id: string;
+  prefix: string;
+  number: number;
+  title: string;
+  type: ItemType | null;
+  createdAt: string;
+  status: { label: string; closed: boolean; color: StatusColor } | null;
+}
+
 export interface ChecklistEntry {
   id: string;
   text: string;

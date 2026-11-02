@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, notExists, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import { attachments, entries, items, links, participants, statuses, users, type Item } from '../db/schema';
@@ -7,7 +7,7 @@ import { byKey, itemRef, type ItemKey } from './item-ref';
 import { referenceMeta } from './references';
 import { replaceImages } from './inline-images';
 import { NotificationsService } from '../mail/notifications.service';
-import { areaOf, type Area } from '../settings/areas';
+import { areaCondition, areaOf, type Area } from '../settings/areas';
 import { StatusesService } from '../statuses/statuses.service';
 import { ItemsService, statusMeta, TYPE_LABELS } from './items.service';
 
@@ -53,6 +53,9 @@ export function roleOf(link: { fromId: string; kind: 'relates' | 'fixes' | 'dupl
 }
 
 const otherItem = alias(items, 'other');
+
+/** Höchstens so viele Vorschläge zum Zusammenführen */
+const MERGE_CANDIDATES = 10;
 
 /** Reihenfolge von Kennungen: zuerst der Präfix, dann die Nummer */
 const compareKeys = (a: ItemKey, b: ItemKey) => a.prefix.localeCompare(b.prefix) || a.number - b.number;
@@ -133,7 +136,9 @@ export class LinksService {
         original = stored.fromId === self.id ? other : self;
         await this.assertOpenOriginal(tx, original);
         if (!duplicate.discarded && !duplicate.type && !original.type) {
-          throw new BadRequestException('Bitte zuerst dem Original einen Typ zuweisen');
+          throw new BadRequestException(
+            `Beide Vorgänge liegen im Eingang. Bitte zuerst ${itemRef(original)} (das Original) als Störung oder Aufgabe einordnen.`,
+          );
         }
       }
 
@@ -146,7 +151,7 @@ export class LinksService {
 
   /**
    * Leitet ein Duplikat zum Original um:
-   * - gleicher Melder: Meldung (Text und Anhänge) wird ins Original übernommen (zusammenführen)
+   * - gleicher Melder: Meldung, Nachrichten und Notizen werden ins Original übernommen (zusammenführen, siehe mergeInto)
    * - anderer Melder: Melder wird beim Original Beteiligter
    * - Beteiligte (CC) des Duplikats werden ebenfalls beim Original Beteiligte
    * - ein offenes Duplikat wird geschlossen (Status «Automatisch schliessen in» seines Typs, ohne Typ der des Originals)
@@ -158,46 +163,7 @@ export class LinksService {
     const current = duplicate.statusId ? await this.statuses.get(duplicate.statusId, tx) : undefined;
     const merged = duplicate.reporterId === original.reporterId;
 
-    if (merged) {
-      // Meldung des Duplikats als Nachricht des Melders ins Original übernehmen (ohne Wiederöffnen und ohne Mails)
-      const files = await tx
-        .select()
-        .from(attachments)
-        .where(and(eq(attachments.itemId, duplicate.id), isNull(attachments.entryId)));
-      if (duplicate.description.trim() || files.length > 0) {
-        const entry = await this.items.addEntry(
-          tx,
-          original.id,
-          duplicate.reporterId,
-          'reply',
-          duplicate.description,
-          { source: 'merge', ...referenceMeta('mergedFrom', duplicate), mergedTitle: duplicate.title },
-          { bodyHtml: duplicate.descriptionHtml },
-        );
-        if (files.length > 0) {
-          const copies = await tx
-            .insert(attachments)
-            .values(
-              files.map((f) => ({
-                itemId: original.id,
-                entryId: entry.id,
-                filename: f.filename,
-                contentType: f.contentType,
-                size: f.size,
-                storageKey: f.storageKey,
-                contentId: f.contentId,
-              })),
-            )
-            .returning({ id: attachments.id });
-          // Bilder im Text zeigen auf die Kopien im Original
-          const copyOf = new Map(files.map((f, i) => [f.id, copies[i]!.id]));
-          const body = replaceImages(entry.body, (ref) =>
-            ref.kind === 'attachment' && copyOf.has(ref.id) ? `![${ref.alt}](attachment:${copyOf.get(ref.id)})` : null,
-          );
-          if (body !== entry.body) await tx.update(entries).set({ body }).where(eq(entries.id, entry.id));
-        }
-      }
-    }
+    if (merged) await this.mergeInto(tx, duplicate, original);
 
     // Melder (falls nicht derselbe) und Beteiligte des Duplikats erhalten künftig die Mails des Originals
     const cc = await tx.select({ userId: participants.userId }).from(participants).where(eq(participants.itemId, duplicate.id));
@@ -242,6 +208,126 @@ export class LinksService {
     }
 
     return [() => this.notifications.duplicateRedirected(original, duplicate, merged, actorId)];
+  }
+
+  /**
+   * Zusammenführen (seit 02.11.2026 wie in HelpSpot alles): Die Meldung des Duplikats erscheint im Original als Nachricht
+   * des Melders, dazu alle öffentlichen Nachrichten und internen Notizen, jeweils mit Anhängen und zu ihrer ursprünglichen
+   * Zeit. Änderungen (Status, Zuständig usw.) bleiben im Duplikat. Ohne Wiederöffnen und ohne Mails; die Kopien tragen
+   * «source: merge» (die ursprüngliche Herkunft in «mergedSource»), damit Regeln sie nicht als neue Antworten sehen.
+   */
+  private async mergeInto(tx: Tx, duplicate: Item, original: Item) {
+    const from = { ...referenceMeta('mergedFrom', duplicate), mergedTitle: duplicate.title };
+    const files = await tx.select().from(attachments).where(eq(attachments.itemId, duplicate.id)).orderBy(asc(attachments.createdAt));
+    const messages = await tx
+      .select()
+      .from(entries)
+      .where(and(eq(entries.itemId, duplicate.id), inArray(entries.kind, ['reply', 'note'])))
+      .orderBy(asc(entries.createdAt));
+
+    // Kopie je Eintrag des Duplikats; «null» steht für die Meldung (Anhänge ohne Eintrag)
+    const copies = new Map<string | null, { id: string; body: string }>();
+    if (duplicate.description.trim() || files.some((f) => !f.entryId)) {
+      const [copy] = await tx
+        .insert(entries)
+        .values({
+          itemId: original.id,
+          authorId: duplicate.reporterId,
+          kind: 'reply',
+          body: duplicate.description,
+          bodyHtml: duplicate.descriptionHtml,
+          meta: { source: 'merge', ...from },
+          createdAt: duplicate.createdAt,
+        })
+        .returning({ id: entries.id, body: entries.body });
+      copies.set(null, copy!);
+    }
+    for (const e of messages) {
+      const source = e.meta?.source;
+      const [copy] = await tx
+        .insert(entries)
+        .values({
+          itemId: original.id,
+          authorId: e.authorId,
+          kind: e.kind,
+          body: e.body,
+          bodyHtml: e.bodyHtml,
+          meta: { ...e.meta, source: 'merge', ...(source && source !== 'merge' ? { mergedSource: source } : {}), ...from },
+          mailMessageId: e.mailMessageId,
+          createdAt: e.createdAt,
+          editedAt: e.editedAt,
+          originalCreatedAt: e.originalCreatedAt,
+          timeChangedAt: e.timeChangedAt,
+          timeChangedById: e.timeChangedById,
+          recordedById: e.recordedById,
+        })
+        .returning({ id: entries.id, body: entries.body });
+      copies.set(e.id, copy!);
+    }
+
+    // Anhänge (dieselbe Datei) zur jeweiligen Kopie; Anhänge von Änderungen (z.B. Begründung einer Ablehnung) bleiben
+    const kept = files.filter((f) => copies.has(f.entryId));
+    if (kept.length === 0) return;
+    const inserted = await tx
+      .insert(attachments)
+      .values(
+        kept.map((f) => ({
+          itemId: original.id,
+          entryId: copies.get(f.entryId)!.id,
+          filename: f.filename,
+          contentType: f.contentType,
+          size: f.size,
+          storageKey: f.storageKey,
+          contentId: f.contentId,
+        })),
+      )
+      .returning({ id: attachments.id });
+    // Bilder im Text zeigen auf die Kopien im Original
+    const copyOf = new Map(kept.map((f, i) => [f.id, inserted[i]!.id]));
+    for (const copy of copies.values()) {
+      const body = replaceImages(copy.body, (ref) =>
+        ref.kind === 'attachment' && copyOf.has(ref.id) ? `![${ref.alt}](attachment:${copyOf.get(ref.id)})` : null,
+      );
+      if (body !== copy.body) await tx.update(entries).set({ body }).where(eq(entries.id, copy.id));
+    }
+  }
+
+  /**
+   * Vorschläge zum Zusammenführen: offene Vorgänge desselben Melders, ohne verworfene und ohne solche, die schon
+   * Duplikat sind, neueste zuerst. Nur Vorgänge in «areas» (Bereiche je Rolle, null = alle).
+   */
+  async mergeCandidates(key: ItemKey, areas: Area[] | null) {
+    const [self] = await this.db.select().from(items).where(byKey(key)).limit(1);
+    if (!self) throw new NotFoundException(`Vorgang ${itemRef(key)} nicht gefunden`);
+    const isDuplicate = this.db
+      .select({ id: links.id })
+      .from(links)
+      .where(and(eq(links.kind, 'duplicate'), eq(links.fromId, items.id)));
+    const rows = await this.db
+      .select({
+        id: items.id,
+        prefix: items.prefix,
+        number: items.number,
+        title: items.title,
+        type: items.type,
+        createdAt: items.createdAt,
+        status: { label: statuses.label, closed: statuses.closed, color: statuses.color },
+      })
+      .from(items)
+      .leftJoin(statuses, eq(statuses.id, items.statusId))
+      .where(
+        and(
+          eq(items.reporterId, self.reporterId),
+          ne(items.id, self.id),
+          eq(items.discarded, false),
+          or(isNull(items.statusId), eq(statuses.closed, false)),
+          notExists(isDuplicate),
+          areas ? areaCondition(areas) : undefined,
+        ),
+      )
+      .orderBy(desc(items.createdAt))
+      .limit(MERGE_CANDIDATES);
+    return rows.map((r) => ({ ...r, status: r.status?.label ? r.status : null }));
   }
 
   async remove(actorId: string, key: ItemKey, linkId: string): Promise<void> {

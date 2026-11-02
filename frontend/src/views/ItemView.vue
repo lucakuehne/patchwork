@@ -407,7 +407,13 @@ function onRejected() {
           <PersonSearch floating placeholder="Person hinzufügen (Name, Benutzername, E-Mail)" :exclude="involvedEmails" @pick="addParticipant" />
         </div>
 
-        <LinksPanel :item-key="item" :links="item.links" @changed="load" />
+        <LinksPanel
+          :item-key="item"
+          :links="item.links"
+          :reporter="item.reporter"
+          :mergeable="!item.discarded && !item.links.some((l) => l.role === 'duplicateOf')"
+          @changed="load"
+        />
 
         <div class="field">
           <label for="item-mailbox">Antwort-Postfach</label>

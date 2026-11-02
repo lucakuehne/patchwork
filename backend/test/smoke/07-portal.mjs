@@ -207,6 +207,8 @@ await step('Portal: Duplikate zeigen den Hinweis aufs Original, keine Antwort m�
   await api('POST', `/portal/items/${dupSame}/replies`, f, { expect: [400] });
   const original = await api('GET', `/portal/items/${dupOriginal}`);
   assert.ok(original.entries.some((e) => e.own && e.body === 'Es kommt Papierstau.'), 'zusammengeführte Meldung sichtbar');
+  assert.ok(original.entries.some((e) => e.author === 'IT' && e.body === 'Wir schauen es uns an.'), 'übernommene Antwort sichtbar');
+  assert.ok(!original.entries.some((e) => e.body.startsWith('Toner prüfen')), 'übernommene Notiz bleibt intern');
 });
 
 await step('Wieder geöffnetes Duplikat: Umleitung endet', async () => {

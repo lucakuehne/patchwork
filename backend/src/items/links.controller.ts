@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { z } from 'zod';
 import { CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
@@ -20,6 +20,12 @@ export class LinksController {
     private readonly links: LinksService,
     private readonly areas: AreasService,
   ) {}
+
+  /** Vorschläge zum Zusammenführen: offene Vorgänge desselben Melders */
+  @Get('items/:ref/merge-candidates')
+  async mergeCandidates(@Param('ref', ItemRefPipe) key: ItemKey, @CurrentUser() user: User) {
+    return { items: await this.links.mergeCandidates(key, await this.areas.limit(user)) };
+  }
 
   @Post('items/:ref/links')
   @HttpCode(204)
