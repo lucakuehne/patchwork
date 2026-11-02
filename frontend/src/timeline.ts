@@ -28,11 +28,11 @@ const isMessage = (e: Entry) => e.kind === 'reply' || e.kind === 'note';
 /** Aus HelpSpot übernommener Eintrag; solche Änderungen stehen nie mit Änderungen in Patchwork in einer Karte */
 export const fromHelpSpot = (e: Entry) => e.meta?.source === 'helpspot';
 
-/** Ablehnungen (mit Begründung), automatische Statuswechsel und Regeln stehen immer für sich. */
+/** Ablehnungen (mit Begründung), automatische Statuswechsel, Regeln und wiederkehrende Aufgaben stehen immer für sich. */
 function groupable(e: Entry): boolean {
   if (isMessage(e)) return false;
   const m = e.meta ?? {};
-  if (m.field === 'rule') return false;
+  if (m.field === 'rule' || m.field === 'recurring') return false;
   return !(e.kind === 'status' && (m.rejected || m.reason));
 }
 
@@ -312,6 +312,11 @@ function eventText(e: Entry, m: Record<string, unknown>): string {
           return m.from ? `das Fälligkeitsdatum von ${q(m.from)} auf ${q(m.to)} geändert` : `das Fälligkeitsdatum ${q(m.to)} gesetzt`;
         case 'checklistItem':
           return m.to ? `den Punkt ${q(m.text)} abgehakt` : `den Haken bei ${q(m.text)} entfernt`;
+        case 'recurring':
+          // Ohne Bearbeiter steht die wiederkehrende Aufgabe im Kopf der Karte (siehe TimelineEvents)
+          return e.author
+            ? `die Aufgabe aus der wiederkehrenden Aufgabe ${q(m.recurringTitle)} angelegt (fällig am ${String(m.dueDate)})`
+            : `die Aufgabe angelegt (fällig am ${String(m.dueDate)})`;
         case 'helpspot':
           // Aus HelpSpot übernommene Änderung: der Text von HelpSpot, mehrere Zeilen in einer
           return `in HelpSpot geändert: ${String(m.text ?? '').split(/\n+/).map((l) => l.trim()).filter(Boolean).join('; ')}`;

@@ -126,9 +126,9 @@ async function unlink(l: Link) {
         <option v-for="(sentence, key) in ROLE_SENTENCES" :key="key" :value="key">{{ itemRef(itemKey) }} {{ sentence }} …</option>
       </select>
       <p v-if="role === 'duplicateOf' || role === 'hasDuplicate'" class="faint small hint">
-        Das Duplikat wird geschlossen und zum Original umgeleitet: Sein Melder und seine Beteiligten erhalten einen Hinweis
-        per Mail und künftig die Updates des Originals. Bei gleichem Melder wird alles ins Original übernommen (Meldung,
-        Nachrichten und interne Notizen).
+        Nur bei gleichem Melder: Das Duplikat wird geschlossen, alles wird ins Original übernommen (Meldung, Nachrichten und
+        interne Notizen), und sein Melder und seine Beteiligten erhalten einen Hinweis per Mail. Vorgänge verschiedener
+        Melder mit «bezieht sich auf» verknüpfen.
       </p>
     </div>
     <div class="field">

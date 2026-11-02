@@ -7,9 +7,10 @@ import type { Priority } from '../types';
 
 /**
  * Filterleiste einer Liste bzw. des Boards: Priorität, Zuständig, Meldeweg und, wo es mehrere gibt, Status.
- * «mine»: Mit «Nur meine» ist Zuständig schon festgelegt. Gespeicherte Werte, die es nicht mehr gibt, fallen weg.
+ * «mine»: Mit «Nur meine» ist Zuständig schon festgelegt («mineTitle»: Hinweis dazu, falls es mehr als die eigenen zeigt).
+ * Gespeicherte Werte, die es nicht mehr gibt, fallen weg.
  */
-const props = defineProps<{ statuses?: { id: string; label: string }[]; mine?: boolean }>();
+const props = defineProps<{ statuses?: { id: string; label: string }[]; mine?: boolean; mineTitle?: string }>();
 const filters = defineModel<ListFilterValues>({ required: true });
 const session = useSession();
 
@@ -53,7 +54,7 @@ const set = (key: keyof ListFilterValues, value: string) => (filters.value = { .
       aria-label="Zuständig"
       :value="mine ? '' : filters.assignee"
       :disabled="mine"
-      :title="mine ? 'Mit «Nur meine» sind es deine Vorgänge' : undefined"
+      :title="mine ? (mineTitle ?? 'Mit «Nur meine» sind es deine Vorgänge') : undefined"
       @change="set('assignee', ($event.target as HTMLSelectElement).value)"
     >
       <option value="">Zuständig: alle</option>

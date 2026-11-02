@@ -15,9 +15,12 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
+import type { Recurrence, WeekendRule } from '../recurring/recurrence';
 import type { RuleActions, RuleGroup, RuleSchedule, RuleTrigger } from '../rules/rule-types';
 import type { StoredPreferences } from '../users/preferences';
 
@@ -238,6 +241,10 @@ export const items = pgTable(
     dueDate: date('due_date', { mode: 'string' }),
     /** Fälligkeitsdatum, zu dem die Mail an den Zuständigen schon ging (eine Mail pro Datum) */
     dueNotifiedOn: date('due_notified_on', { mode: 'string' }),
+    /** Aus einer wiederkehrenden Aufgabe angelegt (seit 02.11.2026) */
+    recurringTaskId: uuid('recurring_task_id').references((): AnyPgColumn => recurringTasks.id, { onDelete: 'set null' }),
+    /** Fälligkeit beim Anlegen aus der wiederkehrenden Aufgabe; je Vorlage und Fälligkeit höchstens eine Aufgabe */
+    recurringDue: date('recurring_due', { mode: 'string' }),
     boardPosition: doublePrecision('board_position').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -257,6 +264,7 @@ export const items = pgTable(
     index('items_assignee_idx').on(t.assigneeId),
     index('items_reporter_idx').on(t.reporterId),
     index('items_search_idx').using('gin', t.search),
+    uniqueIndex('items_recurring_due_uq').on(t.recurringTaskId, t.recurringDue),
   ],
 );
 
@@ -591,7 +599,45 @@ export const snippets = pgTable('snippets', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Checkliste einer wiederkehrenden Aufgabe: Titel und Punkte */
+export interface RecurringChecklist {
+  title: string;
+  items: string[];
+}
+
+/**
+ * Wiederkehrende Aufgaben (seit 02.11.2026): Vorlagen, aus denen Patchwork nach ihrem Rhythmus Aufgaben anlegt (siehe
+ * recurring/recurrence.ts). Melder der Aufgaben ist, wer die Vorlage angelegt hat.
+ */
+export const recurringTasks = pgTable('recurring_tasks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Titel der Aufgaben, mit Platzhaltern für die Fälligkeit wie {{Monat}} */
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  priority: priority('priority').notNull().default('normal'),
+  /** Status der neuen Aufgaben; null = Start-Status der Aufgaben */
+  statusId: uuid('status_id').references(() => statuses.id, { onDelete: 'set null' }),
+  assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+  channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'set null' }),
+  checklists: jsonb('checklists').$type<RecurringChecklist[]>().notNull().default([]),
+  schedule: jsonb('schedule').$type<Recurrence>().notNull(),
+  startDate: date('start_date', { mode: 'string' }).notNull(),
+  endDate: date('end_date', { mode: 'string' }),
+  weekend: text('weekend').$type<WeekendRule>().notNull().default('keep'),
+  /** So viele Tage vor der Fälligkeit anlegen */
+  leadDays: integer('lead_days').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+  /** Nächster Termin laut Rhythmus, dessen Aufgabe noch fehlt; null = keiner mehr (Enddatum erreicht) */
+  nextOn: date('next_on', { mode: 'string' }),
+  creatorId: uuid('creator_id')
+    .notNull()
+    .references(() => users.id),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type User = typeof users.$inferSelect;
+export type RecurringTask = typeof recurringTasks.$inferSelect;
 /**
  * Aus HelpSpot übernommene Tickets (Import, Entscheid vom 29.10.2026): Rohdaten der API unverändert, damit sich nach
  * dem Abschalten von HelpSpot noch etwas nachtragen lässt, und der zugehörige Vorgang (HS-<Nummer>).

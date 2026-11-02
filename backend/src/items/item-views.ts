@@ -122,6 +122,17 @@ function boardCondition(type: 'incident' | 'task'): SQL | undefined {
   );
 }
 
+const INCIDENT_VIEWS: readonly View[] = ['incidents', 'incidents-board', 'incidents-closed'];
+
+/**
+ * Filter «Nur meine»: mir zugewiesen. Bei Störungen auch offene ohne Zuständige, damit sie jemand übernimmt; gelöste
+ * ohne Zuständige nicht.
+ */
+export function mineCondition(view: View, userId: string): SQL | undefined {
+  const assigned = eq(items.assigneeId, userId);
+  return INCIDENT_VIEWS.includes(view) ? or(assigned, and(isNull(items.assigneeId), OPEN)) : assigned;
+}
+
 export function viewQuery(view: View): { where: SQL | undefined; orderBy: SQL[] } {
   switch (view) {
     case 'inbox':

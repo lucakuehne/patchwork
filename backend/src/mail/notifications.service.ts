@@ -134,24 +134,22 @@ export class NotificationsService {
   }
 
   /**
-   * Ein Duplikat wurde zum Original umgeleitet: Hinweis an dessen Melder (An) und Beteiligte (CC).
+   * Ein Duplikat wurde ins Original übernommen: Hinweis an dessen Melder (An) und Beteiligte (CC).
    * Die Mail läuft unter der Nummer des Originals, damit Antworten dort landen.
    */
-  async duplicateRedirected(original: Item, duplicate: Item, merged: boolean, actorId: string): Promise<void> {
+  async duplicateMerged(original: Item, duplicate: Item, actorId: string): Promise<void> {
     const reporter = await this.eligible(duplicate, duplicate.reporterId, actorId);
     const cc = await this.participantEmails(duplicate, actorId);
     const to = reporter ? [reporter.email] : cc.splice(0, cc.length);
     await this.sendToReporter(original, to, cc, {
-      template: merged ? 'duplicateMerged' : 'duplicateRedirected',
+      template: 'duplicateMerged',
       values: {
         Duplikat: `${itemRef(duplicate)} «${duplicate.title}»`,
         Original: `${itemRef(original)} «${original.title}»`,
-        // Die Mail geht an den Melder des Duplikats; bei einem anderen Melder als beim Original nennt sie ihn
         ...personValues('Melder', reporter ?? (await this.user(duplicate.reporterId))),
       },
       automated: true,
-      // Im Portal sieht der Melder sein Duplikat; das Original nur, wenn er auch dort Melder ist
-      portalItem: merged ? original : duplicate,
+      portalItem: original,
       // Im Verlauf beim Original und beim Duplikat
       relatedItemId: duplicate.id,
     });

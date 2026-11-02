@@ -142,6 +142,11 @@ await step('Typ zuweisen: Störung mit Status «Neu»', async () => {
 });
 
 await step('Zuweisen: Mail an Zuständigen', async () => {
+  // «Nur meine» zeigt bei Störungen auch offene ohne Zuständige, in Liste und Board
+  for (const view of ['incidents', 'incidents-board']) {
+    const unassigned = await api('GET', `/items?view=${view}&mine=1`);
+    assert.deepEqual(unassigned.items.map((i) => i.number), [itemNo], `${view}: offen ohne Zuständige`);
+  }
   await api('PATCH', `/items/${itemNo}`, { assigneeId: ivan.id, priority: 'high' });
   const mail = await waitForMail(IVAN, (m) => m.subject === `[PW-${itemNo}] Zugewiesen: VPN verbindet nicht`, 'Zuweisung');
   // Standardtext mit Vor- und Nachname des Melders, Link-Zeile «Vorgang öffnen», Fusszeile mit «Patchwork»

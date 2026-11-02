@@ -16,6 +16,7 @@ import {
   mutes,
   outgoingMails,
   participants,
+  recurringTasks,
   statuses,
   statusTargets,
   uploads,
@@ -51,6 +52,7 @@ import {
   assigneeUser,
   BOARD_VIEWS,
   filterCondition,
+  mineCondition,
   reporterUser,
   searchCondition,
   sortOrder,
@@ -130,7 +132,7 @@ export class ItemsService {
     const condition = and(
       query.where,
       search,
-      opts.mine ? eq(items.assigneeId, opts.userId) : undefined,
+      opts.mine ? mineCondition(view, opts.userId) : undefined,
       opts.areas ? areaCondition(opts.areas) : undefined,
       opts.filters ? filterCondition(opts.filters) : undefined,
     );
@@ -293,6 +295,8 @@ export class ItemsService {
       priority: item.priority,
       // Nur bei Aufgaben; bei Störungen bleibt es gespeichert, aber ausgeblendet
       dueDate: item.type === 'task' ? item.dueDate : null,
+      /** Aus einer wiederkehrenden Aufgabe angelegt, solange es sie gibt */
+      recurring: item.recurringTaskId ? await this.recurringOf(item.recurringTaskId) : null,
       source: item.source,
       channel: channel && { id: channel.id, label: channel.label, icon: channel.icon },
       suggestedType: item.suggestedType,
@@ -368,6 +372,15 @@ export class ItemsService {
       hidden: new Set(limit ? rows.filter((r) => !limit.includes(r.type ?? 'inbox')).map(itemRef) : []),
       types: new Map(rows.map((r) => [itemRef(r), r.type])),
     };
+  }
+
+  private async recurringOf(id: string): Promise<{ id: string; title: string } | null> {
+    const [row] = await this.db
+      .select({ id: recurringTasks.id, title: recurringTasks.title })
+      .from(recurringTasks)
+      .where(eq(recurringTasks.id, id))
+      .limit(1);
+    return row ?? null;
   }
 
   private async helpspotInfo(itemId: string): Promise<{ status: string; reporterName: string } | null> {

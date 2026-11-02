@@ -10,9 +10,9 @@ import ModalDialog from './ModalDialog.vue';
 import StatusBadge from './StatusBadge.vue';
 
 /**
- * Zwei Vorgänge zusammenführen (Entscheid vom 02.11.2026). Dahinter steht «Duplikat von»: Der übernommene Vorgang wird
- * geschlossen und umgeleitet, bei gleichem Melder übernimmt der bleibende alles. Vorgeschlagen werden die offenen
- * Vorgänge desselben Melders, andere lassen sich suchen.
+ * Zwei Vorgänge desselben Melders zusammenführen (Entscheid vom 02.11.2026). Dahinter steht «Duplikat von»: Der
+ * bleibende Vorgang übernimmt alles, der andere wird geschlossen. Vorgeschlagen werden die offenen Vorgänge desselben
+ * Melders, weitere lassen sich suchen; Treffer anderer Melder sind nicht wählbar (seit 02.11.2026).
  */
 const props = defineProps<{ itemKey: ItemKey; reporter: { id: string; name: string } }>();
 const emit = defineEmits<{ close: []; merged: [] }>();
@@ -68,9 +68,8 @@ const outcome = computed(() => {
     ? `${self.value} wird in ${other} übernommen und geschlossen. ${other} bleibt.`
     : `${other} wird in ${self.value} übernommen und geschlossen. ${self.value} bleibt.`;
 });
-const otherReporter = computed(() =>
-  chosen.value?.reporter && chosen.value.reporter.id !== props.reporter.id ? chosen.value.reporter.name : null,
-);
+/** Treffer eines anderen Melders: nicht wählbar, dafür gibt es «Bezieht sich auf» */
+const otherReporter = (r: ItemSummary) => r.reporter.id !== props.reporter.id;
 
 async function merge() {
   const other = chosen.value;
@@ -132,6 +131,8 @@ async function merge() {
           class="result"
           :class="{ chosen: chosen?.id === r.id }"
           :aria-pressed="chosen?.id === r.id"
+          :disabled="otherReporter(r)"
+          :title="otherReporter(r) ? 'Anderer Melder: nur verknüpfen (Bezieht sich auf)' : undefined"
           @click="chosen = r"
         >
           <span class="mono muted">{{ itemRef(r) }}</span>
@@ -144,15 +145,12 @@ async function merge() {
     </div>
 
     <p class="faint small hint">
-      Bei gleichem Melder übernimmt der bleibende Vorgang alles: Meldung, Nachrichten und interne Notizen mit Anhängen. Der
-      übernommene Vorgang wird geschlossen und bleibt als «Duplikat von» verknüpft; Antworten auf seine Mails landen beim
-      bleibenden.
+      Der bleibende Vorgang übernimmt alles: Meldung, Nachrichten und interne Notizen mit Anhängen. Der übernommene wird
+      geschlossen und bleibt als «Duplikat von» verknüpft; Antworten auf seine Mails landen beim bleibenden. Zusammenführen
+      geht nur bei gleichem Melder, Vorgänge verschiedener Melder lassen sich mit «Bezieht sich auf» verknüpfen.
     </p>
     <div v-if="chosen" class="outcome">
       <strong>{{ outcome }}</strong>
-      <span v-if="otherReporter">
-        Anderer Melder ({{ otherReporter }}): Es wird nichts übernommen, die Melder werden beim bleibenden Vorgang Beteiligte.
-      </span>
     </div>
     <div v-if="error" class="error-box">{{ error }}</div>
 
@@ -192,6 +190,13 @@ async function merge() {
 }
 .result:hover {
   background: var(--surface-hover);
+}
+.result:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.result:disabled:hover {
+  background: none;
 }
 .result.chosen {
   background: var(--accent-soft);

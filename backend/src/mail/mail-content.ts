@@ -88,6 +88,29 @@ export function stripQuotedText(text: string): string {
 
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 
+// Schrift der Mail. Outlook (Word) übernimmt sie in Tabellenzellen nicht vom body, sie steht deshalb auch dort.
+const FONT_FAMILY = 'font-family:Segoe UI,Helvetica,Arial,sans-serif';
+const TEXT_STYLE = `${FONT_FAMILY};font-size:14px;line-height:1.5;color:#1f2328`;
+const LINE_COLOR = '#d0d7de';
+const LAYOUT_TABLE = 'role="presentation" cellpadding="0" cellspacing="0" border="0"';
+
+// Zitate als Tabelle mit Balken links: Outlook (Word) zeigt Rahmen nur an Tabellenzellen zuverlässig, ein
+// <blockquote> erscheint dort nur eingerückt
+markdown.renderer.rules.blockquote_open = () =>
+  `<table ${LAYOUT_TABLE} style="margin:14px 0;border-collapse:collapse"><tr><td style="border:none;border-left:3px solid ${LINE_COLOR};padding:0 0 0 10px;${TEXT_STYLE}">\n`;
+markdown.renderer.rules.blockquote_close = () => '</td></tr></table>\n';
+// Absätze im Zitat ohne Abstand oben und nach dem letzten, damit der Balken so hoch ist wie der Text
+markdown.renderer.rules.paragraph_open = (tokens, idx, options, _env, self) => {
+  const depth = tokens
+    .slice(0, idx)
+    .reduce((n, t) => n + (t.type === 'blockquote_open' ? 1 : t.type === 'blockquote_close' ? -1 : 0), 0);
+  if (depth > 0) {
+    const close = tokens.findIndex((t, i) => i > idx && t.type === 'paragraph_close' && t.level === tokens[idx]!.level);
+    tokens[idx]!.attrSet('style', tokens[close + 1]?.type === 'blockquote_close' ? 'margin:0' : 'margin:0 0 8px');
+  }
+  return self.renderToken(tokens, idx, options);
+};
+
 export function renderMarkdown(source: string): string {
   return markdown.render(source);
 }
@@ -95,13 +118,17 @@ export function renderMarkdown(source: string): string {
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/** HTML-Gerüst für ausgehende Mails. */
+/**
+ * HTML-Gerüst für ausgehende Mails. Die Trennlinie über der Fusszeile ist aus demselben Grund wie die Zitate eine
+ * Tabelle. Den Abstand darüber gibt eine leere Zeile (Word kennt keinen Rand an Tabellen), der Absatz ohne Abstand
+ * verhindert, dass Word über der Fusszeile zusätzlichen Platz einfügt.
+ */
 export function htmlMail(bodyHtml: string, footer: string): string {
   return `<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
-<body style="margin:0;padding:24px;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1f2328;background:#ffffff">
+<body style="margin:0;padding:24px;${TEXT_STYLE};background:#ffffff">
 <div style="max-width:680px">${bodyHtml}</div>
-<div style="max-width:680px;margin-top:24px;padding-top:12px;border-top:1px solid #d0d7de;font-size:12px;color:#59636e">${escapeHtml(footer).replace(/\n/g, '<br>')}</div>
+<table ${LAYOUT_TABLE} width="100%" style="max-width:680px;border-collapse:collapse"><tr><td style="border:none;padding:0;height:12px;font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="border:none;border-top:1px solid ${LINE_COLOR};padding:12px 0 0;${FONT_FAMILY};font-size:12px;line-height:1.5;color:#59636e"><p style="margin:0">${escapeHtml(footer).replace(/\n/g, '<br>')}</p></td></tr></table>
 </body></html>`;
 }
 

@@ -195,8 +195,7 @@ await step('Portal: fremde Vorgänge bleiben unsichtbar', async () => {
 });
 
 await step('Portal: Duplikate zeigen den Hinweis aufs Original, keine Antwort möglich', async () => {
-  const bobsDuplicate = await api('GET', `/portal/items/${dupOther}`);
-  assert.deepEqual(bobsDuplicate.duplicateOf, { prefix: 'PW', number: dupOriginal, title: 'Drucker 3. OG', accessible: false });
+  // Annas Original sieht Bob nicht
   await api('GET', `/portal/items/${dupOriginal}`, undefined, { expect: [404] });
   await loginAs(ANNA, 'anna-passwort-1');
   const annasDuplicate = await api('GET', `/portal/items/${dupSame}`);
@@ -213,15 +212,15 @@ await step('Portal: Duplikate zeigen den Hinweis aufs Original, keine Antwort m�
 
 await step('Wieder geöffnetes Duplikat: Umleitung endet', async () => {
   await loginAs('ada@test.local', 'geheim-geheim');
-  await api('POST', `/items/${dupOther}/move`, { statusId: status('incident', 'in_progress').id });
-  const confirmation = await waitForMail(BOB, (m) => m.subject === `[PW-${dupOther}] Drucker 3. OG streikt`, 'Bestätigung');
-  await sendMail({ from: BOB, subject: `Re: ${confirmation.subject}`, text: 'Doch etwas anderes.', inReplyTo: confirmation.messageId });
+  await api('POST', `/items/${dupSame}/move`, { statusId: status('incident', 'in_progress').id });
+  const confirmation = await waitForMail(ANNA, (m) => m.subject === `[PW-${dupSame}] Nochmals Drucker`, 'Bestätigung');
+  await sendMail({ from: ANNA, subject: `Re: ${confirmation.subject}`, text: 'Doch etwas anderes.', inReplyTo: confirmation.messageId });
   await sleep(500);
   await poll();
-  assert.ok((await detail(dupOther)).entries.some((e) => e.kind === 'reply' && e.body === 'Doch etwas anderes.'));
+  assert.ok((await detail(dupSame)).entries.some((e) => e.kind === 'reply' && e.body === 'Doch etwas anderes.'));
   assert.ok(!(await detail(dupOriginal)).entries.some((e) => e.body === 'Doch etwas anderes.'));
-  await loginAs(BOB, 'bob-passwort-12');
-  assert.equal((await api('GET', `/portal/items/${dupOther}`)).duplicateOf, null);
+  await loginAs(ANNA, 'anna-passwort-1');
+  assert.equal((await api('GET', `/portal/items/${dupSame}`)).duplicateOf, null);
 });
 
 // ---------------------------------------------------------------- Rückmeldungen 15.10.2026

@@ -343,6 +343,10 @@ function onRejected() {
             :disabled="busy"
             @change="patch({ dueDate: ($event.target as HTMLInputElement).value || null })"
           />
+          <span v-if="item.recurring" class="hint recurring">
+            Wiederkehrend:
+            <RouterLink :to="{ path: '/tasks/recurring', query: { id: item.recurring.id } }">{{ item.recurring.title }}</RouterLink>
+          </span>
         </div>
 
         <div class="field">

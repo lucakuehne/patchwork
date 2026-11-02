@@ -4,6 +4,7 @@ import { LdapService } from '../auth/ldap.service';
 import { InjectDb, type Db } from '../db/db.module';
 import { items, ruleRuns, rules, users } from '../db/schema';
 import { BossService, QUEUE_AUTOMATION } from '../jobs/boss.service';
+import { RecurringTasksService } from '../recurring/recurring-tasks.service';
 import { SettingsService } from '../settings/settings.service';
 import { StatusesService } from '../statuses/statuses.service';
 import { DueRemindersService } from './due-reminders.service';
@@ -29,13 +30,22 @@ export class AutomationService implements OnModuleInit {
     private readonly statuses: StatusesService,
     private readonly ldap: LdapService,
     private readonly dueReminders: DueRemindersService,
+    private readonly recurring: RecurringTasksService,
   ) {}
 
   async onModuleInit() {
     const boss = await this.boss.boss();
-    // Zeitgesteuerte Regeln und Mails bei Fälligkeit; ein Fehler im einen hält das andere nicht auf
+    // Zeitgesteuerte Regeln, wiederkehrende Aufgaben und Mails bei Fälligkeit (nach dem Anlegen, damit heute fällige
+    // neue Aufgaben ihre Mail im selben Durchlauf erhalten); ein Fehler im einen hält das andere nicht auf
     await boss.work(QUEUE_AUTOMATION, { batchSize: 1 }, async () => {
-      const results = await Promise.allSettled([this.run(), this.dueReminders.run()]);
+      const recurringThenDue = async () => {
+        try {
+          await this.recurring.run();
+        } finally {
+          await this.dueReminders.run();
+        }
+      };
+      const results = await Promise.allSettled([this.run(), recurringThenDue()]);
       const failed = results.find((r) => r.status === 'rejected');
       if (failed) throw failed.reason;
     });

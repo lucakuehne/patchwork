@@ -42,6 +42,8 @@ export interface TemplateDefinition {
   plain?: boolean;
   /** Mail ohne Vorgang (Willkommens-Mail): ohne «[PW-123]» im Betreff, ohne Link- und Fusszeile */
   standalone?: boolean;
+  /** Wird nicht mehr verschickt; bleibt für den Namen älterer Mails im Protokoll und im Verlauf, fehlt in der Verwaltung */
+  retired?: boolean;
   placeholders: Placeholder[];
 }
 
@@ -133,8 +135,9 @@ export const TEMPLATES: TemplateDefinition[] = [
     group: 'reporter',
     label: 'Duplikat: im Original weiterbearbeitet',
     description:
-      'An Melder und Beteiligte eines Duplikats mit anderem Melder; sie erhalten künftig die Updates des Originals. ' +
-      'Nummer und Titel gehören zum Original, Vor- und Nachname des Melders zum Duplikat.',
+      'Bis 02.11.2026 an Melder und Beteiligte eines Duplikats mit anderem Melder; sie erhielten künftig die Updates des ' +
+      'Originals. Seit «Duplikat von» nur noch bei gleichem Melder geht, wird diese Mail nicht mehr verschickt.',
+    retired: true,
     subject: '{{Titel}}',
     body:
       'Hallo {{Melder Vorname}}\n\nDeine Meldung {{Duplikat}} betrifft dasselbe wie {{Original}} und wird dort weiterbearbeitet. ' +

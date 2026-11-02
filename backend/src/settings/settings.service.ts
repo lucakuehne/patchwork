@@ -93,7 +93,6 @@ const TYPED_TRIGGERS: DeliveryTrigger[] = [
   'done',
   'rejected',
   'duplicateMerged',
-  'duplicateRedirected',
   'waitingReminder',
   'waitingClosed',
   'assigned',
@@ -107,7 +106,7 @@ const TYPED_TRIGGERS: DeliveryTrigger[] = [
  * «Fällig» gibt es nur bei Aufgaben, «Willkommen» ist eine Mail ohne Vorgang.
  */
 export const BLOCK_TRIGGERS: Record<DeliveryBlock, readonly DeliveryTrigger[]> = {
-  general: ['confirmation', 'reply', 'duplicateMerged', 'duplicateRedirected', 'assigned', 'inboundReply', 'fixCompleted', 'mentioned', 'welcome'],
+  general: ['confirmation', 'reply', 'duplicateMerged', 'assigned', 'inboundReply', 'fixCompleted', 'mentioned', 'welcome'],
   incident: TYPED_TRIGGERS,
   task: [...TYPED_TRIGGERS, 'dueReminder'],
 };

@@ -49,7 +49,7 @@ export class MailTemplatesService implements OnApplicationBootstrap {
   /** Alle Vorlagen für die Verwaltung, mit Standard und aktueller Fassung. */
   async list() {
     const overrides = await this.settings.get('mailTemplates');
-    return TEMPLATES.map((definition) => {
+    return TEMPLATES.filter((definition) => !definition.retired).map((definition) => {
       const custom = overrides[definition.key];
       return {
         key: definition.key,

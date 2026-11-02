@@ -42,6 +42,12 @@ export const router = createRouter({
       props: { view: 'tasks-rejected' },
       meta: { area: 'task' },
     },
+    {
+      path: '/tasks/recurring',
+      name: 'tasks-recurring',
+      component: () => import('./views/RecurringTasksView.vue'),
+      meta: { area: 'task' },
+    },
     { path: '/search', name: 'search', component: () => import('./views/SearchView.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     {

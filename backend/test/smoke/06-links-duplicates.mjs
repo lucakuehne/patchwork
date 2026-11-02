@@ -181,53 +181,74 @@ await step('Duplikat vom gleichen Melder: zusammengeführt, Hinweis-Mail, Antwor
   assert.ok(!(await detail(dupSame)).entries.some((e) => e.body === 'Noch ein Detail.'));
 });
 
-await step('Duplikat von anderem Melder: umgeleitet, Melder und CC werden Beteiligte beim Original', async () => {
-  // Mit Portal enthält der Hinweis den Link zum Duplikat
-  await api('PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '' });
-  await sendMail({ from: BOB, cc: [CARLA], subject: 'Drucker 3. OG streikt', text: 'Bei mir auch.' });
+await step('Duplikat von anderem Melder: nicht möglich (seit 02.11.2026), «bezieht sich auf» schon', async () => {
+  await sendMail({ from: BOB, subject: 'Drucker 3. OG streikt', text: 'Bei mir auch.' });
   await sleep(500);
   await poll();
   dupOther = await inboxNumber('Drucker 3. OG streikt');
-  // diesmal aus Sicht des Originals verknüpft
-  await api('POST', `/items/${dupOriginal}/links`, { role: 'hasDuplicate', other: dupOther });
-  const dup = await detail(dupOther);
-  assert.deepEqual([dup.status.label, dup.status.closed], ['Gelöst', true]);
-  assert.equal(dup.entries.at(-1).meta.merged, false);
-  const original = await detail(dupOriginal);
-  assert.deepEqual(original.participants.map((u) => u.email).sort(), [BOB, CARLA].sort());
-  assert.equal(original.entries.filter((e) => e.meta?.viaDuplicate === dupOther).length, 2);
-  const redirect = await waitForMail(
-    BOB,
-    (m) => m.subject === `[PW-${dupOriginal}] Drucker 3. OG` && m.text.includes('wird dort weiterbearbeitet'),
-    'Umleitung',
+  const refused = await api('POST', `/items/${dupOriginal}/links`, { role: 'hasDuplicate', other: dupOther }, { expect: [400] });
+  assert.match(refused.message, /nur bei gleichem Melder/);
+  await api('POST', `/items/${dupOther}/links`, { role: 'duplicateOf', other: dupOriginal }, { expect: [400] });
+  await api('POST', `/items/${dupOther}/links`, { role: 'relates', other: dupOriginal });
+  const other = await detail(dupOther);
+  assert.deepEqual(
+    other.links.map((l) => l.role),
+    ['relates'],
   );
-  assert.deepEqual(redirect.to, [BOB]);
-  assert.deepEqual(redirect.cc, [CARLA]);
-  assert.match(redirect.text, new RegExp(`/portal/items/PW-${dupOther}\\b`));
+  assert.equal(other.type, null, 'bleibt im Eingang, nichts geschlossen');
+  assert.deepEqual((await detail(dupOriginal)).participants, [], 'Bob wird nicht Beteiligter');
+});
+
+await step('Doppelmeldung mit CC: Beteiligte werden Beteiligte beim Original, Hinweis in beiden Verläufen', async () => {
+  // Mit Portal enthält der Hinweis den Link zum Original
+  await api('PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '' });
+  await sendMail({ from: ANNA, cc: [CARLA], subject: 'Drucker 3. OG immer noch', text: 'Geht immer noch nicht.' });
+  await sleep(500);
+  await poll();
+  const dupCc = await inboxNumber('Drucker 3. OG immer noch');
+  // diesmal aus Sicht des Originals verknüpft
+  await api('POST', `/items/${dupOriginal}/links`, { role: 'hasDuplicate', other: dupCc });
+  const dup = await detail(dupCc);
+  assert.deepEqual([dup.status.label, dup.status.closed], ['Gelöst', true]);
+  assert.equal(dup.entries.at(-1).meta.merged, true);
+  const original = await detail(dupOriginal);
+  assert.deepEqual(
+    original.participants.map((u) => u.email),
+    [CARLA],
+  );
+  assert.equal(original.entries.filter((e) => e.meta?.viaDuplicate === dupCc).length, 1);
+  assert.ok(original.entries.some((e) => e.meta?.mergedFrom === dupCc && e.body === 'Geht immer noch nicht.'), 'übernommen');
+  const hint = await waitForMail(
+    ANNA,
+    (m) => m.subject === `[PW-${dupOriginal}] Drucker 3. OG` && m.text.includes(`PW-${dupCc}`),
+    'Hinweis mit CC',
+  );
+  assert.deepEqual(hint.to, [ANNA]);
+  assert.deepEqual(hint.cc, [CARLA]);
+  assert.match(hint.text, new RegExp(`/portal/items/PW-${dupOriginal}\\b`));
   // Im Verlauf beim Original und beim Duplikat; ansehen geht unter beiden Nummern, unter anderen nicht
-  const inOriginal = (await detail(dupOriginal)).mails.find((m) => m.template === 'duplicateRedirected');
-  const inDuplicate = (await detail(dupOther)).mails.find((m) => m.template === 'duplicateRedirected');
-  assert.ok(inOriginal && inDuplicate && inOriginal.id === inDuplicate.id, 'Hinweis in beiden Verläufen');
-  assert.deepEqual(inDuplicate.to.map((r) => r.email), [BOB]);
+  const inDuplicate = (await detail(dupCc)).mails.find((m) => m.template === 'duplicateMerged');
+  assert.ok((await detail(dupOriginal)).mails.some((m) => m.id === inDuplicate.id), 'Hinweis in beiden Verläufen');
+  assert.deepEqual(inDuplicate.to.map((r) => r.email), [ANNA]);
   assert.deepEqual(inDuplicate.cc.map((r) => r.email), [CARLA]);
-  assert.equal((await api('GET', `/items/${dupOther}/mails/${inDuplicate.id}`)).label, 'Duplikat: im Original weiterbearbeitet');
+  assert.equal((await api('GET', `/items/${dupCc}/mails/${inDuplicate.id}`)).label, 'Duplikat: ins Original übernommen');
   await api('GET', `/items/${dupOriginal}/mails/${inDuplicate.id}`);
   await api('GET', `/items/${dupSame}/mails/${inDuplicate.id}`, undefined, { expect: [404] });
-  // Der zusammengeführte Hinweis steht ebenso beim ersten Duplikat
-  assert.ok((await detail(dupSame)).mails.some((m) => m.template === 'duplicateMerged'), 'Hinweis beim zusammengeführten Duplikat');
+  // Der Hinweis steht ebenso beim ersten Duplikat
+  assert.ok((await detail(dupSame)).mails.some((m) => m.template === 'duplicateMerged'), 'Hinweis beim ersten Duplikat');
 
   const f = new FormData();
   f.append('kind', 'reply');
   f.append('body', 'Techniker ist unterwegs.');
   await api('POST', `/items/${dupOriginal}/entries`, f);
-  await waitForMail(BOB, (m) => m.cc.includes(BOB) && m.text.includes('Techniker ist unterwegs'), 'CC an Bob');
+  await waitForMail(CARLA, (m) => m.cc.includes(CARLA) && m.text.includes('Techniker ist unterwegs'), 'CC an Carla');
 
-  await sendMail({ from: BOB, subject: `Re: ${redirect.subject}`, text: 'Danke!', inReplyTo: redirect.messageId });
+  await sendMail({ from: CARLA, subject: `Re: ${hint.subject}`, text: 'Danke!', inReplyTo: hint.messageId });
   await sleep(500);
   await poll();
   const reply = (await detail(dupOriginal)).entries.find((e) => e.body === 'Danke!');
   assert.equal(reply.kind, 'reply');
-  assert.equal(reply.author.email, BOB);
+  assert.equal(reply.author.email, CARLA);
   await api('PUT', '/settings/portal', { access: 'none', emails: [], groupDn: '' });
 });
 
@@ -240,8 +261,11 @@ await step('Duplikat: Original muss offen sein und einer der beiden einen Typ ha
   const two = await inboxNumber('Eingang zwei');
   const inbox2 = await api('POST', `/items/${two}/links`, { role: 'duplicateOf', other: one }, { expect: [400] });
   assert.match(inbox2.message, new RegExp(`Beide Vorgänge liegen im Eingang. Bitte zuerst PW-${one} \\(das Original\\)`));
-  assert.equal((await detail(t1)).status.closed, true);
-  const closed = await api('POST', `/items/${one}/links`, { role: 'duplicateOf', other: t1 }, { expect: [400] });
+  // Abgeschlossenes Original desselben Melders (bei anderem Melder ginge «Duplikat von» ohnehin nicht)
+  const annaId = (await detail(one)).reporter.id;
+  const done = await createItem({ type: 'incident', title: 'Schon gelöst', reporterId: annaId, statusId: status('incident', 'resolved').id });
+  assert.equal((await detail(done)).status.closed, true);
+  const closed = await api('POST', `/items/${one}/links`, { role: 'duplicateOf', other: done }, { expect: [400] });
   assert.match(closed.message, /bereits abgeschlossen/);
   assert.equal((await detail(one)).links.length, 0);
   for (const n of [one, two]) await api('POST', `/items/${n}/discard`, { discarded: true });

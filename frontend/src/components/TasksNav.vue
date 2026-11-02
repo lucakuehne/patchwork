@@ -10,5 +10,6 @@ const session = useSession();
     <RouterLink to="/tasks">Offen</RouterLink>
     <RouterLink to="/tasks/done">Erledigt</RouterLink>
     <RouterLink v-if="session.statusTargets.task.reject" to="/tasks/rejected">Abgelehnt</RouterLink>
+    <RouterLink to="/tasks/recurring">Wiederkehrend</RouterLink>
   </div>
 </template>

@@ -16,7 +16,15 @@ const props = defineProps<{ entries: Entry[] }>();
 const latest = computed(() => props.entries[0]!);
 // Von einer Regel: «Regel «Name»» mit den gespeicherten Änderungen
 const rule = computed(() => (props.entries.length === 1 && latest.value.meta?.field === 'rule' ? latest.value.meta : null));
-const author = computed(() => (rule.value ? `Regel «${String(rule.value.ruleName)}»` : (authorName(latest.value) ?? 'System')));
+// Von einer wiederkehrenden Aufgabe angelegt (ohne Bearbeiter): ihr Titel im Kopf
+const recurring = computed(() =>
+  props.entries.length === 1 && latest.value.meta?.field === 'recurring' && !latest.value.author ? latest.value.meta : null,
+);
+const author = computed(() => {
+  if (rule.value) return `Regel «${String(rule.value.ruleName)}»`;
+  if (recurring.value) return `Wiederkehrende Aufgabe «${String(recurring.value.recurringTitle)}»`;
+  return authorName(latest.value) ?? 'System';
+});
 const automatic = computed(() => (props.entries.length === 1 ? automaticStatusText(latest.value) : null));
 // In der Liste in zeitlicher Reihenfolge
 const parts = computed<EventPart[]>(() => {
@@ -45,7 +53,7 @@ const times = computed(() =>
   <div class="events">
     <TimelineHead
       :name="author"
-      :system="!!rule || !authorName(latest)"
+      :system="!!rule || !!recurring || !authorName(latest)"
       :kind="helpSpot ? 'aus HelpSpot' : undefined"
       :time="latest.createdAt"
       :time-title="times"

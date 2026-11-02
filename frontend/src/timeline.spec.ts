@@ -237,4 +237,13 @@ describe('groupTimeline', () => {
     expect(shape([entry(3), hs(2, 'a'), hs(1, 'b')])).toEqual([1, 2]);
     expect(eventParts(entry(1))).toEqual([eventPart(entry(1))]);
   });
+
+  it('aus einer wiederkehrenden Aufgabe angelegt: für sich, ohne Bearbeiter kurz (die Vorlage steht im Kopf)', () => {
+    const meta = { field: 'recurring', recurringId: 'r1', recurringTitle: 'Patchday {{Monat}}', dueDate: '10.11.2026' };
+    expect(eventPart(entry(1, { meta, author: null })).text).toBe('die Aufgabe angelegt (fällig am 10.11.2026)');
+    expect(eventPart(entry(1, { meta })).text).toBe(
+      'die Aufgabe aus der wiederkehrenden Aufgabe «Patchday {{Monat}}» angelegt (fällig am 10.11.2026)',
+    );
+    expect(shape([entry(2), entry(1, { meta })])).toEqual([1, 1]);
+  });
 });

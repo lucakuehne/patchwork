@@ -1,6 +1,6 @@
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { filterCondition, sortOrder, viewQuery, type View } from './item-views';
+import { filterCondition, mineCondition, sortOrder, viewQuery, type View } from './item-views';
 
 const dialect = new PgDialect();
 const where = (view: View) => {
@@ -37,6 +37,25 @@ describe('viewQuery', () => {
 
   it('Suche ohne Filter nach Status', () => {
     expect(where('search')).toBeNull();
+  });
+});
+
+describe('Nur meine', () => {
+  const mine = (view: View) => dialect.sqlToQuery(mineCondition(view, 'u1')!);
+
+  it('bei Störungen: mir zugewiesen oder offen ohne Zuständige', () => {
+    for (const view of ['incidents', 'incidents-board', 'incidents-closed'] as const) {
+      expect(mine(view).sql, view).toBe(
+        '("items"."assignee_id" = $1 or ("items"."assignee_id" is null and "statuses"."closed" = $2))',
+      );
+      expect(mine(view).params, view).toEqual(['u1', false]);
+    }
+  });
+
+  it('sonst nur mir zugewiesen', () => {
+    for (const view of ['inbox', 'board', 'tasks', 'tasks-done', 'tasks-rejected', 'search'] as const) {
+      expect(mine(view).sql, view).toBe('"items"."assignee_id" = $1');
+    }
   });
 });
 

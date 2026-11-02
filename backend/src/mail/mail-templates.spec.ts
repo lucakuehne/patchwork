@@ -126,7 +126,29 @@ describe('Fertige Mail', () => {
     expect(mail.html).toContain('Zu «Fehler bei *.pdf und _Daten_» (PW-12)');
     expect(mail.html).not.toContain('<em>');
     expect(mail.html).toContain('<a href="https://pw.firma.local/portal/items/12">Ihre Meldung online ansehen</a>');
-    expect(mail.html).toContain('IT · PW-12</div>');
+    expect(mail.html).toContain('IT · PW-12</p></td>');
+  });
+
+  it('Zitat mit Balken links und Trennlinie über der Fusszeile als Tabellenzellen (Outlook)', () => {
+    const mail = composeMail(
+      { body: 'Neue Antwort:\n\n> {{Text}}', link: '[Vorgang öffnen]({{Link}})', footer: 'IT · {{Nummer}}' },
+      { ...values, Text: 'Erster Absatz\n\nZweiter Absatz' },
+    );
+    expect(mail.html).not.toContain('<blockquote');
+    expect(mail.html).toMatch(
+      /<td style="border:none;border-left:3px solid #d0d7de;[^"]*font-family:[^"]*">\s*<p style="margin:0 0 8px">Erster Absatz<\/p>\s*<p style="margin:0">Zweiter Absatz<\/p>\s*<\/td><\/tr><\/table>/,
+    );
+    expect(mail.html).toMatch(/<td style="border:none;border-top:1px solid #d0d7de;[^"]*font-size:12px[^"]*"><p style="margin:0">IT · PW-12<\/p><\/td>/);
+    // Absätze ausserhalb von Zitaten bleiben ohne eigene Formatierung
+    expect(mail.html).toContain('<p>Neue Antwort:</p>');
+    expect(mail.html).toContain('<p><a href="https://pw.firma.local/portal/items/12">Vorgang öffnen</a></p>');
+  });
+
+  it('verschachtelte Zitate ergeben verschachtelte Balken', () => {
+    const mail = composeMail({ body: '> aussen\n>\n> > innen', link: '', footer: '' }, values);
+    expect(mail.html.match(/border-left:3px solid/g)).toHaveLength(2);
+    expect(mail.html).toContain('<p style="margin:0 0 8px">aussen</p>');
+    expect(mail.html).toContain('<p style="margin:0">innen</p>');
   });
 
   it('Links im Text erscheinen in der Textfassung als «Text: Adresse», auch in öffentlichen Antworten', () => {

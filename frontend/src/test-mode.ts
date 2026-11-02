@@ -23,7 +23,6 @@ export const DELIVERY_TRIGGERS: { value: DeliveryTrigger; label: string; group: 
   { value: 'done', label: 'Abgeschlossen', group: 'reporter' },
   { value: 'rejected', label: 'Abgelehnt', group: 'reporter' },
   { value: 'duplicateMerged', label: 'Duplikat: ins Original übernommen', group: 'reporter' },
-  { value: 'duplicateRedirected', label: 'Duplikat: im Original weiterbearbeitet', group: 'reporter' },
   { value: 'waitingReminder', label: 'Erinnerung', group: 'reporter' },
   { value: 'waitingClosed', label: 'Automatisch geschlossen', group: 'reporter' },
   { value: 'assigned', label: 'Zugewiesen', group: 'staff' },

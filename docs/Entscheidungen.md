@@ -86,6 +86,9 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
 - IT: Der Zuständige erhält eine Mail bei Zuweisung und bei Antworten des Melders. Kein Mailversand für neue Vorgänge im Eingang.
   Stummschalten pro Vorgang unterdrückt Mails an diesen Benutzer zu diesem Vorgang.
 - Format: Beschreibung und Kommentare in Markdown. Ausgehende Mails als HTML mit Text-Alternative. Eingehende HTML-Mails werden bereinigt gespeichert.
+  - Technisch (02.11.2026): Zitate (Balken links) und die Trennlinie über der Fusszeile sind Tabellenzellen mit Rahmen
+    und Schrift direkt an der Zelle. Outlook (Word) zeigte ein `<blockquote>` nur eingerückt und die Linie an einem
+    `<div>` nicht.
 - CC: CC-Adressen eingehender Mails werden **Beteiligte** des Vorgangs (eigene Postfach-Adressen ausgenommen).
   - Öffentliche Antworten gehen an den Melder (To) und alle Beteiligten (CC).
   - IT kann Beteiligte hinzufügen und entfernen.
@@ -120,7 +123,8 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 - **«Duplikat von»** (bestätigt am 15.10.2026):
   - Das Duplikat wird automatisch geschlossen (Status «Automatisch schliessen in»; ohne Typ erhält es den Typ des Originals). Statt der Erledigt-Mail erhält sein Melder einen Hinweis aufs Original. Diese Mail läuft unter der Nummer des Originals.
   - **Gleicher Melder → zusammenführen:** Die Meldung des Duplikats (Text und Anhänge) erscheint im Original als Nachricht des Melders («Zusammengeführt aus PW-…»). Hinweis-Mail «… wurde dort hinzugefügt». Seit 02.11.2026 wird alles übernommen, siehe «Zusammenführen».
-  - **Anderer Melder → Umleitung:** Der Melder wird beim Original Beteiligter (CC) und erhält so dessen öffentliche Antworten. Hinweis-Mail «… wird dort weiterbearbeitet».
+  - ~~**Anderer Melder → Umleitung:** Der Melder wird beim Original Beteiligter (CC) und erhält so dessen öffentliche Antworten. Hinweis-Mail «… wird dort weiterbearbeitet».~~ **Entfällt seit 02.11.2026** (Entscheid des Benutzers, nach ITIL): «Duplikat von» und «Zusammenführen» gehen nur noch bei gleichem Melder. Vorgänge verschiedener Melder bleiben eigene Vorgänge und lassen sich mit «Bezieht sich auf» verknüpfen; die Fehlermeldung sagt das. Bestehende Umleitungen bleiben, wie sie sind (Antworten landen weiter beim Original). Die Vorlage «Duplikat: im Original weiterbearbeitet» wird nicht mehr verschickt und fehlt unter Verwaltung → Mail-Vorlagen und im Testbetrieb; ihr Name bleibt für ältere Mails im Protokoll und im Verlauf.
+  - Für später vorgemerkt (02.11.2026): **Sammelstörung** (Haupt- und Unter-Störungen nach ITIL): Meldungen verschiedener Melder zum selben Ausfall bleiben eigene Störungen, hängen an einer Hauptstörung, Antworten an alle Melder mit je eigener Mail, beim Lösen der Hauptstörung werden alle mitgeschlossen. Noch nicht besprochen.
   - Antworten auf Mails zum Duplikat landen beim Original. Im Portal zeigt das Duplikat «Erledigt» mit dem Hinweis aufs Original, ohne Antwortfeld. Das Original sieht der Melder im Portal nur, wenn er auch dort Melder ist.
   - Wird die Verknüpfung gelöst, wird nichts rückgängig gemacht. Die IT öffnet das Duplikat bei Bedarf von Hand wieder.
 - Duplikate, Randfälle (bestätigt am 15.10.2026):
@@ -131,7 +135,7 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
   - Beim Zusammenführen bleibt der Status des Originals unverändert, auch wenn es auf den Melder wartet.
 - Technisch: Keine Duplikat-Ketten. Ein Vorgang kann nur Duplikat eines Vorgangs sein, der selbst kein Duplikat ist, und ein Vorgang mit Duplikaten kann nicht selbst Duplikat werden.
 - **Zusammenführen** (bestätigt am 02.11.2026), z.B. wenn jemand zwei Mails zur selben Sache schreibt:
-  - Eigener Knopf «Zusammenführen …» im Vorgang (bei den Verknüpfungen), nicht im Eingang. Der Dialog schlägt die offenen Vorgänge desselben Melders vor (neueste zuerst), andere lassen sich suchen. Dahinter steht «Duplikat von» mit allen Regeln oben.
+  - Eigener Knopf «Zusammenführen …» im Vorgang (bei den Verknüpfungen), nicht im Eingang. Der Dialog schlägt die offenen Vorgänge desselben Melders vor (neueste zuerst), andere lassen sich suchen; Treffer anderer Melder sind ausgegraut und nicht wählbar (seit 02.11.2026). Dahinter steht «Duplikat von» mit allen Regeln oben.
   - Beide im Eingang: wie bisher zuerst das Original als Störung oder Aufgabe einordnen; die Fehlermeldung sagt das jetzt klar.
   - Bei gleichem Melder wird alles übernommen wie in HelpSpot: Meldung, Nachrichten des Melders und der Beteiligten, öffentliche Antworten der IT und interne Notizen, jeweils mit Anhängen. Gekennzeichnet mit «zusammengeführt aus PW-…»; übernommene öffentliche Antworten sieht der Melder im Portal des Originals, Notizen bleiben intern.
   - Die übernommenen Einträge stehen zu ihrer ursprünglichen Zeit im Verlauf des Originals (chronologisch eingereiht), nicht gesammelt zum Zeitpunkt des Zusammenführens.
@@ -252,6 +256,46 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - **Nach dem Erstellen einer Aufgabe** (bestätigt am 21.10.2026) bleibt man, wo man ist (z.B. auf dem Board, die Karte erscheint in ihrer Spalte), mit der Meldung «PW-123 erstellt» und «Öffnen». Gilt für alle neuen Aufgaben, auch über «+ Neu». Neue Störungen öffnen wie bisher.
 - **Erwähnen** (bestätigt am 21.10.2026): Mit «@» im Antwortfeld (öffentliche Antworten und interne Notizen, auch beim Bearbeiten einer Notiz) öffnet sich eine Auswahl der IT-Mitarbeitenden und Admins. Die Erwähnung erscheint in Patchwork hervorgehoben. Beim Melder (Mail und Portal) steht sie als gewöhnlicher Text «@Vorname Nachname». Die Erwähnten erhalten eine Mail «Erwähnt» mit dem Text und dem Link (Vorlage unter Verwaltung → Mail-Vorlagen, IT), nicht an sich selbst; beim Bearbeiten einer Notiz nur neu hinzugekommene Erwähnte.
 - **Stummschalten ausgeblendet** (bestätigt am 21.10.2026): Die Option «Benachrichtigungen für mich stummschalten» ist vorläufig ausgeblendet. Bestehende Stummschaltungen bleiben gespeichert, wirken aber nicht mehr: Alle erhalten wieder ihre Mails. Wird die Option später wieder eingeblendet, gelten sie wieder.
+
+## Wiederkehrende Aufgaben (bestätigt am 02.11.2026)
+
+- **Grundprinzip:** eigene Liste «Wiederkehrende Aufgaben». Jede ist eine Vorlage mit Titel, Beschreibung,
+  Checklisten, Zuständig, Priorität, Status, Meldeweg und Rhythmus; Patchwork legt danach jeweils eine neue Aufgabe an
+  (wie die wiederkehrenden Anfragen in HelpSpot).
+- **Ort und Rechte:** im Tab Aufgaben als Ansicht «Wiederkehrend» neben «Offen | Erledigt | Abgelehnt». Alle mit
+  Zugriff auf den Bereich Aufgaben (Admins, IT je nach Bereichen) dürfen anlegen, ändern und löschen.
+- **Rhythmus:** täglich, wöchentlich an gewählten Wochentagen, monatlich an einem Tag (1.–31. oder letzter Tag; fehlt
+  der Tag im Monat, gilt sein letzter), monatlich an einem Wochentag (erster bis vierter oder letzter, z.B. zweiter
+  Dienstag), jährlich an einem Datum (29. Februar in anderen Jahren am 28.); jeweils «alle N» (Tage, Wochen, Monate,
+  Jahre, gezählt ab dem Startdatum), dazu Beginn und optional Ende.
+- **Zeitpunkt:** Die Aufgabe entsteht am Tag ihrer Fälligkeit um 06:00 Uhr (vor der Mail bei Fälligkeit um 07:00),
+  mit Vorlauf so viele Tage früher; fällig ist sie am Termin.
+- **Termin am Wochenende:** je wiederkehrender Aufgabe wählbar, ob er am Wochenende bleibt, auf den Montag danach
+  oder auf den Freitag davor rückt (Freitag bestätigt am 02.11.2026, z.B. für Monatsende-Aufgaben; Feiertage zählen
+  nicht). Bei «wöchentlich» entfällt die Wahl, dort wählt man die Wochentage selbst. Ergeben mehrere Termine dieselbe
+  Fälligkeit (z.B. täglich mit Samstag und Sonntag auf Montag), entsteht nur eine Aufgabe.
+- **Vorherige noch offen:** Die neue Aufgabe entsteht trotzdem; die alte bleibt sichtbar (überfällig rot).
+- **Neue Aufgabe:** Status laut Vorlage (offene Status ausser dem Ablehnen-Status, Standard der Start-Status). Melder
+  ist, wer die Vorlage angelegt hat, ohne Eingangsbestätigung. Der Zuständige erhält die Mail «Zugewiesen» und am
+  Termin die Mail «Fällig».
+- **Titel:** mit Platzhaltern für den Termin laut Rhythmus (bestätigt am 02.11.2026; bei verschobenem Termin nicht die
+  Fälligkeit, z.B. «Monatsabschluss {{Monat}}» am 31.01. bleibt «Januar», auch wenn er am 01.02. fällig ist): `{{Datum}}`, `{{Tag}}`, `{{Wochentag}}`, `{{Woche}}` (Kalenderwoche),
+  `{{Monat}}`, `{{Quartal}}` (Q1–Q4), `{{Jahr}}`, z.B. «Patchday {{Monat}} {{Jahr}}» → «Patchday November 2026».
+- **Übersicht:** Jede angelegte Aufgabe zeigt in der Seitenleiste «Wiederkehrend: …» mit Link und im Verlauf «Aufgabe
+  angelegt (fällig am …)». Die Vorlage zeigt die nächsten Termine (Vorschau mit Titel beim Bearbeiten) und die zuletzt
+  angelegten Aufgaben, hat den Schalter «Aktiv» (pausieren) und den Knopf «Jetzt anlegen».
+- Details (bestätigt am 02.11.2026):
+  - «Jetzt anlegen» legt die Aufgabe des **nächsten Termins** sofort an (fällig am Termin), auch bei einer pausierten
+    Vorlage; der Plan geht danach mit dem Termin darauf weiter. Bei ungespeicherten Änderungen erst speichern.
+  - Termine, deren Fälligkeit beim Anlegen schon vorbei ist (z.B. Server aus, Vorlage pausiert), werden nicht
+    nachgeholt. Nach dem Ändern oder Wiedereinschalten gilt der nächste Termin ab heute.
+  - Löschen einer wiederkehrenden Aufgabe: die angelegten Aufgaben bleiben, ohne Verweis (der Eintrag im Verlauf bleibt).
+  - Beschreibung ohne Bilder (wie bei den Textbausteinen), Checklisten direkt in der Vorlage, auch aus einer
+    Checklisten-Vorlage übernommen.
+- Technisch: Tabelle `recurring_tasks` (Rhythmus als JSON, nächster Termin `next_on`), an den Aufgaben
+  `recurring_task_id` und `recurring_due` (eindeutig je Vorlage und Fälligkeit). Der Job läuft alle 15 Minuten mit
+  den zeitgesteuerten Regeln, vor den Mails bei Fälligkeit. `POST /api/admin/recurring-tasks/run` (nur Admins) startet
+  ihn sofort, für Tests mit einem anderen Zeitpunkt.
 
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 
@@ -806,5 +850,8 @@ Beim Bauen aufgefallene Randfälle:
 5. **Newsletter und automatische Mails** (List-Header, Auto-Submitted, Abwesenheitsnotizen, Unzustellbarkeit): keine Eingangsbestätigung. Abwesenheitsnotizen ändern den Status nicht und benachrichtigen niemanden.
 6. **Intern erfasst für jemand anderen** (z.B. telefonische Meldung): Der Melder erhält eine Eingangsbestätigung mit der Nummer.
 7. **Melderwechsel:** Der neue Melder erhält keine Mail.
-8. **«Nur meine»** = mir zugewiesen.
+8. **«Nur meine»** = mir zugewiesen. Bei Störungen (bestätigt am 02.11.2026) zusätzlich die offenen ohne Zuständige,
+   damit sie jemand übernimmt, in Liste und Board. Gelöste ohne Zuständige gehören nicht dazu, auch nicht in den
+   abgeschlossenen Spalten des Boards. Der Knopf heisst weiter «Nur meine», beim Darüberfahren erscheint «Dir zugewiesen
+   und offene ohne Zuständige» (unter «Gelöst» kein Hinweis). Aufgaben und Eingang bleiben bei «mir zugewiesen».
 9. **Eingang** ist nach Eingang sortiert, neueste zuerst.

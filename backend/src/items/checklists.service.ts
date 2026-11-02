@@ -239,18 +239,28 @@ export class ChecklistsService {
       .from(checklistTemplateItems)
       .where(eq(checklistTemplateItems.templateId, template.id))
       .orderBy(asc(checklistTemplateItems.position));
+    await this.addList(
+      tx,
+      itemId,
+      template.name,
+      texts.map((t) => t.text),
+    );
+    return template.name;
+  }
+
+  /** Neue Checkliste mit diesen Punkten am Ende (auch für wiederkehrende Aufgaben) */
+  async addList(tx: Tx, itemId: string, title: string, texts: string[]): Promise<void> {
     const [row] = await tx
       .select({ max: max(checklists.position) })
       .from(checklists)
       .where(eq(checklists.itemId, itemId));
     const [list] = await tx
       .insert(checklists)
-      .values({ itemId, title: template.name, position: (row?.max ?? -1) + 1 })
+      .values({ itemId, title, position: (row?.max ?? -1) + 1 })
       .returning();
     if (texts.length > 0) {
-      await tx.insert(checklistItems).values(texts.map((t, position) => ({ checklistId: list!.id, text: t.text, position })));
+      await tx.insert(checklistItems).values(texts.map((text, position) => ({ checklistId: list!.id, text, position })));
     }
-    return template.name;
   }
 
   private async taskByKey(tx: Tx, key: ItemKey): Promise<Item> {

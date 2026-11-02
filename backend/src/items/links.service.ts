@@ -134,6 +134,12 @@ export class LinksService {
         await this.assertDuplicateAllowed(tx, stored.fromId, stored.toId);
         duplicate = stored.fromId === self.id ? self : other;
         original = stored.fromId === self.id ? other : self;
+        // Seit 02.11.2026 nur bei gleichem Melder (Doppelmeldung); verschiedene Melder behalten ihre eigenen Vorgänge
+        if (duplicate.reporterId !== original.reporterId) {
+          throw new BadRequestException(
+            '«Duplikat von» geht nur bei gleichem Melder. Vorgänge verschiedener Melder bitte mit «Bezieht sich auf» verknüpfen.',
+          );
+        }
         await this.assertOpenOriginal(tx, original);
         if (!duplicate.discarded && !duplicate.type && !original.type) {
           throw new BadRequestException(
@@ -150,24 +156,23 @@ export class LinksService {
   }
 
   /**
-   * Leitet ein Duplikat zum Original um:
-   * - gleicher Melder: Meldung, Nachrichten und Notizen werden ins Original übernommen (zusammenführen, siehe mergeInto)
-   * - anderer Melder: Melder wird beim Original Beteiligter
-   * - Beteiligte (CC) des Duplikats werden ebenfalls beim Original Beteiligte
+   * Führt ein Duplikat (gleicher Melder) ins Original über:
+   * - Meldung, Nachrichten und Notizen werden ins Original übernommen (siehe mergeInto)
+   * - Beteiligte (CC) des Duplikats werden beim Original Beteiligte
    * - ein offenes Duplikat wird geschlossen (Status «Automatisch schliessen in» seines Typs, ohne Typ der des Originals)
    * Der Melder erhält statt der Erledigt-Mail einen Hinweis auf das Original.
-   * Verworfene Duplikate werden nur verknüpft.
+   * Verworfene Duplikate werden nur verknüpft. Bis 02.11.2026 gab es «Duplikat von» auch bei anderem Melder (Umleitung:
+   * der Melder wurde beim Original Beteiligter); solche Verknüpfungen bleiben bestehen.
    */
   private async redirectDuplicate(tx: Tx, actorId: string, duplicate: Item, original: Item) {
     if (duplicate.discarded) return [];
     const current = duplicate.statusId ? await this.statuses.get(duplicate.statusId, tx) : undefined;
-    const merged = duplicate.reporterId === original.reporterId;
 
-    if (merged) await this.mergeInto(tx, duplicate, original);
+    await this.mergeInto(tx, duplicate, original);
 
-    // Melder (falls nicht derselbe) und Beteiligte des Duplikats erhalten künftig die Mails des Originals
+    // Beteiligte des Duplikats erhalten künftig die Mails des Originals
     const cc = await tx.select({ userId: participants.userId }).from(participants).where(eq(participants.itemId, duplicate.id));
-    const people = [...new Set([duplicate.reporterId, ...cc.map((p) => p.userId)])].filter((id) => id !== original.reporterId);
+    const people = [...new Set(cc.map((p) => p.userId))].filter((id) => id !== original.reporterId);
     for (const userId of people) {
       const inserted = await tx.insert(participants).values({ itemId: original.id, userId }).onConflictDoNothing().returning();
       if (inserted.length === 0) continue;
@@ -203,11 +208,11 @@ export class LinksService {
       await this.items.addEntry(tx, duplicate.id, actorId, 'status', '', {
         ...statusMeta(current, target),
         ...referenceMeta('duplicateOf', original),
-        merged,
+        merged: true,
       });
     }
 
-    return [() => this.notifications.duplicateRedirected(original, duplicate, merged, actorId)];
+    return [() => this.notifications.duplicateMerged(original, duplicate, actorId)];
   }
 
   /**

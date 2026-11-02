@@ -134,7 +134,7 @@ await step('mails-im-verlauf', async () => {
   console.log('Bild 30-mail-zeile');
   await line.getByRole('button', { name: 'ansehen' }).click();
   await page.locator('.dialog .headers').waitFor();
-  const footer = page.locator('.dialog .mail-html div[style*="border-top"]').last();
+  const footer = page.locator('.dialog .mail-html td[style*="border-top"]').last();
   await footer.waitFor();
   const footerSize = await footer.evaluate((el) => getComputedStyle(el).fontSize);
   if (footerSize !== '12px') throw new Error(`Fusszeile im Modal ${footerSize} statt 12px`);
@@ -345,6 +345,22 @@ await step('filter', async () => {
   await title.click();
   await page.waitForTimeout(300);
   if (await page.locator('th[aria-sort]').count()) throw new Error('Sortierung nach dem dritten Klick nicht aufgehoben');
+  // «Nur meine» bei offenen Störungen: mir zugewiesene und offene ohne Zuständige, mit Hinweis; bei gelösten ohne
+  const mineToggle = page.locator('label.mine');
+  const mineTitle = await mineToggle.getAttribute('title');
+  if (mineTitle !== 'Dir zugewiesen und offene ohne Zuständige') throw new Error(`Hinweis bei «Nur meine»: ${mineTitle}`);
+  const me = (await api('GET', '/auth/me')).data.user;
+  const open = (await api('GET', '/items?view=incidents')).data.items;
+  const expected = open.filter((i) => !i.assignee || i.assignee.id === me.id).length;
+  if (!open.some((i) => !i.assignee)) throw new Error('Keine offene Störung ohne Zuständige zum Prüfen');
+  await mineToggle.locator('input').check();
+  await page.waitForTimeout(600);
+  const mineRows = await page.locator('table.table tbody tr').count();
+  await mineToggle.locator('input').uncheck();
+  if (mineRows !== expected) throw new Error(`«Nur meine» zeigt ${mineRows} statt ${expected} Störungen`);
+  await page.goto(`${BASE}/incidents/resolved`);
+  await page.locator('.list-filters').waitFor();
+  if (await page.locator('label.mine').getAttribute('title')) throw new Error('Hinweis bei «Nur meine» auch unter «Gelöst»');
   // Board und abgeschlossene Aufgaben haben die Filterleiste ebenso
   for (const path of ['/tasks', '/tasks/done', '/inbox', '/incidents/resolved']) {
     await page.goto(`${BASE}${path}`);
@@ -1063,7 +1079,7 @@ await step('simulieren', async () => {
   await page.locator('tbody tr.clickable').first().waitFor();
   await page.locator('tbody tr.clickable').first().click();
   // Ansicht wie versendet: Fusszeile klein mit Trennlinie (Formatierung der Vorlage bleibt)
-  const footer = page.locator('.mail-html div[style*="border-top"]').last();
+  const footer = page.locator('.mail-html td[style*="border-top"]').last();
   await footer.waitFor();
   const footerSize = await footer.evaluate((el) => getComputedStyle(el).fontSize);
   if (footerSize !== '12px') throw new Error(`Fusszeile in der Ansicht ${footerSize} statt 12px`);
@@ -1125,6 +1141,56 @@ await step('zusammenfuehren', async () => {
   await merged.waitFor();
   if (!(await merged.innerText()).includes('HDMI-Kabel')) throw new Error('Übernommene Meldung fehlt');
   await shot('94-zusammengefuehrt', true);
+});
+
+await step('wiederkehrend', async () => {
+  // Neue wiederkehrende Aufgabe im Tab Aufgaben: Rhythmus, Vorschau mit Titel, dann «Jetzt anlegen»
+  await page.goto(`${BASE}/tasks/recurring`);
+  await page.getByRole('link', { name: 'Wiederkehrend' }).waitFor();
+  await page.getByRole('button', { name: '+ Wiederkehrende Aufgabe' }).click();
+  const dialog = page.locator('.dialog');
+  await dialog.locator('#rec-title').fill('Patchday {{Monat}} {{Jahr}}');
+  await dialog.getByRole('combobox', { name: 'Art', exact: true }).selectOption('monthlyWeekday');
+  await dialog.getByRole('combobox', { name: 'Woche im Monat', exact: true }).selectOption('2');
+  await dialog.getByRole('combobox', { name: 'Wochentag', exact: true }).selectOption('2');
+  await dialog.locator('#rec-lead').fill('3');
+  await dialog.locator('#rec-assignee').selectOption({ index: 1 });
+  // Ohne Vorbelegung steht «Bitte wählen …» (ohne Wert) an erster Stelle
+  if ((await dialog.locator('#rec-channel').evaluate((el) => el.selectedIndex)) === 0) await dialog.locator('#rec-channel').selectOption({ index: 1 });
+  await dialog.getByRole('button', { name: '+ Checkliste' }).click();
+  await dialog.getByRole('textbox', { name: 'Titel der Checkliste 1' }).fill('Ablauf');
+  await dialog.getByRole('textbox', { name: 'Punkte der Checkliste 1' }).fill('Server\nClients');
+  // Vorschau: fünf Termine, alle an einem Dienstag, mit ausgefülltem Titel
+  const upcoming = dialog.locator('.upcoming li');
+  await page.waitForFunction(() => {
+    const items = [...document.querySelectorAll('.dialog .upcoming li')];
+    return items.length === 5 && items.every((li) => li.textContent.startsWith('Di '));
+  });
+  const first = await upcoming.first().innerText();
+  if (!/Patchday \S+ \d{4}/.test(first) || first.includes('{{')) throw new Error(`Vorschau: ${first}`);
+  await upcoming.last().scrollIntoViewIfNeeded();
+  await shot('95-wiederkehrend-dialog');
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await page.locator('.toast', { hasText: 'Wiederkehrende Aufgabe gespeichert' }).waitFor();
+  const row = page.locator('table.table tbody tr', { hasText: 'Patchday {{Monat}} {{Jahr}}' });
+  await row.waitFor();
+  if (!(await row.innerText()).includes('Jeden Monat am zweiten Dienstag')) throw new Error(`Zeile: ${await row.innerText()}`);
+  await shot('96-wiederkehrend-liste');
+  // Jetzt anlegen: die Aufgabe des nächsten Termins, mit Verweis zurück
+  await row.click();
+  await dialog.getByRole('button', { name: 'Jetzt anlegen' }).click();
+  const toast = page.locator('.toast', { hasText: 'angelegt' });
+  await toast.waitFor();
+  const ref = (await toast.innerText()).match(/PW-\d+/)?.[0];
+  if (!ref) throw new Error(`Meldung: ${await toast.innerText()}`);
+  await page.goto(`${BASE}/items/${ref}`);
+  const link = page.locator('.side .recurring a', { hasText: 'Patchday {{Monat}} {{Jahr}}' });
+  await link.waitFor();
+  await page.locator('.timeline .events', { hasText: 'aus der wiederkehrenden Aufgabe' }).waitFor();
+  await page.locator('.checklist', { hasText: 'Ablauf' }).waitFor();
+  await shot('97-wiederkehrend-aufgabe', true);
+  await link.click();
+  await page.locator('.dialog .recent', { hasText: ref }).waitFor();
 });
 
 await step('helpspot-import', async () => {

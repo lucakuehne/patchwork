@@ -88,10 +88,16 @@ useReloadAfterItemModal(load);
       </div>
       <LayoutToggle v-if="!closed" kind="incidents" />
       <div class="spacer" />
-      <MineToggle v-model="mine" />
+      <!-- Bei offenen Störungen zeigt «Nur meine» auch die ohne Zuständige, damit sie jemand übernimmt -->
+      <MineToggle v-model="mine" :title="closed ? undefined : 'Dir zugewiesen und offene ohne Zuständige'" />
       <button class="btn" type="button" @click="createIn()">+ Störung</button>
     </div>
-    <ListFilters v-model="filters" :mine="mine" :statuses="statuses" />
+    <ListFilters
+      v-model="filters"
+      :mine="mine"
+      :mine-title="closed ? undefined : 'Mit «Nur meine» sind es die dir zugewiesenen und die offenen ohne Zuständige'"
+      :statuses="statuses"
+    />
     <PagedList
       v-if="closed"
       v-model:sort="closedSort"

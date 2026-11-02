@@ -37,6 +37,8 @@ import { WelcomeMailService } from './mail/welcome-mail.service';
 import { PortalAccessService } from './portal/portal-access.service';
 import { PortalController } from './portal/portal.controller';
 import { PortalService } from './portal/portal.service';
+import { RecurringTasksController } from './recurring/recurring-tasks.controller';
+import { RecurringTasksService } from './recurring/recurring-tasks.service';
 import { ReportsController } from './reports/reports.controller';
 import { ReportsService } from './reports/reports.service';
 import { AutomationService } from './rules/automation.service';
@@ -80,6 +82,7 @@ import { UsersService } from './users/users.service';
     IncomingMailsController,
     MailTemplatesController,
     RulesController,
+    RecurringTasksController,
     SnippetsController,
     ReportsController,
     TlsController,
@@ -118,6 +121,7 @@ import { UsersService } from './users/users.service';
     RulesService,
     AutomationService,
     DueRemindersService,
+    RecurringTasksService,
     SnippetsService,
     ReportsService,
     TlsService,

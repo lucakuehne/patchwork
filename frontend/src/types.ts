@@ -265,6 +265,51 @@ export interface ChecklistTemplate {
   items: string[];
 }
 
+/** Rhythmus einer wiederkehrenden Aufgabe; Wochentage 1 = Montag … 7 = Sonntag, Tag bzw. Woche −1 = letzte(r) */
+export type Recurrence =
+  | { kind: 'daily'; interval: number }
+  | { kind: 'weekly'; interval: number; weekdays: number[] }
+  | { kind: 'monthlyDay'; interval: number; day: number }
+  | { kind: 'monthlyWeekday'; interval: number; nth: number; weekday: number }
+  | { kind: 'yearly'; interval: number; month: number; day: number };
+
+export type WeekendRule = 'keep' | 'monday' | 'friday';
+
+/** Termin einer wiederkehrenden Aufgabe: laut Rhythmus, Fälligkeit (vom Wochenende verschoben), Tag des Anlegens */
+export interface RecurringOccurrence {
+  on: string;
+  due: string;
+  createOn: string;
+  title: string;
+}
+
+export interface RecurringTaskFields {
+  title: string;
+  description: string;
+  priority: Priority;
+  statusId: string | null;
+  assigneeId: string | null;
+  channelId: string | null;
+  checklists: { title: string; items: string[] }[];
+  schedule: Recurrence;
+  startDate: string;
+  endDate: string | null;
+  weekend: WeekendRule;
+  leadDays: number;
+  active: boolean;
+}
+
+export interface RecurringTask extends RecurringTaskFields {
+  id: string;
+  creator: { id: string; name: string };
+  /** Nächster Termin, dessen Aufgabe noch fehlt; null = keiner mehr */
+  next: RecurringOccurrence | null;
+  /** Zuletzt angelegte Aufgaben, neueste zuerst */
+  recent: { prefix: string; number: number; title: string; dueDate: string | null; status: StatusRef | null }[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * Status, wie ihn der Melder im Portal sieht: interner Name mit Farbe, im Eingang «Eingegangen». «waiting»: Status
  * «Wartet auf den Melder» seines Typs (hervorgehoben).
@@ -400,6 +445,8 @@ export interface ItemDetail {
   priority: Priority;
   /** Fälligkeitsdatum JJJJ-MM-TT (nur Aufgaben) */
   dueDate: string | null;
+  /** Aus einer wiederkehrenden Aufgabe angelegt, solange es sie gibt */
+  recurring: { id: string; title: string } | null;
   source: 'mail' | 'portal' | 'internal';
   /** Meldeweg, null = ohne Angabe */
   channel: { id: string; label: string; icon: ChannelIcon } | null;
