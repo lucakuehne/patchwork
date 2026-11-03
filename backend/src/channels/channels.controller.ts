@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { z } from 'zod';
+import { Audit } from '../audit/audit.decorators';
 import { AdminOnly } from '../auth/auth.decorators';
 import { nullableUuid, ZodPipe } from '../common/zod.pipe';
 import { CHANNEL_ICONS, ChannelsService } from './channels.service';
@@ -35,18 +36,21 @@ export class ChannelsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Standard-Meldewege geändert')
   @Put('defaults')
   setDefaults(@Body(new ZodPipe(defaultsSchema)) body: z.infer<typeof defaultsSchema>) {
     return this.channels.setDefaults(body);
   }
 
   @AdminOnly()
+  @Audit('admin', 'Meldeweg erstellt', { fromResult: true })
   @Post()
   create(@Body(new ZodPipe(createSchema)) body: z.infer<typeof createSchema>) {
     return this.channels.create(body);
   }
 
   @AdminOnly()
+  @Audit('admin', 'Reihenfolge der Meldewege geändert')
   @Put('order')
   @HttpCode(204)
   async reorder(@Body(new ZodPipe(reorderSchema)) body: z.infer<typeof reorderSchema>) {
@@ -54,12 +58,14 @@ export class ChannelsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Meldeweg geändert', { target: 'channel' })
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(updateSchema)) body: z.infer<typeof updateSchema>) {
     return this.channels.update(id, body);
   }
 
   @AdminOnly()
+  @Audit('admin', 'Meldeweg gelöscht', { target: 'channel' })
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id', ParseUUIDPipe) id: string, @Query(new ZodPipe(removeSchema)) query: z.infer<typeof removeSchema>) {

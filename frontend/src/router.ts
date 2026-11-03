@@ -66,6 +66,7 @@ export const router = createRouter({
         { path: 'general', name: 'admin-general', component: () => import('./views/admin/AdminGeneral.vue') },
         { path: 'users', name: 'admin-users', component: () => import('./views/admin/AdminUsers.vue') },
         { path: 'mailboxes', name: 'admin-mailboxes', component: () => import('./views/admin/AdminMailboxes.vue') },
+        { path: 'audit-log', name: 'admin-audit-log', component: () => import('./views/admin/AdminAuditLog.vue') },
         {
           path: 'outgoing-mails',
           name: 'admin-outgoing-mails',

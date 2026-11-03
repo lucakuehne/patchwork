@@ -4,15 +4,19 @@ import { api } from '../api';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import { blockTriggers as allTriggers, DELIVERY_BLOCKS, testModeText, type Rejectable } from '../test-mode';
-import type { DeliveryBlock, DeliveryScope, DeliveryTrigger, MailSettings, PersonPick, User } from '../types';
+import type { DeliveryBlock, DeliveryScope, DeliveryTrigger, MailKind, MailSettings, PersonPick, User } from '../types';
+import MailKindHelp from './MailKindHelp.vue';
 import PersonSearch from './PersonSearch.vue';
 
 /**
  * Testbetrieb: Empfängerkreise für IT-Mitarbeitende und alle übrigen, je Block Generell, Störungen und Aufgaben, dazu
  * abweichend je Auslöser (Verwaltung → Ausgehende Mails).
  */
+const props = defineProps<{ kinds: MailKind[] }>();
 const emit = defineEmits<{ saved: [] }>();
 const session = useSession();
+/** Erklärung je Auslöser (gleicher Schlüssel wie die Vorlage) für das «?» */
+const kindOf = (trigger: DeliveryTrigger) => props.kinds.find((k) => k.key === trigger);
 // «Abgelehnt» nur bei Typen mit Ablehnen-Status (Verwaltung → Status)
 const rejectable = computed<Rejectable>(() => ({
   incident: !!session.statusTargets.incident.reject,
@@ -180,7 +184,10 @@ async function save() {
             <div v-for="g in TRIGGER_GROUPS" :key="g.value" class="trigger-group">
               <span class="group-label">{{ g.label }}</span>
               <div v-for="t in blockTriggers(b.value).filter((t) => t.group === g.value)" :key="t.value" class="trigger">
-                <label :for="`tm-${b.value}-${t.value}`">{{ t.label }}</label>
+                <span class="trigger-name">
+                  <label :for="`tm-${b.value}-${t.value}`">{{ t.label }}</label>
+                  <MailKindHelp v-if="kindOf(t.value)" :kind="kindOf(t.value)!" />
+                </span>
                 <select
                   :id="`tm-${b.value}-${t.value}`"
                   class="select trigger-scope"
@@ -280,6 +287,11 @@ async function save() {
   justify-content: space-between;
   gap: 8px;
   font-size: 13px;
+}
+.trigger-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .trigger-scope {
   width: 170px;

@@ -298,6 +298,48 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   den zeitgesteuerten Regeln, vor den Mails bei Fälligkeit. `POST /api/admin/recurring-tasks/run` (nur Admins) startet
   ihn sofort, für Tests mit einem anderen Zeitpunkt.
 
+## Erklärung der Mails, Aktionsprotokoll, Zähler je Status im Menü (bestätigt am 03.11.2026)
+
+- **Erklärung der Mails** unter Verwaltung → Ausgehende Mails: ein «?» neben jedem Auslöser im Testbetrieb und in der
+  Liste neben der Art der Mail. Die Spalte «Art» zeigt den Namen der Benachrichtigung (z.B. «Erinnerung») statt
+  «Automatisch»; ältere Mails ohne Vorlage wie bisher. Der Text ist die Beschreibung der Vorlage (an wen und wann), wie
+  unter Verwaltung → E-Mail-Vorlagen; die Beschreibungen sind dafür verständlicher formuliert. Bei «Erinnerung» und
+  «Automatisch geschlossen», die nur eine zeitgesteuerte Regel verschickt, steht dazu der aktuelle Stand, z.B.
+  «Derzeit keine aktive Regel mit «Melder per Mail erinnern»: Diese Mail wird nicht verschickt.» oder die Namen der
+  aktiven Regeln. Ein Klick auf «?» öffnet die Mail nicht.
+  - Technisch: `GET /api/admin/mail-templates/kinds` (alle Vorlagen mit Betreff, auch nicht mehr verschickte, mit
+    `state`). Das «?» (`HelpTip`) liegt fest über der Seite und bleibt im Fenster, auch in Tabellen mit eigenem
+    Bildlauf.
+- **Aktionsprotokoll** unter Verwaltung → Aktionsprotokoll, nur für Admins, nur lesen:
+  - Jede Änderung durch eine Person: Vorgänge (erfassen, Status, Typ, Felder, Antworten, Notizen, Checklisten,
+    Beteiligte, Verknüpfen, Zusammenführen, Verwerfen, Ablehnen …), Portal (Meldungen und Antworten), Verwaltung und
+    persönliche Einstellungen, dazu Anmelden, Abmelden, fehlgeschlagene Anmeldungen und «Als dieser Benutzer arbeiten».
+    Ohne Systemaktionen (Regeln, Mailabruf, wiederkehrende Aufgaben im Hintergrund) und ohne Lesezugriffe.
+  - Je Eintrag Zeit, Person, Bereich, Aktion und Objekt (Vorgang mit Link, sonst z.B. Benutzer, Status, Regel). Keine
+    Werte (Texte, alte und neue Einstellungen); bei Vorgängen nennt die Aktion die geänderten Felder (z.B.
+    «Priorität geändert»). Arbeitet ein Admin als jemand anderes, steht der Eintrag unter dieser Person mit «(durch …)».
+  - Bereiche: Vorgänge, Portal, Verwaltung, Anmeldung und Konto (Anmelden, Abmelden, «Als dieser Benutzer arbeiten»,
+    persönliche Einstellungen).
+  - Neueste zuoberst, je 100 mit «Mehr laden». Filter nach Person (auch als Admin dahinter), Bereich, Zeitraum (Tage in
+    Schweizer Zeit) und Suche. Eine Kennung (auch nur die Nummer) sucht genau diesen Vorgang, sonst Text in Person,
+    Aktion und Objekt. Die Filter stehen in der Adresse.
+  - Einträge bleiben sechs Monate; ältere löscht die nächtliche Wartung. Das Protokoll beginnt leer mit dem Update.
+  - Fehlgeschlagene Anmeldungen mit dem eingegebenen Benutzernamen und der Meldung; gebremste Versuche (zu viele
+    Fehlversuche) nicht, damit das Protokoll nicht vollläuft.
+  - Technisch: Tabelle `audit_log` (Migration 0045). Jede schreibende Route trägt `@Audit(Bereich, Aktion, …)` oder
+    `@NoAudit()` (Vorschau, Test, Upload vor dem Speichern, Anmeldung selbst protokolliert); ein Unit-Test prüft das.
+    Ein globaler Interceptor schreibt den Eintrag, sobald die Route ohne Fehler durchgelaufen ist; das Objekt liest er
+    vorher (beim Löschen ist es danach weg). Name und Objekt werden als Text gespeichert und bleiben, wenn sich der
+    Name später ändert.
+- **Zähler je Status im Menü** bei «Störungen» und «Aufgaben» statt einer Zahl: ein Feld je offener Status in der
+  Reihenfolge des Boards, in der Statusfarbe mit halber Stärke (zwischen kräftig und den hellen Status-Badges, Entwurf
+  «Stufe 1»), Zahl in dunkler Statusfarbe, im dunklen Schema weiss (auch auf Gelb und Grün gut lesbar). Bei Aufgaben ohne den Start-Status (Backlog) wie bisher. Status ohne
+  Vorgänge bleiben als blasse 0 stehen, damit die Reihenfolge fest bleibt; ohne offene Vorgänge eine blasse 0 wie
+  bisher. Beim Darüberfahren eine Liste mit Status, Anzahl und «Offen»; ein Klick öffnet die Liste wie bisher. Der
+  Eingang behält seine Zahl.
+  - Technisch: `GET /api/items/counts` liefert zusätzlich `byStatus` (offene Vorgänge je Status, nur in den Bereichen
+    des Benutzers); Komponente `NavCount`.
+
 ## Adresse des Portals, Filter in der Adresse, als Melder im Portal arbeiten (bestätigt am 03.11.2026)
 
 - **Adresse des Portals** in der Karte «Portal» unter Verwaltung → Allgemein, mit Knopf «Kopieren», sobald gespeichert

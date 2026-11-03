@@ -491,6 +491,8 @@ export interface Counts {
   inbox: number;
   incidents: number;
   tasks: number;
+  /** Offene Vorgänge je Status (ID → Anzahl, nur Status mit Vorgängen), für die Zähler je Status im Menü */
+  byStatus: Record<string, number>;
 }
 
 export interface MailboxOption {
@@ -618,6 +620,39 @@ export interface OutgoingMail {
   dismissedAt: string | null;
   /** null = Mail ohne Vorgang (Willkommens-Mail) */
   item: { prefix: string; number: number; title: string; type: ItemType | null } | null;
+}
+
+/** Bereich im Aktionsprotokoll: Vorgänge, Portal, Verwaltung, Anmeldung und Konto */
+export type AuditArea = 'items' | 'portal' | 'admin' | 'account';
+
+/** Eintrag im Aktionsprotokoll (Verwaltung → Aktionsprotokoll, nur Admins) */
+export interface AuditEntry {
+  id: string;
+  createdAt: string;
+  userId: string | null;
+  /** Bei fehlgeschlagener Anmeldung der eingegebene Benutzername */
+  userName: string;
+  /** «Als dieser Benutzer arbeiten»: der Admin dahinter */
+  impersonatorName: string | null;
+  area: AuditArea;
+  action: string;
+  /** Objekt als Text zur Zeit der Aktion */
+  target: string;
+  /** Vorgang mit aktuellem Titel; null ohne Vorgang oder wenn er gelöscht ist */
+  item: { prefix: string; number: number; type: ItemType | null; title: string } | null;
+}
+
+/** Art einer Mail (Vorlage) mit Erklärung für die Tooltips unter Verwaltung → Ausgehende Mails */
+export interface MailKind {
+  key: string;
+  group: 'reporter' | 'staff';
+  label: string;
+  /** An wen und wann (wie unter Verwaltung → E-Mail-Vorlagen) */
+  description: string;
+  /** Wird nicht mehr verschickt (ältere Mails) */
+  retired: boolean;
+  /** Aktueller Stand bei Mails, die nur eine Regel verschickt, z.B. «Derzeit keine aktive Regel …»; sonst null */
+  state: string | null;
 }
 
 export interface OutgoingMailDetail extends OutgoingMail {

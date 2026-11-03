@@ -17,6 +17,8 @@ import { hashPassword, MIN_PASSWORD_LENGTH, UsersService, verifyPassword } from 
 import { LdapAccountStateError, LdapService } from './ldap.service';
 
 const FAILED = 'Anmeldung fehlgeschlagen. Bitte Benutzername und Passwort prüfen.';
+/** Gebremste Anmeldung; nicht im Aktionsprotokoll, damit wiederholte Versuche es nicht füllen */
+export const TOO_MANY_ATTEMPTS = 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.';
 const MAX_ATTEMPTS = 10;
 const WINDOW_MS = 15 * 60 * 1000;
 
@@ -146,7 +148,7 @@ export class AuthService {
       return;
     }
     if (entry.count >= MAX_ATTEMPTS) {
-      throw new ForbiddenException('Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
+      throw new ForbiddenException(TOO_MANY_ATTEMPTS);
     }
   }
 

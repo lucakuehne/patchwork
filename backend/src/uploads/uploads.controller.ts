@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Param, ParseUUIDPipe, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
+import { NoAudit } from '../audit/audit.decorators';
 import { CurrentUser, PortalRoute } from '../auth/auth.decorators';
 import { appConfig } from '../config';
 import type { User } from '../db/schema';
@@ -19,6 +20,7 @@ export class UploadsController {
   ) {}
 
   /** Grösse prüft der Dienst selbst, damit die Meldung verständlich ist */
+  @NoAudit()
   @Post('images')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: appConfig.maxUploadBytes } }))
   async upload(@UploadedFile() file: UploadedFileData | undefined, @CurrentUser() user: User) {

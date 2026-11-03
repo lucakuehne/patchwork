@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { z } from 'zod';
+import { Audit } from '../audit/audit.decorators';
 import { AdminOnly } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { UploadedFile as UploadedFileData } from '../items/items.service';
@@ -32,18 +33,21 @@ export class TlsController {
     return this.tls.status();
   }
 
+  @Audit('admin', 'Zertifikatsanfrage erstellt')
   @Post('request')
   @HttpCode(200)
   createRequest(@Body(new ZodPipe(requestSchema)) body: z.infer<typeof requestSchema>) {
     return this.tls.createRequest(body.names);
   }
 
+  @Audit('admin', 'Zertifikatsanfrage verworfen')
   @Delete('request')
   @HttpCode(200)
   discardRequest() {
     return this.tls.discardRequest();
   }
 
+  @Audit('admin', 'Zertifikat installiert')
   @Post('certificate')
   @HttpCode(200)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 256 * 1024 } }))

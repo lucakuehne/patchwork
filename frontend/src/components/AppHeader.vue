@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { countSegments } from '../nav-counts';
 import { useSession } from '../stores/session';
-import type { Area } from '../types';
+import type { Area, ItemType } from '../types';
 import AppLogo from './AppLogo.vue';
+import NavCount from './NavCount.vue';
 import UserMenu from './UserMenu.vue';
 
 const session = useSession();
@@ -12,12 +14,13 @@ const router = useRouter();
 
 const search = ref(typeof route.query.q === 'string' ? route.query.q : '');
 
-// Nur die Bereiche, die der Benutzer sieht (Bereiche je Rolle)
+// Nur die Bereiche, die der Benutzer sieht (Bereiche je Rolle); Störungen und Aufgaben mit einem Zähler je Status
+const segments = (type: ItemType) => countSegments(type, session.statuses, session.statusTargets, session.counts.byStatus);
 const tabs = computed(() =>
   [
-    { area: 'inbox', to: '/inbox', label: 'Eingang', count: session.counts.inbox, prefix: '/inbox' },
-    { area: 'incident', to: '/incidents', label: 'Störungen', count: session.counts.incidents, prefix: '/incidents' },
-    { area: 'task', to: '/tasks', label: 'Aufgaben', count: session.counts.tasks, prefix: '/tasks' },
+    { area: 'inbox', to: '/inbox', label: 'Eingang', count: session.counts.inbox, segments: null, prefix: '/inbox' },
+    { area: 'incident', to: '/incidents', label: 'Störungen', count: session.counts.incidents, segments: segments('incident'), prefix: '/incidents' },
+    { area: 'task', to: '/tasks', label: 'Aufgaben', count: session.counts.tasks, segments: segments('task'), prefix: '/tasks' },
   ].filter((tab) => session.areas.includes(tab.area as Area)),
 );
 
@@ -52,7 +55,8 @@ watch(
         :class="{ active: route.path.startsWith(tab.prefix) }"
       >
         {{ tab.label }}
-        <span class="count" :class="{ zero: tab.count === 0 }">{{ tab.count }}</span>
+        <NavCount v-if="tab.segments" :segments="tab.segments" />
+        <span v-else class="count" :class="{ zero: tab.count === 0 }">{{ tab.count }}</span>
       </RouterLink>
       <RouterLink v-if="session.isAdmin" to="/reports" class="tab" :class="{ active: route.path.startsWith('/reports') }">
         Auswertungen

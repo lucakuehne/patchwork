@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common';
 import { z } from 'zod';
+import { Audit, NoAudit } from '../audit/audit.decorators';
 import { AdminOnly, CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
@@ -37,18 +38,21 @@ export class HelpSpotController {
     return this.helpspot.view();
   }
 
+  @Audit('admin', 'Einstellungen HelpSpot-Import geändert')
   @Put()
   save(@Body(new ZodPipe(settingsSchema)) body: z.infer<typeof settingsSchema>) {
     return this.helpspot.save(body);
   }
 
   /** Verbindung prüfen und die Übersicht über die Werte in HelpSpot neu laden */
+  @NoAudit()
   @Post('analysis')
   @HttpCode(200)
   analysis() {
     return this.helpspot.refreshAnalysis();
   }
 
+  @Audit('admin', 'Import aus HelpSpot gestartet')
   @Post('import')
   @HttpCode(202)
   start(@Body(new ZodPipe(importSchema)) body: z.infer<typeof importSchema>, @CurrentUser() user: User) {
@@ -60,6 +64,7 @@ export class HelpSpotController {
     return this.helpspot.copies();
   }
 
+  @Audit('admin', 'Kopien aus HelpSpot bereinigt')
   @Post('copies/resolve')
   @HttpCode(200)
   resolveCopies(@Body(new ZodPipe(resolveSchema)) body: z.infer<typeof resolveSchema>, @CurrentUser() user: User) {

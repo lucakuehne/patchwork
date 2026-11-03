@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, isNotNull, max, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, max, ne, not, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDb, type Db, type Tx } from '../db/db.module';
 import {
@@ -163,24 +163,35 @@ export class ItemsService {
 
   /**
    * Anzahl offener Vorgänge je Tab (Status nicht abgeschlossen), Aufgaben ohne die im Start-Status (Backlog);
-   * Bereiche ausserhalb von «areas» zählen 0.
+   * Bereiche ausserhalb von «areas» zählen 0. «byStatus»: offene Vorgänge je Status (ID → Anzahl, nur Status mit
+   * Vorgängen) für die Zähler je Status im Menü (seit 03.11.2026).
    */
   async counts(areas: Area[] | null = null) {
     const taskStart = sql`exists (select 1 from ${statusTargets} where ${statusTargets.statusId} = ${items.statusId} and ${statusTargets.type} = 'task' and ${statusTargets.target} = 'start')`;
-    const [row] = await this.db
-      .select({
-        inbox: sql<number>`count(*) filter (where ${items.type} is null and not ${items.discarded})::int`,
-        incidents: sql<number>`count(*) filter (where ${items.type} = 'incident' and not ${statuses.closed})::int`,
-        tasks: sql<number>`count(*) filter (where ${items.type} = 'task' and not ${statuses.closed} and not ${taskStart})::int`,
-      })
-      .from(items)
-      .leftJoin(statuses, eq(statuses.id, items.statusId));
+    const [[row], perStatus] = await Promise.all([
+      this.db
+        .select({
+          inbox: sql<number>`count(*) filter (where ${items.type} is null and not ${items.discarded})::int`,
+          incidents: sql<number>`count(*) filter (where ${items.type} = 'incident' and not ${statuses.closed})::int`,
+          tasks: sql<number>`count(*) filter (where ${items.type} = 'task' and not ${statuses.closed} and not ${taskStart})::int`,
+        })
+        .from(items)
+        .leftJoin(statuses, eq(statuses.id, items.statusId)),
+      this.db
+        .select({ statusId: statuses.id, type: statuses.type, count: sql<number>`count(*)::int` })
+        .from(items)
+        .innerJoin(statuses, eq(statuses.id, items.statusId))
+        .where(and(isNotNull(items.type), not(statuses.closed)))
+        .groupBy(statuses.id, statuses.type),
+    ]);
     const counts = row ?? { inbox: 0, incidents: 0, tasks: 0 };
-    if (!areas) return counts;
+    const sees = (area: Area) => !areas || areas.includes(area);
+    const byStatus = Object.fromEntries(perStatus.filter((s) => sees(s.type)).map((s) => [s.statusId, s.count]));
     return {
-      inbox: areas.includes('inbox') ? counts.inbox : 0,
-      incidents: areas.includes('incident') ? counts.incidents : 0,
-      tasks: areas.includes('task') ? counts.tasks : 0,
+      inbox: sees('inbox') ? counts.inbox : 0,
+      incidents: sees('incident') ? counts.incidents : 0,
+      tasks: sees('task') ? counts.tasks : 0,
+      byStatus,
     };
   }
 

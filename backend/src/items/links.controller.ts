@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { z } from 'zod';
+import { Audit } from '../audit/audit.decorators';
 import { CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
@@ -27,6 +28,7 @@ export class LinksController {
     return { items: await this.links.mergeCandidates(key, await this.areas.limit(user)) };
   }
 
+  @Audit('items', (c) => (c.body.role === 'duplicateOf' || c.body.role === 'hasDuplicate' ? 'Zusammengeführt' : 'Verknüpft'))
   @Post('items/:ref/links')
   @HttpCode(204)
   async add(
@@ -39,6 +41,7 @@ export class LinksController {
     await this.links.add(user.id, key, body.role, body.other);
   }
 
+  @Audit('items', 'Verknüpfung entfernt')
   @Delete('items/:ref/links/:linkId')
   @HttpCode(204)
   async remove(

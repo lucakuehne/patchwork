@@ -18,6 +18,7 @@ import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import type { Response } from 'express';
 import { simpleParser } from 'mailparser';
 import { z } from 'zod';
+import { Audit } from '../audit/audit.decorators';
 import { AdminOnly, CurrentUser } from '../auth/auth.decorators';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import { appConfig } from '../config';
@@ -141,6 +142,7 @@ export class IncomingMailsController {
   }
 
   /** Mail mit Fehler noch einmal verarbeiten. */
+  @Audit('admin', 'Eingehende Mail erneut verarbeitet', { target: 'incomingMail' })
   @Post(':id/reprocess')
   @HttpCode(200)
   async reprocess(@Param('id', ParseUUIDPipe) id: string) {
@@ -150,6 +152,7 @@ export class IncomingMailsController {
   }
 
   /** Testbetrieb: Antwort auf eine ausgehende Mail («replyTo») oder neue Mail an ein Postfach simulieren. */
+  @Audit('admin', 'Eingehende Mail simuliert', { fromResult: true })
   @Post('simulate')
   @HttpCode(200)
   @UseInterceptors(FilesInterceptor('files', 20, { limits: { fileSize: appConfig.maxUploadBytes, files: 20 } }))

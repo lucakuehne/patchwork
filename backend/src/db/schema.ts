@@ -686,7 +686,43 @@ export const helpspotImportRuns = pgTable('helpspot_import_runs', {
   error: text('error'),
 });
 
+/** Bereich eines Eintrags im Aktionsprotokoll: Vorgänge, Portal, Verwaltung, Anmeldung und Konto */
+export const auditArea = pgEnum('audit_area', ['items', 'portal', 'admin', 'account']);
+
+/**
+ * Aktionsprotokoll (seit 03.11.2026, nur Admins): jede Änderung durch eine Person, dazu An- und Abmeldungen. Ohne
+ * Systemaktionen (Regeln, Mailabruf). Einträge älter als sechs Monate löscht die nächtliche Wartung.
+ */
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+    /** null bei fehlgeschlagener Anmeldung ohne Konto */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Name zur Zeit der Aktion; bei fehlgeschlagener Anmeldung der eingegebene Benutzername */
+    userName: text('user_name').notNull(),
+    /** «Als dieser Benutzer arbeiten»: der Admin dahinter */
+    impersonatorId: uuid('impersonator_id').references(() => users.id, { onDelete: 'set null' }),
+    impersonatorName: text('impersonator_name'),
+    area: auditArea('area').notNull(),
+    /** Aktion als Text, z.B. «Status geändert» */
+    action: text('action').notNull(),
+    /** Betroffenes Objekt als Text zur Zeit der Aktion, z.B. «PW-123 «Drucker druckt nicht»» oder «Anna Muster» */
+    target: text('target').notNull().default(''),
+    itemId: uuid('item_id').references(() => items.id, { onDelete: 'set null' }),
+  },
+  (t) => [
+    index('audit_log_created_idx').on(t.createdAt),
+    index('audit_log_user_idx').on(t.userId),
+    index('audit_log_item_idx').on(t.itemId),
+  ],
+);
+
 export type Item = typeof items.$inferSelect;
+export type AuditArea = (typeof auditArea.enumValues)[number];
 export type Status = typeof statuses.$inferSelect;
 export type Channel = typeof channels.$inferSelect;
 export type Entry = typeof entries.$inferSelect;

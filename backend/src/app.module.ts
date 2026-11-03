@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AuditController } from './audit/audit.controller';
+import { AuditInterceptor } from './audit/audit.interceptor';
+import { AuditService } from './audit/audit.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthService } from './auth/auth.service';
@@ -89,9 +92,12 @@ import { UsersService } from './users/users.service';
     UploadsController,
     PublicImagesController,
     HelpSpotController,
+    AuditController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+    AuditService,
     SessionService,
     AuthService,
     LdapService,

@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { z } from 'zod';
+import { Audit } from '../audit/audit.decorators';
 import { AdminOnly } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { SnippetsService } from './snippets.service';
@@ -24,18 +25,21 @@ export class SnippetsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Textbaustein erstellt', { fromResult: true })
   @Post('admin/snippets')
   create(@Body(new ZodPipe(snippetSchema)) body: z.infer<typeof snippetSchema>) {
     return this.snippets.create(body);
   }
 
   @AdminOnly()
+  @Audit('admin', 'Textbaustein geändert', { target: 'snippet' })
   @Put('admin/snippets/:id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(snippetSchema)) body: z.infer<typeof snippetSchema>) {
     return this.snippets.update(id, body);
   }
 
   @AdminOnly()
+  @Audit('admin', 'Textbaustein gelöscht', { target: 'snippet' })
   @Delete('admin/snippets/:id')
   @HttpCode(204)
   async remove(@Param('id', ParseUUIDPipe) id: string) {

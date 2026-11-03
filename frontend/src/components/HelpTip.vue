@@ -1,15 +1,34 @@
 <script setup lang="ts">
-import { useId } from 'vue';
+import { ref, useId } from 'vue';
 
-/** «?» mit einer Erklärung beim Darüberfahren, Antippen oder per Tastatur (Fokus); «label» für Screenreader, Text im Slot */
+/**
+ * «?» mit einer Erklärung beim Darüberfahren, Antippen oder per Tastatur (Fokus); «label» für Screenreader, Text im Slot.
+ * Die Erklärung liegt fest über der Seite (auch in Tabellen mit eigenem Bildlauf nicht abgeschnitten): unter dem «?»,
+ * im Fenster gehalten, unten zu knapp darüber.
+ */
 defineProps<{ label: string }>();
 const id = useId();
+const icon = ref<HTMLButtonElement | null>(null);
+const tip = ref<HTMLElement | null>(null);
+const pos = ref({ top: 0, left: 0 });
+
+const MARGIN = 8;
+
+function place() {
+  const r = icon.value?.getBoundingClientRect();
+  if (!r || !tip.value) return;
+  const { offsetWidth: width, offsetHeight: height } = tip.value;
+  const left = Math.max(MARGIN, Math.min(r.left - MARGIN, window.innerWidth - width - MARGIN));
+  const below = r.bottom + 6;
+  const top = below + height > window.innerHeight - MARGIN && r.top - 6 - height > MARGIN ? r.top - 6 - height : below;
+  pos.value = { top, left };
+}
 </script>
 
 <template>
-  <span class="help-tip">
-    <button type="button" class="help-icon" :aria-label="label" :aria-describedby="id">?</button>
-    <span :id="id" role="tooltip" class="help-text"><slot /></span>
+  <span class="help-tip" @mouseenter="place" @focusin="place" @click.stop>
+    <button ref="icon" type="button" class="help-icon" :aria-label="label" :aria-describedby="id">?</button>
+    <span :id="id" ref="tip" role="tooltip" class="help-text" :style="{ top: `${pos.top}px`, left: `${pos.left}px` }"><slot /></span>
   </span>
 </template>
 
@@ -42,12 +61,11 @@ const id = useId();
   color: var(--accent);
 }
 .help-text {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: -8px;
-  z-index: 20;
+  position: fixed;
+  /* über Kopfzeile und Dialogen, wie die Auswahllisten */
+  z-index: 300;
   width: max-content;
-  max-width: 260px;
+  max-width: 280px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -57,9 +75,12 @@ const id = useId();
   font-size: 12px;
   font-weight: 400;
   line-height: 1.45;
+  text-align: left;
+  white-space: normal;
   visibility: hidden;
   opacity: 0;
   transition: opacity 0.12s;
+  pointer-events: none;
 }
 .help-tip:hover .help-text,
 .help-icon:focus + .help-text {

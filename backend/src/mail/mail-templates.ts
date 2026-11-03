@@ -74,7 +74,9 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'confirmation',
     group: 'reporter',
     label: 'Eingangsbestätigung',
-    description: 'An den Melder, wenn eine neue Meldung per Mail oder im Portal eingeht.',
+    description:
+      'An den Melder, sobald eine neue Meldung per Mail oder im Portal eingeht. Nicht bei automatischen Mails und ' +
+      'Newslettern und nicht, wenn eine Regel «Keine Eingangsbestätigung schicken» setzt.',
     subject: '{{Titel}}',
     body:
       'Hallo {{Melder Vorname}}\n\nDeine Meldung ist bei uns eingegangen und wurde unter der Nummer **{{Nummer}}** erfasst. ' +
@@ -85,7 +87,9 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'reply',
     group: 'reporter',
     label: 'Öffentliche Antwort',
-    description: 'Antwort aus der Timeline an Melder (An) und Beteiligte (CC). Den Text schreibt der Bearbeiter.',
+    description:
+      'An Melder (An) und Beteiligte (CC), wenn jemand in der IT im Vorgang eine öffentliche Antwort schreibt. Den Text ' +
+      'schreibt der Bearbeiter.',
     subject: '{{Titel}}',
     body: null,
     placeholders: [...ITEM, PORTAL_LINK],
@@ -95,8 +99,8 @@ export const TEMPLATES: TemplateDefinition[] = [
     group: 'reporter',
     label: 'Abgeschlossen',
     description:
-      'An den Melder beim Wechsel von Hand in einen abgeschlossenen Status (nicht beim Ablehnen und nicht zwischen zwei ' +
-      'abgeschlossenen Status) und wenn eine Regel eine neue Aufgabe gleich abschliesst.',
+      'An den Melder, wenn jemand den Vorgang in einen abgeschlossenen Status setzt (nicht beim Ablehnen und nicht ' +
+      'zwischen zwei abgeschlossenen Status) und wenn eine Regel eine neue Aufgabe gleich abschliesst.',
     subject: '{{Status}}: {{Titel}}',
     body:
       'Hallo {{Melder Vorname}}\n\nDeine Meldung «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +
@@ -107,7 +111,9 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'rejected',
     group: 'reporter',
     label: 'Abgelehnt',
-    description: 'An den Melder, wenn ein Vorgang abgelehnt wird und «Melder informieren» gewählt ist.',
+    description:
+      'An den Melder, wenn jemand den Vorgang ablehnt und dabei «Melder informieren» wählt. Nur bei Typen mit ' +
+      'Ablehnen-Status (Verwaltung → Status).',
     subject: 'Abgelehnt: {{Titel}}',
     body: 'Hallo {{Melder Vorname}}\n\nDeine Meldung «{{Titel}}» ({{Nummer}}) wurde abgelehnt.\n\n**Begründung:**\n\n> {{Begründung}}',
     placeholders: [...ITEM, p('Begründung', 'Begründung der Ablehnung', 'Dafür ist die IT nicht zuständig.'), PORTAL_LINK],
@@ -117,8 +123,8 @@ export const TEMPLATES: TemplateDefinition[] = [
     group: 'reporter',
     label: 'Duplikat: ins Original übernommen',
     description:
-      'An Melder und Beteiligte eines Duplikats mit demselben Melder wie das Original; die Meldung wird ins Original übernommen. ' +
-      'Nummer, Titel und Link gehören zum Original.',
+      'An Melder und Beteiligte eines Duplikats, wenn jemand es mit «Zusammenführen …» ins Original übernimmt. Nummer, ' +
+      'Titel und Link gehören zum Original.',
     subject: '{{Titel}}',
     body:
       'Hallo {{Melder Vorname}}\n\nDeine Meldung {{Duplikat}} betrifft dasselbe wie {{Original}} und wurde dort hinzugefügt. ' +
@@ -154,7 +160,9 @@ export const TEMPLATES: TemplateDefinition[] = [
     group: 'reporter',
     label: 'Erinnerung',
     description:
-      'An den Melder, wenn ein Vorgang länger im Status «Wartet auf den Melder» steht (Regel «Melder per Mail erinnern»).',
+      'An den Melder, wenn ein Vorgang schon einige Tage auf seine Rückmeldung wartet. Nur über eine zeitgesteuerte ' +
+      'Regel mit «Melder per Mail erinnern» (Verwaltung → Regeln), nach den dort eingestellten Tagen im Status «Wartet ' +
+      'auf den Melder».',
     subject: 'Erinnerung: {{Titel}}',
     body:
       'Hallo {{Melder Vorname}}\n\nWir warten noch auf deine Rückmeldung zu «{{Titel}}» ({{Nummer}}). Bitte antworte direkt auf diese E-Mail.' +
@@ -174,8 +182,8 @@ export const TEMPLATES: TemplateDefinition[] = [
     group: 'reporter',
     label: 'Automatisch geschlossen',
     description:
-      'An den Melder, wenn eine Regel den Vorgang mangels Rückmeldung in den Status «Automatisch schliessen in» setzt ' +
-      '(statt der Mail «Erledigt»).',
+      'An den Melder, wenn eine zeitgesteuerte Regel mit «Vorgang schliessen» (Verwaltung → Regeln) den Vorgang ' +
+      'mangels Rückmeldung schliesst. Ersetzt dann die Mail «Abgeschlossen».',
     subject: '{{Status}}: {{Titel}}',
     body:
       'Hallo {{Melder Vorname}}\n\nZu «{{Titel}}» ({{Nummer}}) haben wir seit {{Tage}} Tagen keine Rückmeldung erhalten ' +
@@ -205,7 +213,9 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'assigned',
     group: 'staff',
     label: 'Zugewiesen',
-    description: 'An den neu Zuständigen, wenn ihm jemand oder eine Regel einen Vorgang zuweist.',
+    description:
+      'An den neu Zuständigen, wenn ihm jemand oder eine Regel einen Vorgang zuweist. Nicht, wenn man sich selbst ' +
+      'zuweist.',
     subject: 'Zugewiesen: {{Titel}}',
     body:
       'Zugewiesen: {{Nummer}} «{{Titel}}»\nZugewiesen durch: {{Zugewiesen durch}}\n' +
@@ -221,7 +231,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     key: 'inboundReply',
     group: 'staff',
     label: 'Neue Antwort',
-    description: 'An den Zuständigen, wenn Melder oder Beteiligte per Mail oder im Portal antworten.',
+    description: 'An den Zuständigen, wenn Melder oder Beteiligte per Mail oder im Portal antworten. Ohne Zuständigen keine Mail.',
     subject: 'Neue Antwort: {{Titel}}',
     body: 'Neue Antwort von {{Absender}} ({{Absender E-Mail}}) auf {{Nummer}} «{{Titel}}»:\n\n> {{Text}}',
     placeholders: [
@@ -237,7 +247,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     group: 'staff',
     label: 'Behebender Vorgang erledigt',
     description:
-      'An den Zuständigen, wenn ein Vorgang, der seinen Vorgang «behebt», von Hand in einen abgeschlossenen Status wechselt ' +
+      'An den Zuständigen, wenn ein Vorgang, der seinen Vorgang «behebt» (Verknüpfung), von Hand abgeschlossen wird ' +
       '(nicht beim Ablehnen).',
     subject: 'Behebender Vorgang erledigt: {{Titel}}',
     body:
@@ -272,7 +282,8 @@ export const TEMPLATES: TemplateDefinition[] = [
     group: 'staff',
     label: 'Fällig',
     description:
-      'An den Zuständigen am Fälligkeitstag einer offenen Aufgabe (ab 07:00, einmal pro Datum; ohne Zuständigen keine Mail).',
+      'An den Zuständigen am Fälligkeitstag einer offenen Aufgabe, ab 07:00 und einmal pro Datum. Ohne Zuständigen ' +
+      'keine Mail.',
     subject: 'Fällig: {{Titel}}',
     body: 'Die Aufgabe {{Nummer}} «{{Titel}}» ist am {{Fällig}} fällig.\nStatus: {{Status}}',
     placeholders: [...ITEM, p('Fällig', 'Fälligkeitsdatum', '24.10.2026'), STAFF_LINK],
@@ -324,6 +335,37 @@ export const TEMPLATES: TemplateDefinition[] = [
 ];
 
 export const templateByKey = (key: string) => TEMPLATES.find((t) => t.key === key);
+
+/** Aktive Regel mit ihren Aktionen, für den aktuellen Stand der Mails, die nur eine Regel auslöst */
+interface ActiveRule {
+  name: string;
+  actions: { remindReporter?: boolean; close?: boolean };
+}
+
+/** Mails, die nur eine zeitgesteuerte Regel verschickt, mit der Aktion der Regel */
+const RULE_MAILS: Partial<Record<TemplateKey, { action: 'remindReporter' | 'close'; label: string }>> = {
+  waitingReminder: { action: 'remindReporter', label: 'Melder per Mail erinnern' },
+  waitingClosed: { action: 'close', label: 'Vorgang schliessen' },
+};
+
+/**
+ * Arten von Mails mit Erklärung (Tooltips unter Verwaltung → Ausgehende Mails, Entscheid vom 03.11.2026): alle Vorlagen
+ * mit Betreff, auch nicht mehr verschickte (für ältere Mails). «state»: aktueller Stand bei Mails, die nur eine Regel
+ * verschickt, sonst null.
+ */
+export function mailKinds(activeRules: ActiveRule[]) {
+  return TEMPLATES.filter((t) => t.subject !== null).map((t) => {
+    const rule = RULE_MAILS[t.key];
+    let state: string | null = null;
+    if (rule) {
+      const names = activeRules.filter((r) => r.actions[rule.action]).map((r) => `«${r.name}»`);
+      state = names.length
+        ? `${names.length === 1 ? 'Aktive Regel' : 'Aktive Regeln'}: ${names.join(', ')}.`
+        : `Derzeit keine aktive Regel mit «${rule.label}»: Diese Mail wird nicht verschickt.`;
+    }
+    return { key: t.key, group: t.group, label: t.label, description: t.description, retired: !!t.retired, state };
+  });
+}
 
 /** Automatische Mails an Melder und Beteiligte, die im Verlauf des Vorgangs erscheinen; Mails an die IT nicht. */
 export const TIMELINE_TEMPLATES: TemplateKey[] = [

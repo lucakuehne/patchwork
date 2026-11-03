@@ -3,6 +3,7 @@ import {
   composeMail,
   exampleValues,
   fill,
+  mailKinds,
   markdownAsText,
   personValues,
   sameText,
@@ -297,5 +298,29 @@ describe('Vorlagen verwalten', () => {
     const staff = await templates.preview('staffLink', { subject: null, body: '[Öffnen]({{Link}})' });
     expect(staff.text).toContain('Öffnen: https://patchwork.firma.local/items/123\n\n-- \nPatchwork · Benachrichtigung zu PW-123');
     expect(staff.html).toContain('<a href="https://patchwork.firma.local/items/123">Öffnen</a>');
+  });
+});
+
+describe('Arten von Mails (Tooltips)', () => {
+  it('alle Vorlagen mit Betreff, ohne Link- und Fusszeilen, mit Stand der Regeln', () => {
+    const none = mailKinds([]);
+    const keys = none.map((k) => k.key);
+    expect(keys).toContain('welcome');
+    expect(keys).toContain('duplicateRedirected');
+    expect(keys).not.toContain('reporterFooter');
+    expect(keys).not.toContain('staffLink');
+    expect(none.find((k) => k.key === 'duplicateRedirected')?.retired).toBe(true);
+    expect(none.find((k) => k.key === 'confirmation')?.state).toBeNull();
+    expect(none.find((k) => k.key === 'waitingReminder')?.state).toBe(
+      'Derzeit keine aktive Regel mit «Melder per Mail erinnern»: Diese Mail wird nicht verschickt.',
+    );
+    const rules = [
+      { name: 'Nach 3 Tagen erinnern', actions: { remindReporter: true } },
+      { name: 'Nach 7 Tagen schliessen', actions: { close: true } },
+      { name: 'Nach 5 Tagen erinnern', actions: { remindReporter: true } },
+    ];
+    const kinds = mailKinds(rules);
+    expect(kinds.find((k) => k.key === 'waitingReminder')?.state).toBe('Aktive Regeln: «Nach 3 Tagen erinnern», «Nach 5 Tagen erinnern».');
+    expect(kinds.find((k) => k.key === 'waitingClosed')?.state).toBe('Aktive Regel: «Nach 7 Tagen schliessen».');
   });
 });

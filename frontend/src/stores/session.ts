@@ -27,7 +27,7 @@ export const useSession = defineStore('session', () => {
   const user = ref<User | null>(null);
   /** «Als dieser Benutzer arbeiten»: der Admin dahinter (sonst null); alles läuft mit den Rechten von «user» */
   const impersonator = ref<User | null>(null);
-  const counts = ref<Counts>({ inbox: 0, incidents: 0, tasks: 0 });
+  const counts = ref<Counts>({ inbox: 0, incidents: 0, tasks: 0, byStatus: {} });
   const statuses = ref<Status[]>([]);
   const statusFlow = ref<StatusFlow>({ restrict: { incident: false, task: false }, transitions: [] });
   /** Ziel-Status je Typ (automatische Wechsel: Start, nach Antwort, Schliessen, Ablehnen, Wartet) */

@@ -2,6 +2,7 @@ import { Controller, Get, HttpCode, NotFoundException, Param, ParseIntPipe, Pars
 import { desc, eq, inArray } from 'drizzle-orm';
 import type { Response } from 'express';
 import { simpleParser } from 'mailparser';
+import { Audit } from '../audit/audit.decorators';
 import { AdminOnly } from '../auth/auth.decorators';
 import { InjectDb, type Db } from '../db/db.module';
 import { items, outgoingMails, type ItemType, type OutgoingMailRow } from '../db/schema';
@@ -79,6 +80,7 @@ export class OutgoingMailsController {
   }
 
   /** Fehlgeschlagene Mail noch einmal versenden. */
+  @Audit('admin', 'Mail erneut gesendet', { target: 'outgoingMail' })
   @Post(':id/resend')
   @HttpCode(204)
   async resend(@Param('id', ParseUUIDPipe) id: string) {
@@ -86,6 +88,7 @@ export class OutgoingMailsController {
   }
 
   /** Fehlgeschlagene Mail als erledigt markieren (Hinweis an die Admins verschwindet). */
+  @Audit('admin', 'Fehlgeschlagene Mail als erledigt markiert', { target: 'outgoingMail' })
   @Post(':id/dismiss')
   @HttpCode(204)
   async dismiss(@Param('id', ParseUUIDPipe) id: string) {

@@ -16,6 +16,7 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { z } from 'zod';
+import { Audit } from '../audit/audit.decorators';
 import { CurrentUser, PortalRoute } from '../auth/auth.decorators';
 import { appConfig } from '../config';
 import { ZodPipe } from '../common/zod.pipe';
@@ -65,6 +66,7 @@ export class PortalController {
     return this.portal.detail(user, key);
   }
 
+  @Audit('portal', 'Meldung erfasst', { fromResult: true })
   @Post('items')
   @UseInterceptors(uploads())
   async create(
@@ -87,6 +89,7 @@ export class PortalController {
     return { prefix: item.prefix, number: item.number };
   }
 
+  @Audit('portal', 'Antwort geschrieben')
   @Post('items/:ref/replies')
   @HttpCode(204)
   @UseInterceptors(uploads())

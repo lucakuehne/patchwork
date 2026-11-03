@@ -1,21 +1,27 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { SessionService } from '../auth/session.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { BossService, QUEUE_MAINTENANCE } from './boss.service';
 
-/** Nächtliche Aufräumarbeiten: abgelaufene Sitzungen, nie gespeicherte Bilder aus dem Editor. */
+/**
+ * Nächtliche Aufräumarbeiten: abgelaufene Sitzungen, nie gespeicherte Bilder aus dem Editor, Einträge im
+ * Aktionsprotokoll älter als sechs Monate.
+ */
 @Injectable()
 export class MaintenanceService implements OnModuleInit {
   constructor(
     private readonly boss: BossService,
     private readonly sessions: SessionService,
     private readonly uploads: UploadsService,
+    private readonly audit: AuditService,
   ) {}
 
   async onModuleInit() {
     await (await this.boss.boss()).work(QUEUE_MAINTENANCE, { batchSize: 1 }, async () => {
       await this.sessions.purgeExpired();
       await this.uploads.purgeOld();
+      await this.audit.purgeOld();
     });
     await (await this.boss.boss()).schedule(QUEUE_MAINTENANCE, '17 3 * * *');
   }

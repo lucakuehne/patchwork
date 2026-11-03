@@ -55,6 +55,9 @@
   --st-purple: #6d3fd1;
   --st-brown-bg: #f3ece6;
   --st-brown: #7c4a2d;
+  /* Zähler je Status im Menü (NavCount): Schrift aus der Statusfarbe, mit Schwarz gemischt */
+  --count-ink: #000;
+  --count-ink-share: 60%;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 8%);
   --shadow-lg: 0 12px 32px rgb(16 24 40 / 18%);
   --radius: 8px;
@@ -119,6 +122,9 @@
   --st-purple: #a78bfa;
   --st-brown-bg: #33281f;
   --st-brown: #d0a07d;
+  /* weiss: auch auf Gelb und Grün mit halber Stärke gut lesbar */
+  --count-ink: #fff;
+  --count-ink-share: 0%;
   --shadow: 0 1px 2px rgb(0 0 0 / 30%);
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 50%);
   color-scheme: dark;

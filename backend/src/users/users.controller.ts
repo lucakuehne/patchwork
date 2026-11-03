@@ -18,6 +18,8 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
+import { userChangeAction } from '../audit/audit-text';
+import { Audit } from '../audit/audit.decorators';
 import { AdminOnly, CurrentUser, PortalRoute, type AuthedRequest } from '../auth/auth.decorators';
 import { LdapService, type DirectoryPerson, type LdapIdentity } from '../auth/ldap.service';
 import { SessionService } from '../auth/session.service';
@@ -103,6 +105,7 @@ export class UsersController {
   }
 
   @PortalRoute()
+  @Audit('account', 'Persönliche Einstellungen geändert')
   @Put('me/preferences')
   async updatePreferences(
     @Body(new ZodPipe(preferencesPatchSchema)) body: z.infer<typeof preferencesPatchSchema>,
@@ -167,6 +170,7 @@ export class UsersController {
    * Legt einen Kontakt (Rolle Standard, ohne Login) an oder liefert den vorhandenen Benutzer. Vor- und Nachname
    * neuer Kontakte kommen bei aktiver LDAP-Anmeldung aus dem AD, sonst aus dem Namen.
    */
+  @Audit('items', 'Kontakt erfasst', { fromResult: true })
   @Post('users/contacts')
   async contact(@Body(new ZodPipe(contactSchema)) body: z.infer<typeof contactSchema>) {
     const directory = await this.users.directoryNames([body.email]);
@@ -180,6 +184,7 @@ export class UsersController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Benutzer erstellt', { fromResult: true })
   @Post('admin/users')
   async create(@Body(new ZodPipe(createSchema)) body: z.infer<typeof createSchema>) {
     return toAdminUser(await this.users.create(body));
@@ -194,6 +199,7 @@ export class UsersController {
 
   /** Legt eine Person aus dem AD an, bevor sie sich zum ersten Mal anmeldet. */
   @AdminOnly()
+  @Audit('admin', 'Benutzer aus dem Verzeichnis übernommen', { fromResult: true })
   @Post('admin/users/directory')
   async createFromDirectory(@Body(new ZodPipe(directorySchema)) body: z.infer<typeof directorySchema>) {
     const person = await this.lookup(body.email);
@@ -201,6 +207,7 @@ export class UsersController {
   }
 
   @AdminOnly()
+  @Audit('admin', (c) => userChangeAction(c.body), { target: 'user' })
   @Patch('admin/users/:id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -232,6 +239,7 @@ export class UsersController {
 
   /** Willkommens-Mail von Hand, nur an aktive Benutzer mit Rolle IT oder Admin (auch erneut). */
   @AdminOnly()
+  @Audit('admin', 'Willkommens-Mail gesendet', { target: 'user' })
   @Post('admin/users/:id/welcome')
   @HttpCode(204)
   async welcome(@Param('id', ParseUUIDPipe) id: string) {
@@ -251,6 +259,7 @@ export class UsersController {
    * 03.11.2026 für Standard-Benutzer, die das Portal nutzen dürfen (dann im Portal).
    */
   @AdminOnly()
+  @Audit('account', '«Als dieser Benutzer arbeiten» gestartet', { target: 'user' })
   @Post('admin/users/:id/impersonate')
   async impersonate(
     @Param('id', ParseUUIDPipe) id: string,

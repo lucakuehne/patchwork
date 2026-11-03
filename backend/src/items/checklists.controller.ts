@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import { z } from 'zod';
+import { checklistItemAction } from '../audit/audit-text';
+import { Audit } from '../audit/audit.decorators';
 import { AdminOnly, CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
@@ -32,12 +34,14 @@ export class ChecklistsController {
     private readonly areas: AreasService,
   ) {}
 
+  @Audit('items', 'Checkliste hinzugefügt')
   @Post('items/:ref/checklists')
   @HttpCode(204)
   async create(@Param('ref', ItemRefPipe) key: ItemKey, @Body(new ZodPipe(titleSchema)) body: { title: string }) {
     await this.checklists.create(key, body.title);
   }
 
+  @Audit('items', 'Checkliste aus Vorlage hinzugefügt')
   @Post('items/:ref/checklists/from-template')
   @HttpCode(204)
   async fromTemplate(
@@ -47,12 +51,14 @@ export class ChecklistsController {
     await this.checklists.insertTemplate(key, body.templateId);
   }
 
+  @Audit('items', 'Checklisten umsortiert')
   @Put('items/:ref/checklists/order')
   @HttpCode(204)
   async reorder(@Param('ref', ItemRefPipe) key: ItemKey, @Body(new ZodPipe(orderSchema)) body: { ids: string[] }) {
     await this.checklists.reorder(key, body.ids);
   }
 
+  @Audit('items', 'Checkliste umbenannt', { target: 'checklist' })
   @Patch('checklists/:id')
   @HttpCode(204)
   async rename(
@@ -64,6 +70,7 @@ export class ChecklistsController {
     await this.checklists.rename(id, body.title);
   }
 
+  @Audit('items', 'Checkliste gelöscht', { target: 'checklist' })
   @Delete('checklists/:id')
   @HttpCode(204)
   async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
@@ -71,6 +78,7 @@ export class ChecklistsController {
     await this.checklists.remove(id);
   }
 
+  @Audit('items', 'Checklisten-Punkt hinzugefügt', { target: 'checklist' })
   @Post('checklists/:id/items')
   @HttpCode(204)
   async addItem(
@@ -82,6 +90,7 @@ export class ChecklistsController {
     await this.checklists.addItem(id, body.text);
   }
 
+  @Audit('items', 'Checklisten-Punkte umsortiert', { target: 'checklist' })
   @Put('checklists/:id/items/order')
   @HttpCode(204)
   async reorderItems(
@@ -93,6 +102,7 @@ export class ChecklistsController {
     await this.checklists.reorderItems(id, body.ids);
   }
 
+  @Audit('items', (c) => checklistItemAction(c.body), { target: 'checklistItem' })
   @Patch('checklist-items/:id')
   @HttpCode(204)
   async updateItem(
@@ -104,6 +114,7 @@ export class ChecklistsController {
     await this.checklists.updateItem(user.id, id, body);
   }
 
+  @Audit('items', 'Checklisten-Punkt gelöscht', { target: 'checklistItem' })
   @Delete('checklist-items/:id')
   @HttpCode(204)
   async removeItem(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
@@ -118,6 +129,7 @@ export class ChecklistsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Checklisten-Vorlage erstellt', { fromResult: true })
   @Post('admin/checklist-templates')
   @HttpCode(204)
   async createTemplate(@Body(new ZodPipe(templateSchema)) body: z.infer<typeof templateSchema>) {
@@ -125,6 +137,7 @@ export class ChecklistsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Checklisten-Vorlage geändert', { target: 'checklistTemplate' })
   @Put('admin/checklist-templates/:id')
   @HttpCode(204)
   async updateTemplate(
@@ -135,6 +148,7 @@ export class ChecklistsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Checklisten-Vorlage gelöscht', { target: 'checklistTemplate' })
   @Delete('admin/checklist-templates/:id')
   @HttpCode(204)
   async deleteTemplate(@Param('id', ParseUUIDPipe) id: string) {

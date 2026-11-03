@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { X509Certificate } from 'node:crypto';
 import { z } from 'zod';
+import { Audit, NoAudit } from '../audit/audit.decorators';
 import { AdminOnly, CurrentUser, Public } from '../auth/auth.decorators';
 import { AuthService } from '../auth/auth.service';
 import { LdapService } from '../auth/ldap.service';
@@ -189,6 +190,7 @@ export class SettingsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Allgemeine Einstellungen geändert')
   @Put('settings/general')
   async updateGeneral(@Body(new ZodPipe(generalSchema)) body: z.infer<typeof generalSchema>) {
     await this.settings.set('general', body);
@@ -205,6 +207,7 @@ export class SettingsController {
 
   /** Testbetrieb: Empfängerkreise. Zurückgehaltene Mails werden später nicht nachträglich versendet. */
   @AdminOnly()
+  @Audit('admin', 'Testbetrieb geändert')
   @Put('settings/mail')
   async updateMail(@Body(new ZodPipe(mailSchema)) body: z.infer<typeof mailSchema>) {
     await this.settings.set('mail', body);
@@ -220,6 +223,7 @@ export class SettingsController {
 
   /** Wer das Portal nutzen darf. Gilt sofort, auch für bereits angemeldete Melder. */
   @AdminOnly()
+  @Audit('admin', 'Zugang zum Portal geändert')
   @Put('settings/portal')
   async updatePortal(@Body(new ZodPipe(portalSchema)) body: z.infer<typeof portalSchema>) {
     await this.settings.set('portal', body);
@@ -241,6 +245,7 @@ export class SettingsController {
 
   /** Welche Bereiche die Rolle IT sieht (mindestens einer). Gilt sofort, auch für angemeldete Benutzer. */
   @AdminOnly()
+  @Audit('admin', 'Bereiche je Rolle geändert')
   @Put('settings/areas')
   async updateAreas(@Body(new ZodPipe(areasSchema)) body: z.infer<typeof areasSchema>) {
     await this.settings.set('areas', body);
@@ -255,6 +260,7 @@ export class SettingsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Einstellungen Microsoft geändert')
   @Put('settings/microsoft')
   async updateMicrosoft(@Body(new ZodPipe(microsoftSchema)) body: z.infer<typeof microsoftSchema>) {
     await this.settings.set('microsoft', body);
@@ -262,6 +268,7 @@ export class SettingsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Eigenes Logo hochgeladen')
   @Post('settings/logo')
   @HttpCode(204)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }))
@@ -277,6 +284,7 @@ export class SettingsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Eigenes Logo entfernt')
   @Delete('settings/logo')
   @HttpCode(204)
   async deleteLogo() {
@@ -299,6 +307,7 @@ export class SettingsController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Einstellungen LDAP geändert')
   @Put('settings/ldap')
   async updateLdap(@Body(new ZodPipe(ldapSchema)) body: LdapInput) {
     const merged = await this.mergeLdap(body);
@@ -314,6 +323,7 @@ export class SettingsController {
 
   /** Testet die übergebenen (noch nicht gespeicherten) Einstellungen. */
   @AdminOnly()
+  @NoAudit()
   @Post('settings/ldap/test')
   @HttpCode(200)
   async testLdap(

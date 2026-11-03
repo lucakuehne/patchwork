@@ -21,6 +21,8 @@ import { and, eq, or } from 'drizzle-orm';
 import type { Response } from 'express';
 import { simpleParser } from 'mailparser';
 import { z } from 'zod';
+import { itemChangeAction, toggled } from '../audit/audit-text';
+import { Audit } from '../audit/audit.decorators';
 import { AdminOnly, CurrentUser } from '../auth/auth.decorators';
 import { appConfig } from '../config';
 import { emailSchema, nullableUuid, ZodPipe } from '../common/zod.pipe';
@@ -157,6 +159,7 @@ export class ItemsController {
     return this.items.counts(await this.areas.limit(user));
   }
 
+  @Audit('items', 'Vorgang erfasst', { fromResult: true })
   @Post('items')
   @UseInterceptors(uploads())
   async create(
@@ -180,6 +183,7 @@ export class ItemsController {
     };
   }
 
+  @Audit('items', (c) => itemChangeAction(c.body))
   @Patch('items/:ref')
   @HttpCode(204)
   async update(
@@ -190,6 +194,7 @@ export class ItemsController {
     await this.items.update(user, key, body);
   }
 
+  @Audit('items', (c) => (c.body.type === 'task' ? 'Typ gesetzt: Aufgabe' : 'Typ gesetzt: Störung'))
   @Post('items/:ref/type')
   @HttpCode(204)
   async setType(
@@ -202,6 +207,7 @@ export class ItemsController {
     await this.items.setType(user, key, body.type, body.statusId);
   }
 
+  @Audit('items', (c) => (c.body.statusId === c.before?.statusId ? 'Im Board verschoben' : 'Status geändert'))
   @Post('items/:ref/move')
   @HttpCode(204)
   async move(
@@ -212,6 +218,7 @@ export class ItemsController {
     await this.items.move(user, key, body.statusId, body.beforeId ?? null, body.afterId ?? null, body.force);
   }
 
+  @Audit('items', 'Abgelehnt')
   @Post('items/:ref/reject')
   @HttpCode(204)
   async reject(
@@ -222,6 +229,7 @@ export class ItemsController {
     await this.items.reject(user, key, body.reason, body.notify);
   }
 
+  @Audit('items', (c) => toggled(c.body.discarded, 'Verworfen', 'Wiederhergestellt'))
   @Post('items/:ref/discard')
   @HttpCode(204)
   async discard(
@@ -232,6 +240,7 @@ export class ItemsController {
     await this.items.setDiscarded(user, key, body.discarded);
   }
 
+  @Audit('items', (c) => (c.body.kind === 'reply' ? 'Öffentliche Antwort geschrieben' : 'Interne Notiz geschrieben'))
   @Post('items/:ref/entries')
   @HttpCode(204)
   @UseInterceptors(uploads())
@@ -244,6 +253,7 @@ export class ItemsController {
     await this.items.comment(user, key, body.kind, body.body, files ?? [], body.asUserId);
   }
 
+  @Audit('items', 'Interne Notiz bearbeitet', { target: 'entry' })
   @Patch('entries/:id')
   @HttpCode(204)
   async editNote(
@@ -257,6 +267,7 @@ export class ItemsController {
   }
 
   /** Zeit einer internen Notiz anpassen, nur Admins (Entscheid vom 27.10.2026) */
+  @Audit('items', 'Zeit einer internen Notiz angepasst', { target: 'entry' })
   @Patch('entries/:id/time')
   @AdminOnly()
   @HttpCode(204)
@@ -270,6 +281,7 @@ export class ItemsController {
     await this.items.setNoteTime(user, id, new Date(body.at));
   }
 
+  @Audit('items', 'Beteiligte Person hinzugefügt')
   @Post('items/:ref/participants')
   @HttpCode(204)
   async addParticipant(
@@ -280,6 +292,7 @@ export class ItemsController {
     await this.items.addParticipant(user, key, body.email, body.name);
   }
 
+  @Audit('items', 'Beteiligte Person entfernt')
   @Delete('items/:ref/participants/:userId')
   @HttpCode(204)
   async removeParticipant(
@@ -290,6 +303,7 @@ export class ItemsController {
     await this.items.removeParticipant(user, key, userId);
   }
 
+  @Audit('items', (c) => toggled(c.body.muted, 'Stummgeschaltet', 'Stummschaltung aufgehoben'))
   @Put('items/:ref/mute')
   @HttpCode(204)
   async mute(

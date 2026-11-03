@@ -7,6 +7,7 @@
       <RouterLink to="/admin/mailboxes">Postfächer</RouterLink>
       <RouterLink to="/admin/incoming-mails">Eingehende Mails</RouterLink>
       <RouterLink to="/admin/outgoing-mails">Ausgehende Mails</RouterLink>
+      <RouterLink to="/admin/audit-log">Aktionsprotokoll</RouterLink>
       <RouterLink to="/admin/mail-templates">E-Mail-Vorlagen</RouterLink>
       <RouterLink to="/admin/statuses">Status</RouterLink>
       <RouterLink to="/admin/channels">Meldewege</RouterLink>

@@ -79,7 +79,7 @@ await step('Mail mit CC landet im Eingang, Bestätigung an Melder', async () => 
   assert.equal(item.attachments[0].filename, 'Fehlermeldung äöü.txt');
   assert.ok(item.originalMessageId);
   const counts = await api('GET', '/items/counts');
-  assert.deepEqual(counts, { inbox: 1, incidents: 0, tasks: 0 });
+  assert.deepEqual(counts, { inbox: 1, incidents: 0, tasks: 0, byStatus: {} });
   const confirmation = await waitForMail(ANNA, (m) => m.subject === `[PW-${itemNo}] VPN verbindet nicht`, 'Bestätigung');
   assert.ok(/auto-submitted: auto-generated/i.test(confirmation.headers));
   // Das Portal ist ohne Einstellung aus: kein Link dorthin
@@ -138,7 +138,8 @@ await step('Typ zuweisen: Störung mit Status «Neu»', async () => {
   const item = await detail(itemNo);
   assert.equal(item.type, 'incident');
   assert.equal(item.status.label, 'Neu');
-  assert.deepEqual(await api('GET', '/items/counts'), { inbox: 0, incidents: 1, tasks: 0 });
+  // Je Status: die neue Störung im Status «Neu»
+  assert.deepEqual(await api('GET', '/items/counts'), { inbox: 0, incidents: 1, tasks: 0, byStatus: { [item.status.id]: 1 } });
 });
 
 await step('Zuweisen: Mail an Zuständigen', async () => {

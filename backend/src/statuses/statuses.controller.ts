@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import { z } from 'zod';
+import { Audit } from '../audit/audit.decorators';
 import { AdminOnly } from '../auth/auth.decorators';
 import { nullableUuid, ZodPipe } from '../common/zod.pipe';
 import { STATUS_COLORS } from './status-rules';
@@ -76,6 +77,7 @@ export class StatusesController {
   }
 
   @AdminOnly()
+  @Audit('admin', (c) => (c.body.type === 'task' ? 'Ablauf der Aufgaben geändert' : 'Ablauf der Störungen geändert'))
   @Put('flow')
   setFlow(@Body(new ZodPipe(flowSchema)) body: z.infer<typeof flowSchema>) {
     return this.statuses.setFlow(body.type, body.restrict, body.transitions);
@@ -88,6 +90,7 @@ export class StatusesController {
   }
 
   @AdminOnly()
+  @Audit('admin', (c) => (c.body.type === 'task' ? 'Ziel-Status der Aufgaben geändert' : 'Ziel-Status der Störungen geändert'))
   @Put('targets')
   setTargets(@Body(new ZodPipe(targetsSchema)) body: z.infer<typeof targetsSchema>) {
     const { reject, waiting, ...required } = body.targets;
@@ -99,12 +102,14 @@ export class StatusesController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Status erstellt', { fromResult: true })
   @Post()
   create(@Body(new ZodPipe(createSchema)) body: z.infer<typeof createSchema>) {
     return this.statuses.create(body);
   }
 
   @AdminOnly()
+  @Audit('admin', 'Reihenfolge der Status geändert')
   @Put('order')
   @HttpCode(204)
   async reorder(@Body(new ZodPipe(reorderSchema)) body: z.infer<typeof reorderSchema>) {
@@ -112,6 +117,7 @@ export class StatusesController {
   }
 
   @AdminOnly()
+  @Audit('admin', 'Status geändert', { target: 'status' })
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(updateSchema)) body: z.infer<typeof updateSchema>) {
     return this.statuses.update(id, body);
@@ -119,6 +125,7 @@ export class StatusesController {
 
   /** Löschen mit Ersatz für die Vorgänge und für Ziele, die auf den Status zeigen */
   @AdminOnly()
+  @Audit('admin', 'Status gelöscht', { target: 'status' })
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(removeSchema)) body: z.infer<typeof removeSchema>) {

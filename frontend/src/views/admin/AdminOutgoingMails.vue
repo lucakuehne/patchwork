@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../api';
 import ItemLink from '../../components/ItemLink.vue';
 import MailAttachmentList from '../../components/MailAttachmentList.vue';
+import MailKindHelp from '../../components/MailKindHelp.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import SimulateMailDialog from '../../components/SimulateMailDialog.vue';
 import TestModeSettings from '../../components/TestModeSettings.vue';
@@ -13,7 +14,7 @@ import { renderOwnMailHtml } from '../../markdown';
 import { OUTGOING_STATUS } from '../../outgoing';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
-import type { IncomingMail, OutgoingMail, OutgoingMailDetail } from '../../types';
+import type { IncomingMail, MailKind, OutgoingMail, OutgoingMailDetail } from '../../types';
 
 /** Protokoll aller ausgehenden Mails, mit Filter nach Status, und darüber der Testbetrieb. */
 const session = useSession();
@@ -102,7 +103,18 @@ async function resend() {
   }
 }
 
-const kind = (m: OutgoingMail) => (m.template === 'welcome' ? 'Willkommen' : m.reply ? 'Antwort' : 'Automatisch');
+/** Arten von Mails mit Erklärung (Tooltips in der Liste und im Testbetrieb) */
+const kinds = ref<MailKind[]>([]);
+onMounted(async () => {
+  try {
+    kinds.value = await api.get<MailKind[]>('/admin/mail-templates/kinds');
+  } catch (err) {
+    toast.error(err);
+  }
+});
+const kindOf = (m: OutgoingMail) => kinds.value.find((k) => k.key === m.template);
+/** Name der Benachrichtigung; ältere Mails ohne Vorlage wie bisher */
+const kind = (m: OutgoingMail) => kindOf(m)?.label ?? (m.template === 'welcome' ? 'Willkommen' : m.reply ? 'Antwort' : 'Automatisch');
 const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)].join(', ');
 </script>
 
@@ -113,7 +125,7 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
       Jede Mail, die Patchwork verschickt oder im Testbetrieb zurückhält, steht unten vollständig, so wie sie ohne Testbetrieb
       versendet wird.
     </p>
-    <TestModeSettings @saved="load" />
+    <TestModeSettings :kinds="kinds" @saved="load" />
     <div class="segmented filters">
       <button v-for="f in FILTERS" :key="f.key" type="button" :class="{ active: filter === f.key }" @click="filter = f.key">
         {{ f.label }}
@@ -146,7 +158,12 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
               <ItemLink v-if="m.item" :item-key="m.item" :type="m.item.type" :title="m.item.title" @click.stop>{{ itemRef(m.item) }}</ItemLink>
               <span v-else class="faint">–</span>
             </td>
-            <td><span class="badge">{{ kind(m) }}</span></td>
+            <td class="nowrap">
+              <span class="kind">
+                <span class="badge">{{ kind(m) }}</span>
+                <MailKindHelp v-if="kindOf(m)" :kind="kindOf(m)!" />
+              </span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -210,6 +227,11 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
 <style scoped>
 .filters {
   align-self: flex-start;
+}
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .headers {
   display: grid;

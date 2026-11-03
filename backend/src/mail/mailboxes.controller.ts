@@ -16,6 +16,8 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
+import { toggled } from '../audit/audit-text';
+import { Audit, NoAudit } from '../audit/audit.decorators';
 import { AdminOnly, CurrentUser, Public } from '../auth/auth.decorators';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
@@ -121,11 +123,13 @@ export class MailboxesController {
     return (await this.mailboxes.list()).map(toPublicMailbox);
   }
 
+  @Audit('admin', 'Postfach erstellt', { fromResult: true })
   @Post()
   async create(@Body(new ZodPipe(mailboxSchema)) body: z.infer<typeof mailboxSchema>) {
     return toPublicMailbox(await this.mailboxes.create(body));
   }
 
+  @Audit('admin', 'Postfach geändert', { target: 'mailbox' })
   @Put(':id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -134,6 +138,7 @@ export class MailboxesController {
     return toPublicMailbox(await this.mailboxes.update(id, body));
   }
 
+  @Audit('admin', 'Postfach gelöscht', { target: 'mailbox' })
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id', ParseUUIDPipe) id: string) {
@@ -141,6 +146,7 @@ export class MailboxesController {
   }
 
   /** Prüft IMAP-Anmeldung und SMTP-Verbindung des gespeicherten Postfachs. */
+  @NoAudit()
   @Post(':id/test')
   @HttpCode(200)
   async test(@Param('id', ParseUUIDPipe) id: string) {
@@ -200,6 +206,7 @@ export class MailboxesController {
   }
 
   /** Ruft das Postfach sofort ab, sofern sein Mail-Abruf eingeschaltet ist. */
+  @Audit('admin', 'Postfach abgerufen', { target: 'mailbox' })
   @Post(':id/poll')
   @HttpCode(200)
   async poll(@Param('id', ParseUUIDPipe) id: string) {
@@ -210,6 +217,7 @@ export class MailboxesController {
   }
 
   /** Mail-Abruf des Postfachs ein- oder ausschalten (Entscheid vom 30.10.2026); der Versand läuft weiter */
+  @Audit('admin', (c) => toggled(c.body.enabled, 'Mail-Abruf eingeschaltet', 'Mail-Abruf ausgeschaltet'), { target: 'mailbox' })
   @Put(':id/fetch')
   async setFetch(
     @Param('id', ParseUUIDPipe) id: string,
@@ -222,6 +230,7 @@ export class MailboxesController {
   }
 
   /** Startet die Anmeldung mit einem Microsoft-Konto im Browser (Adresse der Anmeldeseite). */
+  @NoAudit()
   @Post(':id/microsoft/browser/start')
   @HttpCode(200)
   async microsoftBrowserStart(
@@ -238,6 +247,7 @@ export class MailboxesController {
   }
 
   /** Schliesst die Anmeldung im Browser mit der eingefügten Adresse der Rücksprungseite ab. */
+  @Audit('admin', 'Postfach mit Microsoft verbunden', { target: 'mailbox' })
   @Post(':id/microsoft/browser/finish')
   @HttpCode(200)
   async microsoftBrowserFinish(
@@ -248,6 +258,7 @@ export class MailboxesController {
   }
 
   /** Startet die Anmeldung mit einem Microsoft-Konto per Code (für microsoft.com/devicelogin). */
+  @NoAudit()
   @Post(':id/microsoft/start')
   @HttpCode(200)
   async microsoftStart(@Param('id', ParseUUIDPipe) id: string) {
@@ -255,6 +266,7 @@ export class MailboxesController {
   }
 
   /** Fragt nach, ob die Anmeldung mit Microsoft abgeschlossen ist. */
+  @Audit('admin', (c) => ((c.result as { status?: string } | undefined)?.status === 'done' ? 'Postfach mit Microsoft verbunden' : null), { target: 'mailbox' })
   @Post(':id/microsoft/check')
   @HttpCode(200)
   async microsoftCheck(@Param('id', ParseUUIDPipe) id: string) {

@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { z } from 'zod';
+import { Audit, NoAudit } from '../audit/audit.decorators';
 import { AdminOnly, CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
@@ -89,18 +90,21 @@ export class RecurringTasksController {
     return this.recurring.list();
   }
 
+  @NoAudit()
   @Post('recurring-tasks/preview')
   async preview(@CurrentUser() user: User, @Body(new ZodPipe(previewSchema)) body: z.infer<typeof previewSchema>) {
     await this.areas.assertType(user, 'task');
     return this.recurring.preview(body, body.id);
   }
 
+  @Audit('items', 'Wiederkehrende Aufgabe erstellt', { fromResult: true })
   @Post('recurring-tasks')
   async create(@CurrentUser() user: User, @Body(new ZodPipe(taskSchema)) body: z.infer<typeof taskSchema>) {
     await this.areas.assertType(user, 'task');
     return this.recurring.create(user, body);
   }
 
+  @Audit('items', 'Wiederkehrende Aufgabe geändert', { target: 'recurringTask' })
   @Put('recurring-tasks/:id')
   async update(
     @CurrentUser() user: User,
@@ -111,6 +115,7 @@ export class RecurringTasksController {
     return this.recurring.update(id, body);
   }
 
+  @Audit('items', 'Wiederkehrende Aufgabe gelöscht', { target: 'recurringTask' })
   @Delete('recurring-tasks/:id')
   @HttpCode(204)
   async remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
@@ -119,6 +124,7 @@ export class RecurringTasksController {
   }
 
   /** «Jetzt anlegen»: die Aufgabe des nächsten Termins sofort */
+  @Audit('items', 'Aufgabe aus wiederkehrender Aufgabe angelegt', { fromResult: true })
   @Post('recurring-tasks/:id/create-now')
   async createNow(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     await this.areas.assertType(user, 'task');
@@ -127,6 +133,7 @@ export class RecurringTasksController {
 
   /** Durchlauf sofort (sonst alle 15 Minuten), für Tests mit einem anderen Zeitpunkt */
   @AdminOnly()
+  @Audit('admin', 'Wiederkehrende Aufgaben von Hand ausgeführt')
   @Post('admin/recurring-tasks/run')
   run(@Body(new ZodPipe(runSchema)) body: z.infer<typeof runSchema>) {
     return this.recurring.run(body.now ? new Date(body.now) : undefined);

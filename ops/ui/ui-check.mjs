@@ -1150,6 +1150,44 @@ await step('testbetrieb-je-ausloeser', async () => {
   await api('PUT', '/settings/mail', { general: circles('all', 'all'), incident: circles('all', 'all'), task: circles('all', 'all') });
 });
 
+await step('tooltips-mails', async () => {
+  // «?» je Auslöser im Testbetrieb und in der Spalte «Art»: an wen und wann, bei Mails einer Regel mit dem Stand
+  await page.goto(`${BASE}/admin/outgoing-mails`);
+  const block = page.locator('section.block[data-block="incident"]');
+  await block.waitFor();
+  const details = block.locator('details.triggers');
+  if (!(await details.evaluate((d) => d.open))) await details.locator('summary').click();
+  const triggers = await block.locator('.trigger').count();
+  const helps = await block.locator('.trigger .help-icon').count();
+  if (!triggers || helps !== triggers) throw new Error(`Auslöser ${triggers}, davon mit «?» ${helps}`);
+  const reminder = block.locator('.trigger', { hasText: 'Erinnerung' });
+  const tip = reminder.locator('.help-text');
+  if (await tip.isVisible()) throw new Error('Erklärung ohne Darüberfahren sichtbar');
+  await reminder.locator('.help-icon').hover();
+  await tip.waitFor({ state: 'visible' });
+  const text = await tip.innerText();
+  if (!text.includes('Melder per Mail erinnern') || !/Derzeit keine aktive Regel|Aktive Regel/.test(text)) {
+    throw new Error(`Erklärung «Erinnerung»: ${text}`);
+  }
+  await shot('100-tooltip-erinnerung');
+  // Liste: Name der Benachrichtigung statt «Automatisch», «?» öffnet die Mail nicht und bleibt im Fenster
+  const row = page.locator('table.table tbody tr', { has: page.locator('.kind .help-icon') }).first();
+  await row.waitFor();
+  const label = (await row.locator('.kind .badge').innerText()).trim();
+  if (label === 'Automatisch') throw new Error('Spalte «Art» zeigt «Automatisch»');
+  await row.locator('.kind .help-icon').hover();
+  const rowTip = row.locator('.kind .help-text');
+  await rowTip.waitFor({ state: 'visible' });
+  const box = await rowTip.boundingBox();
+  const viewport = page.viewportSize();
+  if (!box || box.x < 0 || box.x + box.width > viewport.width || box.y + box.height > viewport.height) {
+    throw new Error(`Erklärung in der Liste ausserhalb des Fensters: ${JSON.stringify(box)}`);
+  }
+  await shot('101-tooltip-liste');
+  await row.locator('.kind .help-icon').click();
+  if (await page.locator('[role="dialog"]').count()) throw new Error('Klick auf «?» öffnet die Mail');
+});
+
 await step('simulieren', async () => {
   const none = { staff: 'none', others: 'none', staffEmails: [], otherEmails: [] };
   await api('PUT', '/settings/mail', { general: none, incident: none, task: none });
@@ -1408,23 +1446,28 @@ await step('bereiche', async () => {
   const incident = (await api('GET', '/items?view=incidents')).data.items[0];
   await api('POST', '/auth/logout');
   await login(ivan.email, 'geheim-geheim');
-  await page.waitForURL(/\/tasks$/).catch(() => {
-    throw new Error(`Nach dem Anmelden auf ${page.url()} statt auf den Aufgaben`);
-  });
-  await page.locator('nav.tabs .tab').first().waitFor();
-  const tabs = (await page.locator('nav.tabs .tab').allInnerTexts()).map((t) => t.replace(/\s*\d+$/, '').trim());
-  if (tabs.join(',') !== 'Aufgaben') throw new Error(`Navigation: ${tabs.join(', ')}`);
-  await page.goto(`${BASE}/inbox`);
-  await page.waitForURL(/\/tasks$/);
-  const before = problems.length;
-  await page.goto(`${BASE}/items/${incident.prefix}-${incident.number}`);
-  await page.locator('.empty', { hasText: 'gesperrt' }).waitFor();
-  await shot('53-gesperrt');
-  // Die Antwort 403 des gesperrten Vorgangs meldet der Browser in der Konsole; sie ist hier erwartet
-  for (let i = problems.length - 1; i >= before; i--) if (problems[i].includes('status of 403')) problems.splice(i, 1);
-  await api('POST', '/auth/logout');
-  await login('ada@test.local', 'geheim-geheim');
-  await api('PUT', '/settings/areas', { it: ['inbox', 'incident', 'task'] });
+  try {
+    await page.waitForURL(/\/tasks$/).catch(() => {
+      throw new Error(`Nach dem Anmelden auf ${page.url()} statt auf den Aufgaben`);
+    });
+    await page.locator('nav.tabs .tab').first().waitFor();
+    // Name des Tabs ohne die Zahlen dahinter (bei Störungen und Aufgaben eine je Status)
+    const tabs = (await page.locator('nav.tabs .tab').allInnerTexts()).map((t) => t.replace(/[\s\d]+$/, '').trim());
+    if (tabs.join(',') !== 'Aufgaben') throw new Error(`Navigation: ${tabs.join(', ')}`);
+    await page.goto(`${BASE}/inbox`);
+    await page.waitForURL(/\/tasks$/);
+    const before = problems.length;
+    await page.goto(`${BASE}/items/${incident.prefix}-${incident.number}`);
+    await page.locator('.empty', { hasText: 'gesperrt' }).waitFor();
+    await shot('53-gesperrt');
+    // Die Antwort 403 des gesperrten Vorgangs meldet der Browser in der Konsole; sie ist hier erwartet
+    for (let i = problems.length - 1; i >= before; i--) if (problems[i].includes('status of 403')) problems.splice(i, 1);
+  } finally {
+    // Auch nach einem Fehler zurück zu Ada, sonst scheitern die folgenden Schritte
+    await api('POST', '/auth/logout');
+    await login('ada@test.local', 'geheim-geheim');
+    await api('PUT', '/settings/areas', { it: ['inbox', 'incident', 'task'] });
+  }
 });
 
 // Wirksames Farbschema (data-theme am <html>)
@@ -1515,6 +1558,108 @@ await step('farbschema', async () => {
   if ((await theme()) !== 'dark') throw new Error('Automatisch bei dunklem System nicht dunkel');
   await page.emulateMedia({ colorScheme: 'light' });
   await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+});
+
+await step('kombi-zaehler', async () => {
+  // Störungen und Aufgaben: ein Feld je offener Status (Aufgaben ohne Backlog) in der Statusfarbe, ohne Vorgänge blass
+  const [statuses, targets, counts] = await Promise.all(['/statuses', '/statuses/targets', '/items/counts'].map(async (p) => (await api('GET', p)).data));
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto(`${BASE}/incidents`);
+  for (const [type, label] of [
+    ['incident', 'Störungen'],
+    ['task', 'Aufgaben'],
+  ]) {
+    const open = statuses
+      .filter((s) => s.type === type && !s.closed && s.id !== (type === 'task' ? targets.task.start : null))
+      .sort((a, b) => a.position - b.position);
+    const tab = page.locator('nav.tabs .tab', { hasText: label });
+    const expected = open.map((s) => String(counts.byStatus[s.id] ?? 0));
+    // Die Felder erscheinen, sobald Status und Zähler geladen sind
+    if (expected.some((n) => n !== '0')) await tab.locator('.seg').nth(expected.length - 1).waitFor();
+    const shown = await tab.locator('.seg').allInnerTexts();
+    if (expected.some((n) => n !== '0') && JSON.stringify(shown) !== JSON.stringify(expected)) {
+      throw new Error(`${label}: ${JSON.stringify(shown)} statt ${JSON.stringify(expected)}`);
+    }
+    if (!shown.length) continue;
+    const empty = await tab.locator('.seg.empty').count();
+    if (empty !== expected.filter((n) => n === '0').length) throw new Error(`${label}: ${empty} blasse Felder`);
+    const aria = await tab.locator('.segmented-count').getAttribute('aria-label');
+    if (aria !== open.map((s, i) => `${s.label} ${expected[i]}`).join(', ')) throw new Error(`${label}: aria-label ${aria}`);
+  }
+  // Farbe: Felder mit Vorgängen farbig, Zahl gut lesbar (Kontrast mindestens 4.5), hell und dunkel
+  const segs = page.locator('nav.tabs .seg:not(.empty)');
+  const legible = async (scheme) => {
+    const results = await segs.evaluateAll((els) =>
+      els.map((el) => {
+        // Berechnete Farben als rgb(…) oder color(srgb …) (aus color-mix)
+        const parse = (c) => {
+          const n = c.match(/[\d.]+/g).map(Number);
+          return c.startsWith('color(') ? n.slice(0, 3).map((v) => v * 255) : n.slice(0, 3);
+        };
+        const lum = (rgb) => {
+          const [r, g, b] = rgb.map((v) => {
+            const s = v / 255;
+            return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        };
+        const style = getComputedStyle(el);
+        const [a, b] = [lum(parse(style.color)), lum(parse(style.backgroundColor))];
+        return { text: el.innerText, contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), background: style.backgroundColor };
+      }),
+    );
+    for (const r of results) {
+      if (r.contrast < 4.5) throw new Error(`${scheme}: Zahl ${r.text} schlecht lesbar (Kontrast ${r.contrast.toFixed(2)})`);
+      if (['rgb(255, 255, 255)', 'rgba(0, 0, 0, 0)'].includes(r.background)) throw new Error(`${scheme}: Feld ohne Farbe`);
+    }
+  };
+  await legible('hell');
+  await page.locator('nav.tabs .tab', { hasText: 'Störungen' }).locator('.segmented-count').hover();
+  const popup = page.locator('nav.tabs .tab', { hasText: 'Störungen' }).locator('.count-popup');
+  await popup.waitFor({ state: 'visible' });
+  if (!(await popup.innerText()).includes('Offen')) throw new Error('Liste beim Darüberfahren ohne «Offen»');
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${OUT}/102-kombi-zaehler.png`, clip: { x: 0, y: 0, width: 900, height: 260 } });
+  console.log('Bild 102-kombi-zaehler');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  await page.mouse.move(700, 600);
+  await legible('dunkel');
+  await page.screenshot({ path: `${OUT}/103-kombi-zaehler-dunkel.png`, clip: { x: 0, y: 0, width: 900, height: 120 } });
+  console.log('Bild 103-kombi-zaehler-dunkel');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+});
+
+await step('aktionsprotokoll', async () => {
+  const urlIs = async (query) => {
+    await page.waitForURL((url) => url.pathname === '/admin/audit-log' && url.search === query);
+  };
+  await page.goto(`${BASE}/admin/audit-log`);
+  await page.locator('table.table tbody tr').first().waitFor();
+  await shot('104-aktionsprotokoll');
+  // Bereich und Suche in der Adresse, nach dem Neuladen noch gesetzt
+  await page.locator('.segmented button', { hasText: 'Verwaltung' }).click();
+  await urlIs('?area=admin');
+  await page.locator('table.table tbody tr').first().waitFor();
+  const areas = await page.locator('table.table tbody td .badge').allInnerTexts();
+  if (!areas.length || areas.some((a) => a.trim() !== 'Verwaltung')) throw new Error(`Bereiche: ${[...new Set(areas)].join(', ')}`);
+  // Ein Vorgang mit Einträgen
+  const item = (await api('GET', '/admin/audit-log?area=items&limit=50')).data.entries.find((e) => e.item?.prefix === 'PW').item;
+  const ref = `PW-${item.number}`;
+  await page.locator('.segmented button', { hasText: 'Vorgänge' }).click();
+  await page.fill('input[type="search"][aria-label="Suchen"]', ref);
+  await urlIs(`?area=items&q=${ref}`);
+  await page.reload();
+  await page.locator('table.table tbody tr').first().waitFor();
+  if ((await page.inputValue('input[type="search"][aria-label="Suchen"]')) !== ref) throw new Error('Suche nach dem Neuladen leer');
+  const refs = await page.locator('table.table tbody td.target a').allInnerTexts();
+  if (!refs.length || refs.some((r) => r.trim() !== ref)) throw new Error(`Suche ${ref}: ${[...new Set(refs)].join(', ')}`);
+  await shot('105-aktionsprotokoll-filter');
+  // Klick in der Navigation setzt die Filter zurück
+  await page.locator('nav.admin-nav a', { hasText: 'Aktionsprotokoll' }).click();
+  await urlIs('');
+  if ((await page.inputValue('input[type="search"][aria-label="Suchen"]')) !== '') throw new Error('Suche nicht zurückgesetzt');
 });
 
 await step('portal', async () => {
