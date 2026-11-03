@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
-import { blockTriggers, DELIVERY_BLOCKS, testModeText } from '../test-mode';
+import { blockTriggers as allTriggers, DELIVERY_BLOCKS, testModeText, type Rejectable } from '../test-mode';
 import type { DeliveryBlock, DeliveryScope, DeliveryTrigger, MailSettings, PersonPick, User } from '../types';
 import PersonSearch from './PersonSearch.vue';
 
@@ -13,6 +13,12 @@ import PersonSearch from './PersonSearch.vue';
  */
 const emit = defineEmits<{ saved: [] }>();
 const session = useSession();
+// «Abgelehnt» nur bei Typen mit Ablehnen-Status (Verwaltung → Status)
+const rejectable = computed<Rejectable>(() => ({
+  incident: !!session.statusTargets.incident.reject,
+  task: !!session.statusTargets.task.reject,
+}));
+const blockTriggers = (block: DeliveryBlock) => allTriggers(block, rejectable.value);
 const toast = useToast();
 const delivery = ref<MailSettings | null>(null);
 const staffUsers = ref<User[]>([]);
@@ -38,7 +44,7 @@ onMounted(async () => {
 });
 
 const summary = computed(() =>
-  delivery.value ? (testModeText(delivery.value) ?? 'Normaler Betrieb: Alle Mails werden versendet.') : '',
+  delivery.value ? (testModeText(delivery.value, rejectable.value) ?? 'Normaler Betrieb: Alle Mails werden versendet.') : '',
 );
 
 /** Anzahl Auslöser mit eigener Einstellung */

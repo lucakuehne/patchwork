@@ -73,7 +73,7 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
   - Rolle: Das Feld bietet zuerst «Aus AD-Gruppen (zurzeit: …)», vorbelegt, bestimmt wie bei der Anmeldung. Wer eine Rolle von Hand wählt, legt sie dauerhaft fest: Sie bleibt bei jeder Anmeldung, bis man wieder «Aus AD-Gruppen» wählt.
   - Dasselbe Rollen-Feld gilt beim Bearbeiten bestehender AD-Konten. Bestehende Konten bleiben nach dem Update auf «Aus AD-Gruppen».
   - Umgesetzt am 20.10.2026, Details: Die Rolle «Aus AD-Gruppen» wird beim Speichern sofort im AD bestimmt, auch wenn das Konto schon auf «Aus AD-Gruppen» stand (z.B. vorab angelegt, Gruppe seither geändert). Ist das AD dabei nicht erreichbar, bleibt die gespeicherte Rolle bis zur nächsten Anmeldung; nur der Wechsel von «von Hand» zurück verlangt das AD und meldet sonst einen Fehler. Gibt es die Person schon als Kontakt (aus Mails, ohne Login), wird dieser übernommen, wie beim ersten Login. Konten mit Login (LDAP oder lokal mit Passwort) lassen sich nicht doppelt anlegen. Deaktivierte AD-Konten erscheinen nicht. In der Liste steht bei von Hand festgelegten Rollen «von Hand».
-- **Als anderer Benutzer arbeiten** (bestätigt am 20.10.2026, z.B. um Antworten und Notizen im Namen eines IT-Mitarbeiters zu testen): Nur Admins, immer verfügbar. Unter Verwaltung → Benutzer im Dialog «Benutzer bearbeiten» der Knopf «Als dieser Benutzer arbeiten», nur für aktive Benutzer mit Rolle IT oder Admin (nicht man selbst). Danach läuft die ganze Sitzung als dieser Benutzer (mit seinen Rechten), oben ein auffälliger Balken «Sie arbeiten als … – Zurück zu …». Einträge, Mails und Benachrichtigungen sind nicht von denen des Benutzers selbst zu unterscheiden (kein Vermerk).
+- **Als anderer Benutzer arbeiten** (bestätigt am 20.10.2026, z.B. um Antworten und Notizen im Namen eines IT-Mitarbeiters zu testen): Nur Admins, immer verfügbar. Unter Verwaltung → Benutzer im Dialog «Benutzer bearbeiten» der Knopf «Als dieser Benutzer arbeiten», nur für aktive Benutzer mit Rolle IT oder Admin (nicht man selbst; seit 03.11.2026 auch Standard-Benutzer im Portal, siehe unten). Danach läuft die ganze Sitzung als dieser Benutzer (mit seinen Rechten), oben ein auffälliger Balken «Sie arbeiten als … – Zurück zu …». Einträge, Mails und Benachrichtigungen sind nicht von denen des Benutzers selbst zu unterscheiden (kein Vermerk).
 - LDAP/AD-Anmeldung über Simple Bind. Bei Domain Controllern mit LDAP-Signierungspflicht nur über eine verschlüsselte Verbindung: **STARTTLS** (empfohlen, bleibt Port 389) oder LDAPS. Dafür braucht der DC ein Zertifikat. Eine eigene Zertifizierungsstelle kann als CA-Zertifikat hinterlegt werden. LDAP-Signierung per SASL (Kerberos/NTLM) wird nicht unterstützt (Entscheid vom 15.10.2026).
 
 ## Mail
@@ -136,6 +136,7 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 - Technisch: Keine Duplikat-Ketten. Ein Vorgang kann nur Duplikat eines Vorgangs sein, der selbst kein Duplikat ist, und ein Vorgang mit Duplikaten kann nicht selbst Duplikat werden.
 - **Zusammenführen** (bestätigt am 02.11.2026), z.B. wenn jemand zwei Mails zur selben Sache schreibt:
   - Eigener Knopf «Zusammenführen …» im Vorgang (bei den Verknüpfungen), nicht im Eingang. Der Dialog schlägt die offenen Vorgänge desselben Melders vor (neueste zuerst), andere lassen sich suchen; Treffer anderer Melder sind ausgegraut und nicht wählbar (seit 02.11.2026). Dahinter steht «Duplikat von» mit allen Regeln oben.
+  - Nur noch über «Zusammenführen …» (gewünscht am 03.11.2026): «+ Verknüpfen» bietet «Duplikat von» und «Hat Duplikat» nicht mehr an, nur «Bezieht sich auf», «Behebt» und «Wird behoben durch», mit einem Hinweis auf «Zusammenführen …». Bestehende Duplikat-Verknüpfungen bleiben sichtbar.
   - Beide im Eingang: wie bisher zuerst das Original als Störung oder Aufgabe einordnen; die Fehlermeldung sagt das jetzt klar.
   - Bei gleichem Melder wird alles übernommen wie in HelpSpot: Meldung, Nachrichten des Melders und der Beteiligten, öffentliche Antworten der IT und interne Notizen, jeweils mit Anhängen. Gekennzeichnet mit «zusammengeführt aus PW-…»; übernommene öffentliche Antworten sieht der Melder im Portal des Originals, Notizen bleiben intern.
   - Die übernommenen Einträge stehen zu ihrer ursprünglichen Zeit im Verlauf des Originals (chronologisch eingereiht), nicht gesammelt zum Zeitpunkt des Zusammenführens.
@@ -210,7 +211,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - Farben in der Timeline: interne Notizen orange, öffentliche Nachrichten blau, ursprüngliche Meldung weiss. Gilt auch im Portal.
 - Antwortfeld: Feld, Umschalter und Senden-Knopf sind im Modus «Öffentliche Antwort» blau, im Modus «Interne Notiz» orange.
 - Editor (gewünscht am 20.10.2026): Die Knöpfe für Listen zeigen drei Punkte bzw. drei Nummern untereinander. Eine Trennlinie gibt es im Editor nicht.
-- Knopf «+ Neu» (gewünscht am 20.10.2026): steht im Eingang rechts neben «Nur meine», wie «+ Störung» und «+ Aufgabe» in den anderen Ansichten, nicht mehr in der Kopfzeile. Er öffnet wie bisher «Neuer Vorgang» mit Auswahl des Typs.
+- Knopf «+ Neu» (gewünscht am 20.10.2026): steht im Eingang rechts oben (bis 03.11.2026 neben «Nur meine»), wie «+ Störung» und «+ Aufgabe» in den anderen Ansichten, nicht mehr in der Kopfzeile. Er öffnet wie bisher «Neuer Vorgang» mit Auswahl des Typs.
 - Seitenleiste eines Vorgangs (gewünscht am 20.10.2026): unten «Erstellt», «Aktualisiert» und bei abgeschlossenen Vorgängen «Abgeschlossen».
 - Typ in der Seitenleiste (gewünscht am 28.10.2026): Ein «?» neben «Typ» erklärt beim Darüberfahren (oder per
   Tastatur) den Unterschied, mit denselben Leitfragen wie beim Erfassen: Störung «Etwas funktioniert nicht mehr, das
@@ -297,7 +298,7 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   den zeitgesteuerten Regeln, vor den Mails bei Fälligkeit. `POST /api/admin/recurring-tasks/run` (nur Admins) startet
   ihn sofort, für Tests mit einem anderen Zeitpunkt.
 
-## Adresse des Portals, Filter in der Adresse (bestätigt am 03.11.2026)
+## Adresse des Portals, Filter in der Adresse, als Melder im Portal arbeiten (bestätigt am 03.11.2026)
 
 - **Adresse des Portals** in der Karte «Portal» unter Verwaltung → Allgemein, mit Knopf «Kopieren», sobald gespeichert
   ist, dass mehr als niemand das Portal nutzen darf. Sie kommt aus `PUBLIC_URL` wie die Links in den Mails
@@ -312,6 +313,17 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
     der Adresse (z.B. über das Menü) gilt wie bisher die im Browser gemerkte Auswahl und erscheint sofort in der Adresse.
     Ungültige Werte fallen weg.
   - Ein Filterwechsel ersetzt die Adresse, «Zurück» im Browser verlässt die Liste (wie bei Ein- und Ausgehende Mails).
+- **Als Melder im Portal arbeiten:** «Als dieser Benutzer arbeiten» (Verwaltung → Benutzer, nur im Dialog des
+  Benutzers) gibt es auch für aktive Standard-Benutzer, die das Portal laut Verwaltung → Allgemein nutzen dürfen, auch
+  für Kontakte ohne eigene Anmeldung (z.B. aus Mails). Patchwork öffnet dann das Portal als diese Person, oben der rote
+  Balken mit dem Weg zurück. Bei den anderen steht statt des Knopfs ein Hinweis. Man darf alles, was die Person selbst
+  darf (neue Meldungen, Antworten); das zählt als von ihr, ohne Vermerk, wie bei IT und Admins, und löst die üblichen
+  Mails an die IT aus. Technisch: `GET /api/admin/users/:id/portal-access` für den Knopf.
+- **Kein «Nur meine» im Eingang** (gewünscht am 03.11.2026): Im Eingang ist kaum etwas zugewiesen; der Filter
+  «Zuständig» in der Filterleiste bleibt. Bei Störungen und Aufgaben bleibt «Nur meine».
+- **«Abgelehnt» im Testbetrieb je Auslöser** (bestätigt am 03.11.2026): Die Mail «Abgelehnt» gibt es nur bei Typen mit
+  Ablehnen-Status (Verwaltung → Status, «Ablehnen führt in»); nur dort erscheint der Auslöser im Block des Typs. Standard:
+  nur bei Aufgaben. Eine gespeicherte Einstellung bleibt und gilt wieder, sobald der Typ einen Ablehnen-Status erhält.
 
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 

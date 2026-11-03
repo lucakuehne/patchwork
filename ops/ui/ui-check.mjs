@@ -385,6 +385,9 @@ await step('filter', async () => {
   for (const path of ['/tasks', '/tasks/done', '/inbox', '/incidents/resolved']) {
     await page.goto(`${BASE}${path}`);
     await page.locator('.list-filters select[aria-label="Zuständig"]').waitFor();
+    // Im Eingang gibt es «Nur meine» nicht (seit 03.11.2026)
+    const hasMine = (await page.locator('label.mine').count()) > 0;
+    if (hasMine === (path === '/inbox')) throw new Error(`«Nur meine» unter ${path} ${hasMine ? 'vorhanden' : 'fehlt'}`);
   }
 });
 
@@ -754,6 +757,31 @@ await step('als-benutzer', async () => {
   await page.getByRole('button', { name: /Zurück zu/ }).click();
   await page.waitForURL((url) => url.pathname.startsWith('/admin/users'));
   if (await page.locator('.impersonation').count()) throw new Error('Balken nach der Rückkehr noch sichtbar');
+
+  // Melderin: ohne Portal nur ein Hinweis, mit Portal öffnet «Als dieser Benutzer arbeiten» das Portal mit dem Balken
+  const anna = (await api('GET', '/admin/users')).data.find((u) => u.email.startsWith('anna-'));
+  const { url: _url, ...portalBefore } = (await api('GET', '/settings/portal')).data;
+  const openAnna = async () => {
+    await page.goto(`${BASE}/admin/users?role=standard&q=${encodeURIComponent(anna.email)}`);
+    await page.locator('tbody tr', { hasText: anna.email }).click();
+    await page.locator('#u-name').waitFor();
+  };
+  await api('PUT', '/settings/portal', { access: 'none', emails: [], groupDn: '' });
+  await openAnna();
+  await page.locator('.portal-refused').waitFor();
+  if (await page.getByRole('button', { name: 'Als dieser Benutzer arbeiten' }).count()) throw new Error('Knopf trotz Portal aus');
+  await shot('98-melderin-ohne-portal', true);
+  await api('PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '' });
+  await openAnna();
+  await page.getByRole('button', { name: 'Als dieser Benutzer arbeiten' }).click();
+  await page.waitForURL((url) => url.pathname.startsWith('/portal'));
+  await page.locator('.impersonation', { hasText: 'Meldungen und Antworten im Portal' }).waitFor();
+  await page.locator('.portal-header').waitFor();
+  await shot('99-als-melderin-im-portal');
+  await page.getByRole('button', { name: /Zurück zu/ }).click();
+  await page.waitForURL((url) => url.pathname.startsWith('/admin/users'));
+  if (await page.locator('.impersonation').count()) throw new Error('Balken nach der Rückkehr aus dem Portal noch sichtbar');
+  await api('PUT', '/settings/portal', portalBefore);
 });
 
 await step('board', async () => {
@@ -1092,6 +1120,13 @@ await step('testbetrieb-je-ausloeser', async () => {
   if (!(await page.locator('#tm-general-welcome').count()) || (await page.locator('#tm-general-done').count())) {
     throw new Error('Auslöser bei Generell falsch');
   }
+  // «Abgelehnt» nur bei Typen mit Ablehnen-Status
+  const targets = (await api('GET', '/statuses/targets')).data;
+  for (const type of ['incident', 'task']) {
+    const shown = (await page.locator(`#tm-${type}-rejected`).count()) > 0;
+    if (shown !== !!targets[type].reject) throw new Error(`«Abgelehnt» bei ${type} ${shown ? 'ohne' : 'trotz'} Ablehnen-Status`);
+  }
+  if (targets.incident.reject || !targets.task.reject) console.log('Hinweis: Ablehnen-Status nicht wie üblich nur bei Aufgaben');
   const summary = (await page.locator('.card', { has: page.locator('section.block') }).locator('.row .faint').innerText()).trim();
   const expected =
     'Generell: alle Mails. Störungen: keine Mails, abweichend Öffentliche Antwort an alle. ' +
@@ -1184,6 +1219,12 @@ await step('zusammenfuehren', async () => {
   await merged.waitFor();
   if (!(await merged.innerText()).includes('HDMI-Kabel')) throw new Error('Übernommene Meldung fehlt');
   await shot('94-zusammengefuehrt', true);
+  // «+ Verknüpfen» führt nicht zusammen: keine Duplikat-Arten, nur der Hinweis auf «Zusammenführen …»
+  await page.locator('.side').getByRole('button', { name: '+ Verknüpfen' }).click();
+  const roles = await page.locator('#link-role option').allInnerTexts();
+  if (roles.length !== 3 || roles.some((r) => r.includes('Duplikat'))) throw new Error(`Arten bei «+ Verknüpfen»: ${roles.join(' | ')}`);
+  await page.locator('.dialog .hint', { hasText: 'Zusammenführen …' }).waitFor();
+  await page.keyboard.press('Escape');
 });
 
 await step('wiederkehrend', async () => {

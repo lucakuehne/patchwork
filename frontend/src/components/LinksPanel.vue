@@ -33,12 +33,11 @@ const ROLE_LABELS: Record<LinkRole, string> = {
   hasDuplicate: 'Hat Duplikat',
 };
 
-const ROLE_SENTENCES: Record<LinkRole, string> = {
+/** Arten für «+ Verknüpfen»; Duplikate nur über «Zusammenführen …» (Entscheid vom 03.11.2026) */
+const LINK_SENTENCES: Partial<Record<LinkRole, string>> = {
   relates: 'bezieht sich auf',
   fixes: 'behebt',
   fixedBy: 'wird behoben durch',
-  duplicateOf: 'ist ein Duplikat von',
-  hasDuplicate: 'hat als Duplikat',
 };
 
 const open = ref(false);
@@ -123,13 +122,9 @@ async function unlink(l: Link) {
     <div class="field">
       <label for="link-role">Art</label>
       <select id="link-role" v-model="role" class="select">
-        <option v-for="(sentence, key) in ROLE_SENTENCES" :key="key" :value="key">{{ itemRef(itemKey) }} {{ sentence }} …</option>
+        <option v-for="(sentence, key) in LINK_SENTENCES" :key="key" :value="key">{{ itemRef(itemKey) }} {{ sentence }} …</option>
       </select>
-      <p v-if="role === 'duplicateOf' || role === 'hasDuplicate'" class="faint small hint">
-        Nur bei gleichem Melder: Das Duplikat wird geschlossen, alles wird ins Original übernommen (Meldung, Nachrichten und
-        interne Notizen), und sein Melder und seine Beteiligten erhalten einen Hinweis per Mail. Vorgänge verschiedener
-        Melder mit «bezieht sich auf» verknüpfen.
-      </p>
+      <p class="faint small hint">Doppelte Meldungen desselben Melders über «Zusammenführen …» zusammenführen.</p>
     </div>
     <div class="field">
       <label for="link-search">Vorgang suchen</label>

@@ -24,6 +24,7 @@ import { SessionService } from '../auth/session.service';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import type { User, UserRole } from '../db/schema';
 import { WelcomeMailService } from '../mail/welcome-mail.service';
+import { PortalAccessService } from '../portal/portal-access.service';
 import { SettingsService } from '../settings/settings.service';
 import { mergePreferences, preferencesPatchSchema, withDefaults } from './preferences';
 import { toAdminUser, toPublicUser, UsersService } from './users.service';
@@ -88,6 +89,7 @@ export class UsersController {
     private readonly settings: SettingsService,
     private readonly ldap: LdapService,
     private readonly welcomeMail: WelcomeMailService,
+    private readonly portalAccess: PortalAccessService,
   ) {}
 
   /**
@@ -236,9 +238,17 @@ export class UsersController {
     await this.welcomeMail.send(await this.users.getById(id));
   }
 
+  /** Darf dieser Benutzer das Portal nutzen (für «Als dieser Benutzer arbeiten» bei Standard-Benutzern)? */
+  @AdminOnly()
+  @Get('admin/users/:id/portal-access')
+  async portalAccessOf(@Param('id', ParseUUIDPipe) id: string) {
+    return { allowed: await this.portalAccess.allowed(await this.users.getById(id)) };
+  }
+
   /**
    * «Als dieser Benutzer arbeiten»: Die Sitzung des Admins wird durch eine Sitzung des Benutzers ersetzt, die auf den
-   * Admin verweist (zurück über POST /auth/impersonation/end). Nur für aktive Benutzer mit Rolle IT oder Admin.
+   * Admin verweist (zurück über POST /auth/impersonation/end). Für aktive Benutzer mit Rolle IT oder Admin und seit
+   * 03.11.2026 für Standard-Benutzer, die das Portal nutzen dürfen (dann im Portal).
    */
   @AdminOnly()
   @Post('admin/users/:id/impersonate')
@@ -252,8 +262,8 @@ export class UsersController {
     const target = await this.users.getById(id);
     if (target.id === admin.id) throw new BadRequestException('Das ist dein eigenes Konto.');
     if (!target.active) throw new BadRequestException('Der Benutzer ist deaktiviert.');
-    if (target.role !== 'admin' && target.role !== 'it') {
-      throw new BadRequestException('Nur als Benutzer mit Rolle IT oder Admin möglich.');
+    if (!(await this.portalAccess.allowed(target))) {
+      throw new BadRequestException('Das Portal ist für diesen Benutzer nicht freigeschaltet (Verwaltung → Allgemein).');
     }
     await this.sessions.switchTo(req.sessionId, target.id, res, admin.id);
     this.logger.log(`${admin.email} arbeitet als ${target.email}`);

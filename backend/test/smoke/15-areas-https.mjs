@@ -102,14 +102,33 @@ await step('Bereiche je Rolle: IT nur mit Aufgaben, gesperrte Vorgänge, Verweis
   await api('PUT', '/settings/areas', { it: ['inbox', 'incident', 'task'] });
 });
 
-await step('Als Benutzer arbeiten: nur Admins, nur IT/Admin, Rechte und Autor wie der Benutzer, zurück zum eigenen Konto', async () => {
+await step('Als Benutzer arbeiten: nur Admins, IT/Admin und Melder mit Portal, Rechte und Autor wie der Benutzer, zurück zum eigenen Konto', async () => {
   await loginAs('ada@test.local', 'geheim-geheim');
   const users = await api('GET', '/admin/users');
   const byEmail = (email) => users.find((u) => u.email === email);
   const ivan = byEmail(IVAN);
-  // Nicht als Standard-Benutzer und nicht als man selbst
-  await api('POST', `/admin/users/${byEmail(ANNA).id}/impersonate`, undefined, { expect: [400] });
+  // Nicht als man selbst
   await api('POST', `/admin/users/${byEmail('ada@test.local').id}/impersonate`, undefined, { expect: [400] });
+
+  // Standard-Benutzer nur, wenn sie das Portal nutzen dürfen; dann nur das Portal
+  const anna = byEmail(ANNA);
+  const { url: _url, ...portalBefore } = await api('GET', '/settings/portal');
+  await api('PUT', '/settings/portal', { access: 'none', emails: [], groupDn: '' });
+  assert.deepEqual(await api('GET', `/admin/users/${anna.id}/portal-access`), { allowed: false });
+  const refused = await api('POST', `/admin/users/${anna.id}/impersonate`, undefined, { expect: [400] });
+  assert.match(refused.message, /nicht freigeschaltet/);
+  await api('PUT', '/settings/portal', { access: 'selected', emails: [ANNA], groupDn: '' });
+  assert.deepEqual(await api('GET', `/admin/users/${anna.id}/portal-access`), { allowed: true });
+  assert.equal((await api('POST', `/admin/users/${anna.id}/impersonate`)).email, ANNA);
+  const asAnna = await api('GET', '/auth/me');
+  assert.deepEqual([asAnna.user.email, asAnna.impersonator?.email], [ANNA, 'ada@test.local']);
+  await api('GET', '/portal/items?state=open');
+  await api('GET', '/items?view=inbox', undefined, { expect: [403] });
+  await api('GET', '/admin/users', undefined, { expect: [403] });
+  assert.equal((await api('POST', '/auth/impersonation/end')).email, 'ada@test.local');
+  await api('PUT', '/settings/portal', portalBefore);
+  assert.equal((await api('GET', '/admin/users')).find((u) => u.email === ANNA).lastLoginAt, anna.lastLoginAt);
+
   await api('POST', '/auth/impersonation/end', undefined, { expect: [400] });
   const number = await createItem({ type: 'task', title: `Als Ivan ${RUN}` });
 

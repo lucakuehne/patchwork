@@ -61,6 +61,17 @@ describe('Testbetrieb: Hinweis', () => {
     expect(blockText('general', { ...live, triggers: { done: 'none' } })).toBe('alle Mails');
   });
 
+  it('«Abgelehnt» nur bei Typen mit Ablehnen-Status', () => {
+    const onlyTasks = { incident: false, task: true };
+    const keys = (b: 'incident' | 'task') => blockTriggers(b, onlyTasks).map((t) => t.value);
+    expect(keys('incident')).not.toContain('rejected');
+    expect(keys('task')).toContain('rejected');
+    expect(blockTriggers('incident').map((t) => t.value)).toContain('rejected');
+    const rejectedNone = { ...live, triggers: { rejected: 'none' as const } };
+    expect(testModeText({ general: live, incident: rejectedNone, task: live }, onlyTasks)).toBeNull();
+    expect(blockText('task', rejectedNone, onlyTasks)).toBe('alle Mails, abweichend Abgelehnt an niemanden');
+  });
+
   it('Block nach dem Typ des Vorgangs, im Eingang «Generell»', () => {
     expect(deliveryBlock('incident')).toBe('incident');
     expect(deliveryBlock('task')).toBe('task');

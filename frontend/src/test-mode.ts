@@ -45,7 +45,17 @@ const NOT_IN: Partial<Record<DeliveryTrigger, DeliveryBlock[]>> = {
   dueReminder: ['general', 'incident'],
   welcome: ['incident', 'task'],
 };
-export const blockTriggers = (block: DeliveryBlock) => DELIVERY_TRIGGERS.filter((t) => !NOT_IN[t.value]?.includes(block));
+/**
+ * Typen mit Ablehnen-Status (Verwaltung → Status); bei den anderen gibt es keine Mail «Abgelehnt», der Auslöser fehlt
+ * dort (Entscheid vom 03.11.2026). Ohne Angabe gelten beide Typen als ablehnbar.
+ */
+export type Rejectable = Record<ItemType, boolean>;
+const ALL_REJECTABLE: Rejectable = { incident: true, task: true };
+
+export const blockTriggers = (block: DeliveryBlock, rejectable: Rejectable = ALL_REJECTABLE) =>
+  DELIVERY_TRIGGERS.filter(
+    (t) => !NOT_IN[t.value]?.includes(block) && (t.value !== 'rejected' || (block !== 'general' && rejectable[block])),
+  );
 
 /** Block für einen Vorgang: nach seinem Typ, ohne Typ (Eingang) «Generell» */
 export const deliveryBlock = (type: ItemType | null): DeliveryBlock => type ?? 'general';
@@ -71,16 +81,16 @@ const TRIGGER_SCOPE: Record<DeliveryScope, string> = { none: 'an niemanden', sel
 type BlockSettings = DeliveryScopes & Partial<Pick<DeliveryCircles, 'triggers'>>;
 
 /** Auslöser, die tatsächlich vom Block abweichen, z.B. «Eingangsbestätigung an niemanden» */
-function exceptions(block: DeliveryBlock, c: BlockSettings): string[] {
-  return blockTriggers(block).flatMap((t) => {
+function exceptions(block: DeliveryBlock, c: BlockSettings, rejectable: Rejectable): string[] {
+  return blockTriggers(block, rejectable).flatMap((t) => {
     const scope = c.triggers?.[t.value];
     return scope && !(c.staff === scope && c.others === scope) ? [`${t.label} ${TRIGGER_SCOPE[scope]}`] : [];
   });
 }
 
 /** Wer in einem Block Mails erhält, mit den abweichenden Auslösern */
-export function blockText(block: DeliveryBlock, c: BlockSettings): string {
-  const differing = exceptions(block, c);
+export function blockText(block: DeliveryBlock, c: BlockSettings, rejectable: Rejectable = ALL_REJECTABLE): string {
+  const differing = exceptions(block, c, rejectable);
   return differing.length ? `${circlesText(c)}, abweichend ${differing.join(', ')}` : circlesText(c);
 }
 
@@ -88,11 +98,14 @@ export function blockText(block: DeliveryBlock, c: BlockSettings): string {
  * Satz zum Testbetrieb, z.B. für die Übersicht unter Verwaltung → Ausgehende Mails; null im normalen Betrieb. Sind alle
  * Blöcke gleich eingestellt und weicht kein Auslöser ab, ein Satz für alle, sonst je Block.
  */
-export function testModeText(delivery: Record<DeliveryBlock, BlockSettings> | undefined): string | null {
+export function testModeText(
+  delivery: Record<DeliveryBlock, BlockSettings> | undefined,
+  rejectable: Rejectable = ALL_REJECTABLE,
+): string | null {
   if (!delivery) return null;
-  const differing = DELIVERY_BLOCKS.some((b) => exceptions(b.value, delivery[b.value]).length > 0);
+  const differing = DELIVERY_BLOCKS.some((b) => exceptions(b.value, delivery[b.value], rejectable).length > 0);
   if (!differing && DELIVERY_BLOCKS.every((b) => isBlockLive(delivery[b.value]))) return null;
-  const texts = DELIVERY_BLOCKS.map((b) => blockText(b.value, delivery[b.value]));
+  const texts = DELIVERY_BLOCKS.map((b) => blockText(b.value, delivery[b.value], rejectable));
   if (!differing && texts.every((t) => t === texts[0])) {
     const to = receivers(delivery.general);
     return to ? `Es werden nur Mails an ${to} versendet, die übrigen nicht.` : 'Es werden keine Mails versendet.';

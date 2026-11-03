@@ -3,9 +3,8 @@ import { defineAsyncComponent, ref, watch } from 'vue';
 import { api } from '../api';
 import ItemTable from '../components/ItemTable.vue';
 import ListFilters from '../components/ListFilters.vue';
-import MineToggle from '../components/MineToggle.vue';
 import TypeChangeDialog from '../components/TypeChangeDialog.vue';
-import { useListFilters, useListSort, useMineFilter, useReloadAfterItemModal } from '../composables';
+import { useListFilters, useListSort, useReloadAfterItemModal } from '../composables';
 import type { ItemKey } from '../item-ref';
 import { listParams } from '../list-filters';
 import { itemRef } from '../format';
@@ -20,7 +19,6 @@ const NewItemDialog = defineAsyncComponent(() => import('../components/NewItemDi
 const session = useSession();
 const toast = useToast();
 const openItem = useOpenItem();
-const mine = useMineFilter('inbox');
 const items = ref<ItemSummary[]>([]);
 const loading = ref(true);
 const busy = ref<string | null>(null);
@@ -38,13 +36,14 @@ function onCreated(created: ItemKey, type: ItemType) {
   openItem(created, type);
 }
 
-// Filter (ohne Status, Vorgänge im Eingang haben keinen) und Sortierung, pro Ansicht gemerkt
+// Filter (ohne Status, Vorgänge im Eingang haben keinen) und Sortierung, pro Ansicht gemerkt; kein «Nur meine»
+// (seit 03.11.2026), im Eingang ist kaum etwas zugewiesen
 const filters = useListFilters('inbox');
 const sort = useListSort('inbox');
 
 async function load() {
   try {
-    const params = new URLSearchParams({ view: 'inbox', mine: mine.value ? '1' : '0', ...listParams(filters.value, sort.value) });
+    const params = new URLSearchParams({ view: 'inbox', ...listParams(filters.value, sort.value) });
     items.value = (await api.get<{ items: ItemSummary[] }>(`/items?${params}`)).items;
   } catch (err) {
     toast.error(err);
@@ -52,7 +51,7 @@ async function load() {
     loading.value = false;
   }
 }
-watch([mine, () => JSON.stringify(filters.value), () => JSON.stringify(sort.value)], load, { immediate: true });
+watch([() => JSON.stringify(filters.value), () => JSON.stringify(sort.value)], load, { immediate: true });
 useReloadAfterItemModal(load);
 
 // Zur Aufgabe fragt ein Dialog nach dem Status (ohne Vorauswahl); eine Störung erhält den Start-Status
@@ -101,10 +100,9 @@ async function discard(item: ItemSummary) {
       <h1>Eingang</h1>
       <span class="muted">Vorgänge aus E-Mail und Portal ohne Typ</span>
       <div class="spacer" />
-      <MineToggle v-model="mine" />
       <button class="btn" type="button" @click="newOpen = true">+ Neu</button>
     </div>
-    <ListFilters v-model="filters" :mine="mine" />
+    <ListFilters v-model="filters" />
     <ItemTable v-if="!loading" v-model:sort="sort" :items="items" empty-text="Der Eingang ist leer.">
       <template #actions="{ item }">
         <div class="row">

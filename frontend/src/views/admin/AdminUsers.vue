@@ -62,13 +62,35 @@ const draft = ref<Draft | null>(null);
 let draftSnapshot = '';
 const error = ref('');
 
-/** «Als dieser Benutzer arbeiten»: aktive Benutzer mit Rolle IT oder Admin, nicht man selbst */
-const impersonationTarget = computed(() => {
+/**
+ * «Als dieser Benutzer arbeiten»: aktive Benutzer mit Rolle IT oder Admin, nicht man selbst; Standard-Benutzer im Portal,
+ * wenn sie es nutzen dürfen (Entscheid vom 03.11.2026), sonst ein Hinweis statt des Knopfs.
+ */
+const editedUser = computed(() => {
   const id = draft.value?.id;
   const u = id ? users.value.find((x) => x.id === id) : undefined;
-  if (!u || session.impersonator || u.id === session.user?.id) return null;
-  return u.active && (u.role === 'admin' || u.role === 'it') ? u : null;
+  return u && u.active && !session.impersonator && u.id !== session.user?.id ? u : null;
 });
+/** Darf der bearbeitete Standard-Benutzer das Portal nutzen? null = noch nicht bekannt */
+const portalAllowed = ref<{ id: string; allowed: boolean } | null>(null);
+async function checkPortal(id: string) {
+  portalAllowed.value = null;
+  try {
+    const { allowed } = await api.get<{ allowed: boolean }>(`/admin/users/${id}/portal-access`);
+    portalAllowed.value = { id, allowed };
+  } catch {
+    // ohne Antwort kein Knopf
+  }
+}
+const impersonationTarget = computed(() => {
+  const u = editedUser.value;
+  if (!u) return null;
+  if (u.role !== 'standard') return u;
+  return portalAllowed.value?.id === u.id && portalAllowed.value.allowed ? u : null;
+});
+const portalRefused = computed(
+  () => editedUser.value?.role === 'standard' && portalAllowed.value?.id === editedUser.value.id && !portalAllowed.value.allowed,
+);
 
 async function impersonate() {
   const target = impersonationTarget.value;
@@ -89,8 +111,8 @@ async function impersonate() {
   try {
     await api.post(`/admin/users/${target.id}/impersonate`);
     session.announceSessionChange(target.id, session.user?.id ?? null);
-    // Neu laden: Stammdaten, Zähler und Rechte gelten ab jetzt für diesen Benutzer
-    window.location.assign('/inbox');
+    // Neu laden: Stammdaten, Zähler und Rechte gelten ab jetzt für diesen Benutzer (Standard-Benutzer im Portal)
+    window.location.assign(target.role === 'standard' ? '/portal' : '/inbox');
   } catch (err) {
     error.value = errorMessage(err);
     impersonating.value = false;
@@ -223,6 +245,7 @@ function edit(u: AdminUser) {
   resetDirectory();
   draft.value = { ...u, role: u.authSource === 'ldap' && !u.roleManual ? 'auto' : u.role, password: '' };
   draftSnapshot = JSON.stringify(draft.value);
+  if (u.role === 'standard' && u.active) void checkPortal(u.id);
   if (u.authSource === 'ldap') {
     if (!u.roleManual) adRole.value = u.role;
     // Nur für die Anzeige «zurzeit: …»; ohne LDAP gilt die gespeicherte Rolle
@@ -461,6 +484,9 @@ async function removePassword() {
         <input v-model="draft.active" type="checkbox" />
         Aktiv (deaktivierte Benutzer können sich nicht anmelden und erhalten keine Mails)
       </label>
+      <span v-if="portalRefused" class="hint portal-refused">
+        «Als dieser Benutzer arbeiten» geht erst, wenn das Portal für diese Person freigeschaltet ist (Verwaltung → Allgemein).
+      </span>
       <div v-if="error" class="error-box">{{ error }}</div>
       <template #footer>
         <button
@@ -469,7 +495,11 @@ async function removePassword() {
           :class="{ push: !welcomeTarget }"
           type="button"
           :disabled="impersonating"
-          :title="`Patchwork als ${impersonationTarget.name} verwenden, z.B. um Antworten unter diesem Namen zu testen. Oben erscheint der Weg zurück.`"
+          :title="
+            impersonationTarget.role === 'standard'
+              ? `Das Portal als ${impersonationTarget.name} verwenden, z.B. um zu sehen, was diese Person sieht. Oben erscheint der Weg zurück.`
+              : `Patchwork als ${impersonationTarget.name} verwenden, z.B. um Antworten unter diesem Namen zu testen. Oben erscheint der Weg zurück.`
+          "
           @click="impersonate"
         >
           Als dieser Benutzer arbeiten
@@ -497,8 +527,7 @@ async function removePassword() {
 /* Links im Fuss des Dialogs (Als Benutzer arbeiten, Willkommens-Mail), getrennt von Abbrechen/Speichern */
 .push {
   margin-right: auto;
-}
-tr.inactive td {
+}tr.inactive td {
   color: var(--text-faint);
 }
 .picked {
