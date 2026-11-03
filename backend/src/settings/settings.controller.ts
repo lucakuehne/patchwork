@@ -211,10 +211,11 @@ export class SettingsController {
     return body;
   }
 
+  /** Mit der Adresse des Portals (aus PUBLIC_URL wie die Links in den Mails) */
   @AdminOnly()
   @Get('settings/portal')
-  portal() {
-    return this.settings.get('portal');
+  async portal() {
+    return { ...(await this.settings.get('portal')), url: `${appConfig.publicUrl}/portal` };
   }
 
   /** Wer das Portal nutzen darf. Gilt sofort, auch für bereits angemeldete Melder. */
@@ -223,7 +224,7 @@ export class SettingsController {
   async updatePortal(@Body(new ZodPipe(portalSchema)) body: z.infer<typeof portalSchema>) {
     await this.settings.set('portal', body);
     this.portalAccess.forget();
-    return body;
+    return { ...body, url: `${appConfig.publicUrl}/portal` };
   }
 
   /** Bereiche des angemeldeten Benutzers (Navigation, Weiterleitung beim Anmelden) */

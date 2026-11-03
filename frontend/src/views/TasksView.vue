@@ -26,7 +26,7 @@ const session = useSession();
 const toast = useToast();
 const mine = useMineFilter('tasks');
 // Filter für Board und Liste gemeinsam; den Status gibt es nur in der Liste (im Board sind es die Spalten)
-const filters = useListFilters('board');
+const filters = useListFilters('board', 'tasks');
 const sort = useListSort('tasks');
 const asBoard = computed(() => session.preferences.layout.tasks === 'board');
 const openStatuses = computed(() => session.statusesOf('task').filter((s) => !s.closed));

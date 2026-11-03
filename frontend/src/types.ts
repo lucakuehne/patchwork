@@ -631,6 +631,8 @@ export interface PortalSettings {
   access: 'none' | 'selected' | 'all';
   emails: string[];
   groupDn: string;
+  /** Adresse des Portals (nur lesen, aus PUBLIC_URL) */
+  url: string;
 }
 
 /** Vorbelegung des Dialogs «Als simulierte Mail …» aus einer echten Mail */

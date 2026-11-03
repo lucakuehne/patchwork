@@ -54,7 +54,9 @@ import {
 let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Portal freischalten: aus, nur ausgewählte, für alle', async () => {
-  assert.deepEqual(await api('GET', '/settings/portal'), { access: 'none', emails: [], groupDn: '' });
+  const { url, ...portal } = await api('GET', '/settings/portal');
+  assert.deepEqual(portal, { access: 'none', emails: [], groupDn: '' });
+  assert.match(url, /^https?:\/\/[^/]+\/portal$/, 'Adresse des Portals aus PUBLIC_URL');
   anna = (await api('GET', '/admin/users')).find((u) => u.email === ANNA);
   await api('PATCH', `/admin/users/${anna.id}`, { password: 'anna-passwort-1' });
   await api('POST', '/auth/logout');
@@ -79,7 +81,8 @@ await step('Portal freischalten: aus, nur ausgewählte, für alle', async () => 
   await loginAs(IVAN, 'geheim-geheim');
   await api('GET', '/portal/items?state=open');
   await loginAs('ada@test.local', 'geheim-geheim');
-  await api('PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '' });
+  const saved = await api('PUT', '/settings/portal', { access: 'all', emails: [], groupDn: '', url: 'https://anders.test/x' });
+  assert.equal(saved.url, url, 'Adresse lässt sich nicht ändern');
   await api('PUT', '/settings/portal', { access: 'irgendwer', emails: [] }, { expect: [400] });
 });
 

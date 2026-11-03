@@ -1,15 +1,21 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { api } from '../api';
+import { copyText } from '../clipboard';
 import { useToast } from '../stores/toast';
 import type { PersonPick, PortalSettings } from '../types';
 import PersonSearch from './PersonSearch.vue';
 
-/** Wer das Portal nutzen darf: niemand, nur ausgewählte (Personen und AD-Gruppe) oder alle (Verwaltung → Allgemein). */
+/**
+ * Wer das Portal nutzen darf: niemand, nur ausgewählte (Personen und AD-Gruppe) oder alle (Verwaltung → Allgemein).
+ * Die Adresse erscheint, sobald gespeichert ist, dass mehr als niemand das Portal nutzen darf (Entscheid vom 03.11.2026).
+ */
 const toast = useToast();
 const portal = ref<PortalSettings | null>(null);
+const savedAccess = ref<PortalSettings['access']>('none');
 const ldapEnabled = ref(false);
 const saving = ref(false);
+const copied = ref(false);
 
 onMounted(async () => {
   try {
@@ -18,6 +24,7 @@ onMounted(async () => {
       api.get<{ enabled: boolean }>('/settings/ldap'),
     ]);
     portal.value = settings;
+    savedAccess.value = settings.access;
     ldapEnabled.value = ldap.enabled;
   } catch (err) {
     toast.error(err);
@@ -38,6 +45,7 @@ async function save() {
   saving.value = true;
   try {
     portal.value = await api.put<PortalSettings>('/settings/portal', { ...portal.value });
+    savedAccess.value = portal.value.access;
     toast.success(
       portal.value.access === 'none' ? 'Portal ausgeschaltet' : portal.value.access === 'all' ? 'Portal für alle freigeschaltet' : 'Portal für die Ausgewählten freigeschaltet',
     );
@@ -46,6 +54,10 @@ async function save() {
   } finally {
     saving.value = false;
   }
+}
+
+function copy() {
+  if (portal.value) copied.value = copyText(portal.value.url);
 }
 </script>
 
@@ -56,6 +68,14 @@ async function save() {
       Im Portal sehen Melder ihre eigenen Vorgänge, erfassen neue und antworten. Wer nicht freigeschaltet ist, kann sich nicht
       anmelden, und Mails an diese Melder enthalten keinen Link zum Portal. Für IT und Admins ändert sich nichts.
     </span>
+    <div v-if="portal && savedAccess !== 'none'" class="field">
+      <span class="label">Adresse</span>
+      <div class="row">
+        <code class="portal-url">{{ portal.url }}</code>
+        <button class="btn btn-sm" type="button" @click="copy">{{ copied ? 'Kopiert' : 'Kopieren' }}</button>
+      </div>
+      <span class="hint">Melder kommen auch über die normale Adresse von Patchwork nach der Anmeldung ins Portal.</span>
+    </div>
     <div v-if="portal" class="field">
       <label for="portal-access">Portal nutzen dürfen</label>
       <select id="portal-access" v-model="portal.access" class="select scope">
@@ -92,6 +112,10 @@ async function save() {
 <style scoped>
 .scope {
   max-width: 320px;
+}
+.portal-url {
+  user-select: all;
+  word-break: break-all;
 }
 .choices {
   display: flex;

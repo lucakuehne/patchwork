@@ -1,3 +1,4 @@
+import type { LocationQuery } from 'vue-router';
 import type { Priority } from './types';
 
 /**
@@ -22,8 +23,50 @@ export interface ListSort {
   dir: 'asc' | 'desc';
 }
 
-export const activeFilters = (filters: ListFilterValues) =>
-  (Object.keys(EMPTY_FILTERS) as (keyof ListFilterValues)[]).filter((key) => filters[key] !== '').length;
+const FILTER_KEYS = Object.keys(EMPTY_FILTERS) as (keyof ListFilterValues)[];
+
+export const activeFilters = (filters: ListFilterValues) => FILTER_KEYS.filter((key) => filters[key] !== '').length;
+
+export const sameFilters = (a: ListFilterValues, b: ListFilterValues) => FILTER_KEYS.every((key) => a[key] === b[key]);
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Filter in der Adresse (Entscheid vom 03.11.2026), z.B. `/incidents?priority=high&assignee=none`: Priorität als
+ * high/normal/low, Zuständig, Status und Meldeweg als ID («none» = ohne). Ungültige Werte fallen weg; null, wenn die
+ * Adresse keinen gültigen Filter enthält.
+ */
+export function filtersFromQuery(query: LocationQuery): ListFilterValues | null {
+  const value = (key: keyof ListFilterValues) => {
+    const v = query[key];
+    return typeof v === 'string' ? v : '';
+  };
+  const id = (v: string) => (UUID.test(v) ? v : '');
+  const idOrNone = (v: string) => (v === 'none' ? v : id(v));
+  const priority = value('priority');
+  const filters: ListFilterValues = {
+    priority: priority === 'high' || priority === 'normal' || priority === 'low' ? priority : '',
+    assignee: idOrNone(value('assignee')),
+    status: id(value('status')),
+    channel: idOrNone(value('channel')),
+  };
+  return activeFilters(filters) ? filters : null;
+}
+
+/** Adresse mit diesen Filtern: übrige Parameter (z.B. `?item=PW-12`) bleiben, leere Filter fehlen */
+export function queryWithFilters(query: LocationQuery, filters: ListFilterValues): LocationQuery {
+  const result: LocationQuery = {};
+  for (const [key, value] of Object.entries(query)) {
+    if (!FILTER_KEYS.includes(key as keyof ListFilterValues)) result[key] = value;
+  }
+  for (const key of FILTER_KEYS) {
+    if (filters[key]) result[key] = filters[key];
+  }
+  return result;
+}
+
+/** Die Filter-Parameter einer Adresse als Text, um zu erkennen, ob sie sich geändert haben */
+export const filterPart = (query: LocationQuery) => JSON.stringify(FILTER_KEYS.map((key) => query[key] ?? null));
 
 /** Parameter für /items */
 export function listParams(filters: ListFilterValues, sort: ListSort | null): Record<string, string> {

@@ -297,6 +297,22 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
   den zeitgesteuerten Regeln, vor den Mails bei Fälligkeit. `POST /api/admin/recurring-tasks/run` (nur Admins) startet
   ihn sofort, für Tests mit einem anderen Zeitpunkt.
 
+## Adresse des Portals, Filter in der Adresse (bestätigt am 03.11.2026)
+
+- **Adresse des Portals** in der Karte «Portal» unter Verwaltung → Allgemein, mit Knopf «Kopieren», sobald gespeichert
+  ist, dass mehr als niemand das Portal nutzen darf. Sie kommt aus `PUBLIC_URL` wie die Links in den Mails
+  (`…/portal`). Kein Knopf «Öffnen», weil IT und Admins vom Portal auf ihre Startseite geleitet werden. Melder kommen
+  auch über die normale Adresse nach der Anmeldung ins Portal.
+- **Filter in der Adresse** in allen Listen mit Filterleiste: Eingang, Störungen offen und gelöst, Aufgaben offen,
+  Erledigt und Abgelehnt, bei Störungen und Aufgaben auch im Board. Dazu Verwaltung → Benutzer mit Rolle und Suche
+  (`?role=all&q=meier`, «Admin & IT» ohne Parameter).
+  - Nur die Filterleiste steht in der Adresse (`?priority=high&assignee=…&status=…&channel=…`, Personen, Status und
+    Meldeweg als ID, «none» = ohne), nicht «Nur meine», die Sortierung und die Suche.
+  - Die Adresse geht vor: Ein Link mit Filtern zeigt genau diese, sie gelten danach als gemerkte Auswahl. Ohne Filter in
+    der Adresse (z.B. über das Menü) gilt wie bisher die im Browser gemerkte Auswahl und erscheint sofort in der Adresse.
+    Ungültige Werte fallen weg.
+  - Ein Filterwechsel ersetzt die Adresse, «Zurück» im Browser verlässt die Liste (wie bei Ein- und Ausgehende Mails).
+
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 
 - **Bereiche je Rolle:** Unter Verwaltung legt man für die Rolle IT fest, welche Bereiche (Eingang, Störungen, Aufgaben) sie sieht. Admins sehen immer alles. Standard-Benutzer nutzen wie bisher nur das Portal.
@@ -681,7 +697,7 @@ abschalten.
 - **Anrede überall per du** (ersetzt die offene Frage vom 23.10.2026): alle Mails (an Melder und an die IT) und alle Texte in Patchwork und im Portal.
 - **Gegenüber Meldern heisst es überall «Meldung»** (Portal und Mails an Melder und Beteiligte), nicht mehr «Anliegen», «Nachricht» oder «Vorgang». Intern (IT, Verwaltung) bleibt es der «Vorgang».
 - **Mail-Vorlage «Abgeschlossen»** statt «Erledigt», weil sie auch bei Störungen (Status «Gelöst») gilt; im Verlauf steht dann «Mail «Abgeschlossen» an …».
-- **Filter und Sortierung in den Listen:** nach Priorität, Zuständig (Person oder niemand), Status (wo es mehrere gibt) und Meldeweg, im Eingang, bei den Störungen (offen und gelöst), auf dem Aufgaben-Board und unter Erledigt/Abgelehnt. Die Auswahl bleibt pro Ansicht im Browser gespeichert. In den Listen zusätzlich Sortieren per Klick auf den Spaltenkopf.
+- **Filter und Sortierung in den Listen:** nach Priorität, Zuständig (Person oder niemand), Status (wo es mehrere gibt) und Meldeweg, im Eingang, bei den Störungen (offen und gelöst), auf dem Aufgaben-Board und unter Erledigt/Abgelehnt. Die Auswahl bleibt pro Ansicht im Browser gespeichert (seit 03.11.2026 zusätzlich in der Adresse, siehe oben). In den Listen zusätzlich Sortieren per Klick auf den Spaltenkopf.
 - **Namensregel:** Bezeichner, Datenbank, API und Migrationen englisch; Kommentare, Oberfläche, Commits und Dokumente deutsch (Schweizer Rechtschreibung). Bestehende Migrationen behalten ihren Namen, die Regel gilt für neue.
 - **Smoke-Test** aufgeteilt in eine Datei pro Bereich; nach einem Fehler laufen die übrigen Schritte weiter, am Ende steht die Zusammenfassung.
 - Vorgeschlagen, aber vorerst nicht umgesetzt (26.10.2026): Prozesse (Eingangsdienst, Prioritätskriterien, Kurzanleitung …), Meldeweg «Intern» umbenennen, deutsche Status-Namen, Version in der Oberfläche, Mehrfachauswahl, Signatur, «Neu seit dem letzten Besuch», Unteraufgaben, Stummschalten entscheiden.

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { api, errorMessage } from '../../api';
 import ItAreasCard from '../../components/ItAreasCard.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import PersonSearch from '../../components/PersonSearch.vue';
+import { useDebounced } from '../../composables';
 import { formatDateTime, ROLE_LABELS } from '../../format';
 import { useSession } from '../../stores/session';
 import { useConfirm } from '../../stores/confirm';
@@ -15,9 +17,31 @@ const session = useSession();
 const toast = useToast();
 const confirm = useConfirm();
 const users = ref<AdminUser[]>([]);
-const filter = ref<'staff' | 'standard' | 'all'>('staff');
-const query = ref('');
 const ldapEnabled = ref(false);
+
+// Rolle und Suche stehen in der Adresse (Entscheid vom 03.11.2026), z.B. «?role=all&q=meier»; «Admin & IT» ohne Parameter
+type RoleFilter = 'staff' | 'standard' | 'all';
+const roleOf = (value: unknown): RoleFilter => (value === 'standard' || value === 'all' ? value : 'staff');
+const textOf = (value: unknown) => (typeof value === 'string' ? value : '');
+const route = useRoute();
+const router = useRouter();
+const filter = ref<RoleFilter>(roleOf(route.query.role));
+const query = ref(textOf(route.query.q));
+const debouncedQuery = useDebounced(query);
+watch([filter, debouncedQuery], ([role, text]) => {
+  const q = text.trim();
+  void router.replace({ query: { ...(role !== 'staff' ? { role } : {}), ...(q ? { q } : {}) } });
+});
+// Adresse geändert (z.B. «Benutzer» im Menü): Auswahl übernehmen, ohne Eingaben zu überschreiben, die noch kommen
+watch(
+  () => [route.query.role, route.query.q],
+  ([role, q]) => {
+    if (route.name !== 'admin-users') return;
+    filter.value = roleOf(role);
+    const text = textOf(q);
+    if (text !== debouncedQuery.value.trim()) query.value = debouncedQuery.value = text;
+  },
+);
 
 interface Draft {
   id: string | null;

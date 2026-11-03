@@ -324,14 +324,34 @@ await step('filter', async () => {
   await page.goto(`${BASE}/incidents`);
   const bar = page.locator('.list-filters');
   await bar.waitFor();
-  await bar.locator('select[aria-label="Priorität"]').selectOption('high');
+  const priority = bar.locator('select[aria-label="Priorität"]');
+  await priority.selectOption('high');
   await page.waitForTimeout(600);
   const rows = await page.locator('table.table tbody tr').allInnerTexts();
   if (!rows.length || rows.some((r) => !r.includes('Hoch'))) throw new Error(`Filter Priorität: ${rows.length} Zeilen, nicht alle «Hoch»`);
+  // Filter stehen in der Adresse (ersetzt, kein Schritt für «Zurück»)
+  const urlIs = async (path, search, what) =>
+    page.waitForURL((url) => url.pathname === path && url.search === search, { timeout: 5000 }).catch(() => {
+      throw new Error(`${what}: ${new URL(page.url()).pathname}${new URL(page.url()).search} statt ${path}${search}`);
+    });
+  await urlIs('/incidents', '?priority=high', 'Filter in der Adresse');
   await page.reload();
   await bar.waitFor();
-  if ((await bar.locator('select[aria-label="Priorität"]').inputValue()) !== 'high') throw new Error('Filter nach dem Neuladen nicht mehr gesetzt');
+  if ((await priority.inputValue()) !== 'high') throw new Error('Filter nach dem Neuladen nicht mehr gesetzt');
   await shot('56-filter');
+  // Link mit Filter geht vor und wird gemerkt; ohne Filter in der Adresse erscheinen die gemerkten darin
+  const assignee = (await api('GET', '/auth/me')).data.user.id;
+  await page.goto(`${BASE}/incidents/resolved?assignee=${assignee}&priority=nicht-gueltig`);
+  await urlIs('/incidents/resolved', `?assignee=${assignee}`, 'Link mit Filter');
+  if ((await bar.locator('select[aria-label="Zuständig"]').inputValue()) !== assignee) throw new Error('Filter aus dem Link nicht gesetzt');
+  await page.goto(`${BASE}/incidents`);
+  await urlIs('/incidents', '?priority=high', 'Gemerkter Filter (offen)');
+  await page.locator('.segmented a', { hasText: 'Gelöst' }).click();
+  await urlIs('/incidents/resolved', `?assignee=${assignee}`, 'Gemerkter Filter (gelöst)');
+  await bar.getByRole('button', { name: 'Filter zurücksetzen' }).click();
+  await urlIs('/incidents/resolved', '', 'Zurückgesetzt');
+  await page.goto(`${BASE}/incidents`);
+  await urlIs('/incidents', '?priority=high', 'Gemerkter Filter (offen) nach Wechsel');
   await bar.getByRole('button', { name: 'Filter zurücksetzen' }).click();
   await page.waitForTimeout(400);
   if ((await page.locator('table.table tbody tr').count()) <= rows.length - 1) throw new Error('Zurücksetzen zeigt nicht wieder alle');
@@ -398,6 +418,14 @@ await step('verwaltung', async () => {
   await shot('09-symbolauswahl');
   await page.goto(`${BASE}/admin/general`);
   await page.locator('#portal-access').waitFor();
+  // Adresse des Portals, sobald gespeichert ist, dass mehr als niemand es nutzen darf
+  const portal = (await api('GET', '/settings/portal')).data;
+  const address = page.locator('.portal-url');
+  if (portal.access === 'none') {
+    if (await address.count()) throw new Error('Portal aus, Adresse trotzdem sichtbar');
+  } else if ((await address.innerText()) !== portal.url || !portal.url.endsWith('/portal')) {
+    throw new Error(`Adresse des Portals: ${await address.innerText()}`);
+  }
   await page.selectOption('#portal-access', 'selected');
   await shot('10-portal-einstellung', true);
   await page.goto(`${BASE}/admin/incoming-mails`);
@@ -667,6 +695,21 @@ await step('benutzer-namen', async () => {
   const active = cells[headers.findIndex((h) => h.trim() === 'Zuletzt aktiv')]?.trim();
   if (!active || active === '–') throw new Error(`«Zuletzt aktiv» bei Ada leer: ${active}`);
   await shot('64-benutzer-zuletzt-aktiv');
+  // Rolle und Suche in der Adresse, nach dem Neuladen wieder gesetzt; «Benutzer» im Menü setzt zurück
+  await page.locator('.page-head .segmented button', { hasText: 'Alle' }).click();
+  await page.locator('input[type="search"][placeholder="Suchen"]').fill('ada');
+  await page.waitForURL((url) => url.search === '?role=all&q=ada', { timeout: 5000 }).catch(() => {
+    throw new Error(`Benutzer: Adresse ${new URL(page.url()).search} statt ?role=all&q=ada`);
+  });
+  await page.reload();
+  await page.locator('tbody tr', { hasText: 'ada@test.local' }).waitFor();
+  if (!(await page.locator('.page-head .segmented button.active', { hasText: 'Alle' }).count())) throw new Error('Benutzer: «Alle» nach dem Neuladen nicht gewählt');
+  if ((await page.locator('input[type="search"][placeholder="Suchen"]').inputValue()) !== 'ada') throw new Error('Benutzer: Suche nach dem Neuladen leer');
+  await page.locator('nav.admin-nav a[href="/admin/users"]').click();
+  await page.waitForURL((url) => url.pathname === '/admin/users' && url.search === '', { timeout: 5000 });
+  await page.waitForTimeout(400);
+  if ((await page.locator('input[type="search"][placeholder="Suchen"]').inputValue()) !== '') throw new Error('Benutzer: Suche nach Klick im Menü nicht leer');
+  if (!(await page.locator('.page-head .segmented button.active', { hasText: 'Admin & IT' }).count())) throw new Error('Benutzer: nach Klick im Menü nicht «Admin & IT»');
   await page.getByRole('button', { name: '+ Benutzer' }).click();
   await page.locator('#u-name').fill('Muster, Anna');
   await page.waitForTimeout(200);

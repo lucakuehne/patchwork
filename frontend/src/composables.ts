@@ -1,6 +1,14 @@
-import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
-import { useRoute } from 'vue-router';
-import { EMPTY_FILTERS, type ListFilterValues, type ListSort } from './list-filters';
+import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import {
+  EMPTY_FILTERS,
+  filterPart,
+  filtersFromQuery,
+  queryWithFilters,
+  sameFilters,
+  type ListFilterValues,
+  type ListSort,
+} from './list-filters';
 import { modalKey } from './open-item';
 import type { ReportScope } from './types';
 
@@ -81,11 +89,42 @@ function useStored<T>(storageKey: string, initial: T, valid: (value: unknown) =>
   return value;
 }
 
-/** Filter einer Liste (Priorität, Zuständig, Status, Meldeweg), pro Ansicht im Browser gemerkt. */
-export function useListFilters(key: string): Ref<ListFilterValues> {
+/**
+ * Filter einer Liste (Priorität, Zuständig, Status, Meldeweg), pro Ansicht im Browser gemerkt und in der Adresse der
+ * Route «routeName» (Entscheid vom 03.11.2026): Filter in der Adresse gehen vor und gelten danach als gemerkte; ohne
+ * Filter in der Adresse gelten die gemerkten und erscheinen darin. Ein Wechsel ersetzt die Adresse, «Zurück» im Browser
+ * verlässt die Liste.
+ */
+export function useListFilters(key: string, routeName = key): Ref<ListFilterValues> {
+  const route = useRoute();
+  const router = useRouter();
   const stored = useStored<ListFilterValues>(`patchwork.filter.${key}`, { ...EMPTY_FILTERS }, (v) => typeof v === 'object' && v !== null);
   stored.value = { ...EMPTY_FILTERS, ...stored.value };
-  return stored;
+
+  const here = () => route.name === routeName;
+  const show = (filters: ListFilterValues) => {
+    const query = queryWithFilters(route.query, filters);
+    if (filterPart(query) !== filterPart(route.query)) void router.replace({ query, hash: route.hash });
+  };
+  watch(
+    () => (here() ? filterPart(route.query) : null),
+    (part) => {
+      if (part === null) return;
+      const fromQuery = filtersFromQuery(route.query);
+      if (fromQuery && !sameFilters(fromQuery, stored.value)) stored.value = fromQuery;
+      // Ungültige Werte fallen aus der Adresse, gemerkte kommen hinein
+      show(stored.value);
+    },
+    { immediate: true },
+  );
+
+  return computed({
+    get: () => stored.value,
+    set: (value) => {
+      stored.value = value;
+      if (here()) show(value);
+    },
+  });
 }
 
 /** Ansicht der Auswertungen (Störungen, Aufgaben, Alle), im Browser gemerkt; zuerst «Alle». */
