@@ -45,7 +45,7 @@ const listSchema = z.object({ state: z.enum(['open', 'closed']).default('open') 
 const uploads = () =>
   FilesInterceptor('files', 20, { limits: { fileSize: appConfig.maxUploadBytes, files: 20 } });
 
-/** Portal für Melder: nur die eigenen Vorgänge. */
+/** Portal für Melder: die eigenen Vorgänge und die, an denen man beteiligt ist. */
 @PortalRoute()
 @Controller('portal')
 export class PortalController {
@@ -59,6 +59,11 @@ export class PortalController {
   @Get('items')
   list(@Query(new ZodPipe(listSchema)) query: z.infer<typeof listSchema>, @CurrentUser() user: User) {
     return this.portal.list(user, query.state);
+  }
+
+  @Get('participating')
+  participating(@CurrentUser() user: User) {
+    return this.portal.participating(user);
   }
 
   @Get('items/:ref')
@@ -99,10 +104,10 @@ export class PortalController {
     @UploadedFiles() files: UploadedFile[] | undefined,
     @CurrentUser() user: User,
   ) {
-    // Regeln nur für eigene Vorgänge prüfen; fremde lehnt portalReply ab
+    // Regeln nur für Vorgänge prüfen, die die Person sieht (als Melder oder Beteiligter); andere lehnt portalReply ab
     const target = await this.items.byKey(key).catch(() => null);
     const run =
-      target && target.reporterId === user.id
+      target && (await this.portal.canView(user, target.id))
         ? await this.rules.prepare('portal_reply', { sender: user.email, subject: target.title, body: body.body, mailboxId: null })
         : undefined;
     await this.items.portalReply(user, key, body.body, files ?? [], run);

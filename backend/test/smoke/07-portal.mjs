@@ -107,13 +107,15 @@ await step('Portal: nur eigene Vorgänge und nur Öffentliches', async () => {
   assert.ok(!JSON.stringify(d).includes('Ich mische mich ein'), 'Notiz von Unbeteiligten unsichtbar');
   assert.ok(!JSON.stringify(d).includes('Ich bin abwesend'), 'Abwesenheitsnotiz unsichtbar');
   assert.ok(d.entries.some((e) => e.own), 'eigene Antworten');
-  assert.ok(d.entries.some((e) => e.author === 'IT'), 'Antworten der IT ohne Namen');
+  assert.ok(d.entries.some((e) => e.author === 'Ada Admin'), 'Antworten mit dem Namen des Bearbeiters');
   const closed = await api('GET', '/portal/items?state=closed');
   assert.ok(closed.some((i) => i.number === t2) && closed.some((i) => i.number === t3));
   assert.ok(closed.every((i) => i.status.closed) && open.every((i) => !i.status.closed));
   const notified = await api('GET', `/portal/items/${t3}`);
   assert.deepEqual(notified.status, { label: 'Abgelehnt', color: 'red', closed: true, waiting: false });
-  assert.ok(notified.entries.some((e) => e.kind === 'rejected' && e.body.includes('Wird extern gelöst')));
+  const rejection = notified.entries.find((e) => e.kind === 'rejected');
+  assert.ok(rejection.body.includes('Wird extern gelöst'));
+  assert.equal(rejection.author, null, 'Ablehnung ohne Namen');
   const silent = await api('GET', `/portal/items/${t2}`);
   assert.ok(!silent.entries.some((e) => e.kind === 'rejected'), 'Begründung ohne «Melder informieren» unsichtbar');
   await api('GET', `/portal/items/${task}`, undefined, { expect: [404] });
@@ -197,6 +199,58 @@ await step('Portal: fremde Vorgänge bleiben unsichtbar', async () => {
   await api('POST', `/portal/items/${portalItem}/replies`, f, { expect: [404] });
 });
 
+await step('Portal: Beteiligte sehen die Meldung, antworten, Melderin sieht, wer beteiligt ist', async () => {
+  await loginAs('ada@test.local', 'geheim-geheim');
+  await reply(`/items/${portalItem}/entries`, `Intern: Grafiktreiber prüfen ${RUN}`, 'note');
+  await api('POST', `/items/${portalItem}/participants`, { email: BOB });
+  const before = await detail(portalItem);
+  const bob = before.participants.find((p) => p.email === BOB);
+  const photo = before.attachments[0];
+
+  await loginAs(BOB, 'bob-passwort-12');
+  // Eigene Ansicht «Beteiligt», nicht unter den eigenen Meldungen
+  const listed = (await api('GET', '/portal/participating')).find((i) => i.number === portalItem);
+  assert.equal(listed.reporter, 'Anna Muster');
+  assert.equal(listed.status.label, 'In Arbeit');
+  assert.ok(!(await api('GET', '/portal/items?state=open')).some((i) => i.number === portalItem));
+  const d = await api('GET', `/portal/items/${portalItem}`);
+  assert.equal(d.participating, true);
+  assert.equal(d.reporter, 'Anna Muster');
+  assert.deepEqual(d.participants, [{ name: bob.name, own: true }]);
+  // Alles Öffentliche, auch von vor der Beteiligung, mit Namen; interne Notizen nie
+  const fromAnna = d.entries.find((e) => e.body === 'Neustart hat nicht geholfen.');
+  assert.deepEqual([fromAnna.author, fromAnna.own], ['Anna Muster', false]);
+  assert.ok(!JSON.stringify(d).includes('Grafiktreiber'), 'interne Notiz unsichtbar');
+  await api('GET', `/portal/attachments/${photo.id}`, undefined, { raw: true });
+  // Antwort im Portal wie per Mail: öffentliche Antwort, «Neue Antwort» an den Zuständigen
+  const text = `Ich genehmige das ${RUN}`;
+  const f = new FormData();
+  f.append('body', text);
+  await api('POST', `/portal/items/${portalItem}/replies`, f);
+  const mine = (await api('GET', `/portal/items/${portalItem}`)).entries.find((e) => e.body === text);
+  assert.deepEqual([mine.author, mine.own], ['Du', true]);
+  await waitForMail(IVAN, (m) => m.subject === `[PW-${portalItem}] Neue Antwort: Bildschirm flackert` && m.text.includes(text), 'Neue Antwort Beteiligter');
+
+  // Die Melderin sieht, wer beteiligt ist, und die Antwort mit Namen
+  await loginAs(ANNA, 'anna-passwort-1');
+  const own = await api('GET', `/portal/items/${portalItem}`);
+  assert.equal(own.participating, false);
+  assert.deepEqual(own.participants, [{ name: bob.name, own: false }]);
+  assert.equal(own.entries.find((e) => e.body === text).author, bob.name);
+
+  // Antwort im Vorgang; ohne Beteiligung wieder unsichtbar
+  await loginAs('ada@test.local', 'geheim-geheim');
+  const entry = (await detail(portalItem)).entries.find((e) => e.body === text);
+  assert.deepEqual([entry.kind, entry.meta.source, entry.author.email], ['reply', 'portal', BOB]);
+  await api('DELETE', `/items/${portalItem}/participants/${bob.id}`);
+  await loginAs(BOB, 'bob-passwort-12');
+  await api('GET', `/portal/items/${portalItem}`, undefined, { expect: [404] });
+  await api('GET', `/portal/attachments/${photo.id}`, undefined, { expect: [404], raw: true });
+  assert.ok(!(await api('GET', '/portal/participating')).some((i) => i.number === portalItem));
+  // Angemeldet als Bob weiter
+  await api('POST', `/portal/items/${portalItem}/replies`, f, { expect: [404] });
+});
+
 await step('Portal: Duplikate zeigen den Hinweis aufs Original, keine Antwort möglich', async () => {
   // Annas Original sieht Bob nicht
   await api('GET', `/portal/items/${dupOriginal}`, undefined, { expect: [404] });
@@ -209,7 +263,7 @@ await step('Portal: Duplikate zeigen den Hinweis aufs Original, keine Antwort m�
   await api('POST', `/portal/items/${dupSame}/replies`, f, { expect: [400] });
   const original = await api('GET', `/portal/items/${dupOriginal}`);
   assert.ok(original.entries.some((e) => e.own && e.body === 'Es kommt Papierstau.'), 'zusammengeführte Meldung sichtbar');
-  assert.ok(original.entries.some((e) => e.author === 'IT' && e.body === 'Wir schauen es uns an.'), 'übernommene Antwort sichtbar');
+  assert.ok(original.entries.some((e) => e.author === 'Ada Admin' && e.body === 'Wir schauen es uns an.'), 'übernommene Antwort sichtbar');
   assert.ok(!original.entries.some((e) => e.body.startsWith('Toner prüfen')), 'übernommene Notiz bleibt intern');
 });
 

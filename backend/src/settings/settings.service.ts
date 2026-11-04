@@ -90,6 +90,7 @@ export type DeliveryBlock = (typeof DELIVERY_BLOCKS)[number];
 const TYPED_TRIGGERS: DeliveryTrigger[] = [
   'confirmation',
   'reply',
+  'replyClosed',
   'done',
   'rejected',
   'duplicateMerged',
@@ -102,7 +103,7 @@ const TYPED_TRIGGERS: DeliveryTrigger[] = [
 ];
 
 /**
- * Auslöser, die im Block vorkommen: Abschliessen, Ablehnen und Erinnerungen brauchen einen Status und damit einen Typ,
+ * Auslöser, die im Block vorkommen: Abschliessen (auch mit Antwort), Ablehnen und Erinnerungen brauchen einen Status und damit einen Typ,
  * «Fällig» gibt es nur bei Aufgaben, «Willkommen» ist eine Mail ohne Vorgang.
  */
 export const BLOCK_TRIGGERS: Record<DeliveryBlock, readonly DeliveryTrigger[]> = {

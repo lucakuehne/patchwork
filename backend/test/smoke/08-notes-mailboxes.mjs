@@ -157,15 +157,16 @@ await step('Admin schreibt im Namen eines anderen: Autor ist die gewählte Perso
   // Nur für aktive IT-Mitarbeitende und Admins, nicht für Melder
   await api('POST', `/items/${itemNo}/entries`, entry('note', 'als Anna', anna.id), { expect: [400] });
 
-  // Öffentliche Antwort im Namen von Ivan: geht an die Melderin, im Portal wie jede Antwort der IT, ohne Vermerk
+  // Öffentliche Antwort im Namen von Ivan: geht an die Melderin, im Portal mit Ivans Namen, ohne Vermerk
   const replyText = `Antwort im Namen von Ivan ${RUN}`;
   await api('POST', `/items/${itemNo}/entries`, entry('reply', replyText, ivanUser.id));
   assert.equal((await detail(itemNo)).entries.find((e) => e.body === replyText).author.email, IVAN);
   await waitForMail(ANNA, (m) => m.text.includes(replyText), 'Antwort im Namen an die Melderin');
   await loginAs(ANNA, 'anna-passwort-1');
   const portal = await api('GET', `/portal/items/${itemNo}`);
-  assert.equal(portal.entries.find((e) => e.body === replyText).author, 'IT');
-  assert.ok(!JSON.stringify(portal).includes('recorded') && !JSON.stringify(portal).includes('Ada Admin'), 'Portal ohne Vermerk');
+  const onBehalf = portal.entries.find((e) => e.body === replyText);
+  assert.equal(onBehalf.author, 'Ivan IT');
+  assert.ok(!JSON.stringify(portal).includes('recorded') && !JSON.stringify(onBehalf).includes('Ada Admin'), 'Portal ohne Vermerk');
   await loginAs('ada@test.local', 'geheim-geheim');
 });
 

@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
 import { itemRef } from '../item-ref';
 import { fillSnippet } from '../snippets';
+import { manualStatusChoices, sendStatusChange } from '../status-move';
 import { useSession } from '../stores/session';
 import { deliveryBlock, isBlockLive } from '../test-mode';
 import type { ItemDetail, Snippet } from '../types';
@@ -10,6 +11,7 @@ import FilePicker from './FilePicker.vue';
 import KindIcon from './KindIcon.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
 import SnippetPicker from './SnippetPicker.vue';
+import StatusSendButton, { type SendChoice } from './StatusSendButton.vue';
 
 const props = defineProps<{ item: ItemDetail; currentUserId: string }>();
 const emit = defineEmits<{ sent: [] }>();
@@ -31,6 +33,7 @@ const uploading = ref(false);
 const error = ref('');
 const session = useSession();
 const editor = ref<InstanceType<typeof MarkdownEditor> | null>(null);
+const sendButton = ref<InstanceType<typeof StatusSendButton> | null>(null);
 
 /** Zur Auswahl «Als»: aktive IT-Mitarbeitende und Admins ausser mir */
 const otherStaff = computed(() => session.staff.filter((u) => u.id !== props.currentUserId));
@@ -67,17 +70,49 @@ const testModeNote = computed(() => {
 
 const canSend = computed(() => !sending.value && !uploading.value && (!!body.value.trim() || files.value.length > 0));
 
-async function send() {
+/**
+ * Status beim Senden (Entscheid vom 04.11.2026): zuerst «bleibt «…»», dann die Status, in die man von Hand wechseln
+ * darf (ohne den Ablehnen-Status). Im Eingang (ohne Typ und Status) keine Liste.
+ */
+const statusChoices = computed<SendChoice[]>(() => {
+  const type = props.item.type;
+  const current = props.item.status;
+  if (!type || !current) return [];
+  const others = manualStatusChoices(session.statusesOf(type), session.statusTargets[type], current.id, (toId) =>
+    session.canMove(type, current.id, toId),
+  ).filter((s) => s.id !== current.id);
+  return [
+    { id: null, label: `bleibt «${current.label}»`, color: current.color, closed: current.closed },
+    ...others.map((s) => ({ id: s.id, label: s.label, color: s.color, closed: s.closed })),
+  ];
+});
+
+/** Ctrl+Enter und der Knopf: mit Status-Liste öffnet sie sich, sonst wird gleich gesendet */
+function send() {
+  if (canSend.value) void sendButton.value?.show();
+}
+
+/**
+ * Senden, bei «statusId» mit Statuswechsel als Einheit: Fehlt ein Zuständiger oder sind Checklisten-Punkte offen, fragt
+ * sendStatusChange nach; bei Abbruch geht nichts raus und der Text bleibt im Feld.
+ */
+async function submit(statusId: string | null) {
   if (!canSend.value) return;
   sending.value = true;
   error.value = '';
   try {
-    const form = new FormData();
-    form.append('kind', kind.value);
-    form.append('body', body.value);
-    if (asUserId.value) form.append('asUserId', asUserId.value);
-    for (const f of files.value) form.append('files', f, f.name);
-    await api.post(`/items/${itemRef(props.item)}/entries`, form);
+    const sent = await sendStatusChange(async ({ assigneeId, force }) => {
+      const form = new FormData();
+      form.append('kind', kind.value);
+      form.append('body', body.value);
+      if (asUserId.value) form.append('asUserId', asUserId.value);
+      if (statusId) form.append('statusId', statusId);
+      if (assigneeId) form.append('assigneeId', assigneeId);
+      if (force) form.append('force', 'true');
+      for (const f of files.value) form.append('files', f, f.name);
+      await api.post(`/items/${itemRef(props.item)}/entries`, form);
+    });
+    if (!sent) return;
     body.value = '';
     files.value = [];
     asUserId.value = '';
@@ -130,7 +165,7 @@ async function send() {
     </div>
     <div v-if="error" class="error-box">{{ error }}</div>
     <div class="row">
-      <span class="faint small">Ctrl+Enter sendet</span>
+      <span class="faint small">{{ statusChoices.length ? 'Ctrl+Enter öffnet die Auswahl' : 'Ctrl+Enter sendet' }}</span>
       <div class="spacer" />
       <label v-if="session.isAdmin && otherStaff.length" class="as-user small">
         Als
@@ -139,9 +174,15 @@ async function send() {
           <option v-for="u in otherStaff" :key="u.id" :value="u.id">{{ u.name }}</option>
         </select>
       </label>
-      <button class="btn" :class="kind === 'reply' ? 'btn-primary' : 'btn-note'" type="button" :disabled="!canSend" @click="send">
-        {{ kind === 'reply' ? 'Antwort senden' : 'Notiz speichern' }}
-      </button>
+      <StatusSendButton
+        ref="sendButton"
+        :label="kind === 'reply' ? 'Antwort senden' : 'Notiz speichern'"
+        :menu-title="kind === 'reply' ? 'Antwort senden und Status …' : 'Notiz speichern und Status …'"
+        :choices="statusChoices"
+        :disabled="!canSend"
+        :button-class="kind === 'reply' ? 'btn-primary' : 'btn-note'"
+        @pick="submit"
+      />
     </div>
   </div>
 </template>

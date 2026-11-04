@@ -44,6 +44,12 @@ async function login(username, password) {
   await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 }
 
+/** Notiz bzw. Antwort senden, Status bleibt (Status beim Senden, Entscheid vom 04.11.2026) */
+async function sendKeepingStatus(label = 'Notiz speichern') {
+  await page.getByRole('button', { name: label }).click();
+  await page.getByRole('menuitem', { name: /^bleibt «/ }).click();
+}
+
 async function step(name, fn) {
   try {
     await fn();
@@ -110,7 +116,7 @@ await step('bild-einfuegen', async () => {
   await page.keyboard.type('Notiz mit eingefügtem Bild');
   await page.locator('.composer').screenshot({ path: `${OUT}/04-antwortfeld-mit-bild.png` });
   console.log('Bild 04-antwortfeld-mit-bild');
-  await page.getByRole('button', { name: 'Notiz speichern' }).click();
+  await sendKeepingStatus();
   await page.locator('.timeline .message.note img.text-image').first().waitFor();
   await page.locator('.timeline .message.note').first().screenshot({ path: `${OUT}/05-notiz-mit-bild.png` });
   console.log('Bild 05-notiz-mit-bild');
@@ -171,7 +177,7 @@ await step('notiz-zeit', async () => {
   await page.getByRole('button', { name: 'Intern', exact: true }).click();
   await page.locator('.composer .ProseMirror').click();
   await page.keyboard.type('Telefonat von gestern nachgetragen');
-  await page.getByRole('button', { name: 'Notiz speichern' }).click();
+  await sendKeepingStatus();
   const note = page.locator('.timeline .message.note', { hasText: 'Telefonat von gestern nachgetragen' });
   await note.waitFor();
   await note.getByRole('button', { name: 'Zeit anpassen' }).click();
@@ -209,7 +215,7 @@ await step('im-namen', async () => {
   await page.keyboard.type('Im Namen von Ivan nachgetragen');
   await page.locator('.composer').screenshot({ path: `${OUT}/85-im-namen.png` });
   console.log('Bild 85-im-namen');
-  await page.getByRole('button', { name: 'Notiz speichern' }).click();
+  await sendKeepingStatus();
   const note = page.locator('.timeline .message.note', { hasText: 'Im Namen von Ivan nachgetragen' });
   await note.waitFor();
   const name = note.locator('.entry-head .name');
@@ -229,7 +235,7 @@ await step('kennung-im-text', async () => {
   await page.getByRole('button', { name: 'Intern', exact: true }).click();
   await page.locator('.composer .ProseMirror').click();
   await page.keyboard.type('Gleiche Ursache wie PW-1');
-  await page.getByRole('button', { name: 'Notiz speichern' }).click();
+  await sendKeepingStatus();
   const note = page.locator('.timeline .message.note', { hasText: 'Gleiche Ursache wie PW-1' }).first();
   const link = note.locator('a.item-ref', { hasText: 'PW-1' });
   await link.waitFor();
@@ -871,7 +877,7 @@ await step('aufgaben-neu', async () => {
   await page.keyboard.press('Enter');
   await page.keyboard.type('übernehmen');
   if (!(await editor.locator('.mention').count())) throw new Error('Erwähnung im Editor fehlt');
-  await page.getByRole('button', { name: 'Notiz speichern' }).click();
+  await sendKeepingStatus();
   const mentioned = page.locator('.timeline .message.note .mention').first();
   await mentioned.waitFor();
   if (!(await mentioned.innerText()).startsWith('@Ivan')) throw new Error(`Erwähnung im Verlauf: ${await mentioned.innerText()}`);
@@ -1662,6 +1668,101 @@ await step('aktionsprotokoll', async () => {
   if ((await page.inputValue('input[type="search"][aria-label="Suchen"]')) !== '') throw new Error('Suche nicht zurückgesetzt');
 });
 
+await step('status-beim-senden', async () => {
+  // Status beim Senden (Entscheid vom 04.11.2026): Ctrl+Enter öffnet die Liste, nichts vorgewählt, ein Klick sendet
+  const channel = (await api('GET', '/channels')).data.find((c) => c.label === 'Telefon').id;
+  const anna = (await api('GET', '/admin/users')).data.find((u) => u.email.startsWith('anna-'));
+  const created = await api('POST', '/items', { type: 'incident', title: 'Status beim Senden', description: '', channelId: channel, reporterId: anna.id });
+  const ref = `PW-${created.data.number}`;
+  await page.goto(`${BASE}/items/${ref}`);
+  await page.locator('.composer .ProseMirror').click();
+  await page.keyboard.type('Ich schaue es mir an.');
+  await page.keyboard.press('Control+Enter');
+  const menu = page.getByRole('menu', { name: 'Antwort senden und Status …' });
+  await menu.waitFor();
+  const entries = (await menu.getByRole('menuitem').allInnerTexts()).map((t) => t.trim());
+  if (entries[0] !== 'bleibt «Neu»' || !entries.includes('In Arbeit') || !entries.includes('Gelöst')) throw new Error(`Liste: ${entries.join(', ')}`);
+  if (await page.evaluate(() => document.activeElement?.getAttribute('role') === 'menuitem')) throw new Error('Eintrag vorgewählt');
+  await shot('111-status-beim-senden');
+  // Escape schliesst die Liste, der Text bleibt
+  await page.keyboard.press('Escape');
+  await menu.waitFor({ state: 'hidden' });
+  if (!(await page.locator('.composer .ProseMirror').innerText()).includes('Ich schaue es mir an.')) throw new Error('Text nach Escape weg');
+  // Antwort und «In Arbeit»: beides im Verlauf, Status gewechselt
+  await page.getByRole('button', { name: 'Antwort senden' }).click();
+  await menu.getByRole('menuitem', { name: 'In Arbeit' }).click();
+  await page.locator('.timeline .message', { hasText: 'Ich schaue es mir an.' }).waitFor();
+  await page.waitForFunction(() => document.querySelector('#item-status option:checked')?.textContent?.trim() === 'In Arbeit');
+  if ((await page.locator('.composer .ProseMirror').innerText()).trim() !== '') throw new Error('Antwortfeld nicht geleert');
+  // Antwort und «Gelöst»: eine Mail «Antwort mit Abschluss» bei der Antwort
+  await page.locator('.composer .ProseMirror').click();
+  await page.keyboard.type('Der Toner ist ersetzt.');
+  // Mit der Tastatur: Pfeil nach oben wählt den letzten Eintrag («Gelöst»), Enter sendet
+  await page.keyboard.press('Control+Enter');
+  await menu.waitFor();
+  await page.keyboard.press('ArrowUp');
+  if ((await page.evaluate(() => document.activeElement?.textContent?.trim())) !== 'Gelöst') throw new Error('Pfeiltaste wählt nicht «Gelöst»');
+  await page.keyboard.press('Enter');
+  await page.locator('.timeline .message', { hasText: 'Der Toner ist ersetzt.' }).waitFor();
+  await page.waitForFunction(() => document.querySelector('#item-status option:checked')?.textContent?.trim() === 'Gelöst');
+  const mails = (await api('GET', '/admin/outgoing-mails')).data.filter((m) => `PW-${m.item?.number}` === ref).map((m) => m.template);
+  if (!mails.includes('replyClosed') || mails.includes('done')) throw new Error(`Mails: ${mails.join(', ')}`);
+  await shot('112-gesendet-mit-status', true);
+});
+
+await step('zustaendig-pflicht', async () => {
+  // Zuständig Pflicht (Entscheid vom 04.11.2026); der Smoke-Test lässt sie ausgeschaltet, hier für «In Arbeit» der Störungen
+  const inProgress = (await api('GET', '/statuses')).data.find((s) => s.type === 'incident' && s.key === 'in_progress');
+  await api('PATCH', `/statuses/${inProgress.id}`, { assigneeRequired: true });
+  const before = problems.length;
+  // Der Server lehnt den Wechsel ohne Zuständigen mit 400 ASSIGNEE_REQUIRED ab, danach fragt das Fenster
+  const refusal = () =>
+    page
+      .waitForResponse((r) => r.url().endsWith('/move') && r.status() === 400)
+      .then(async (r) => {
+        if ((await r.json()).code !== 'ASSIGNEE_REQUIRED') throw new Error('Wechsel ohne Zuständigen: falscher Fehler');
+      });
+  try {
+    await page.goto(`${BASE}/admin/statuses`);
+    const box = page.getByRole('checkbox', { name: 'In Arbeit: Zuständig Pflicht' }).first();
+    if (!(await box.isChecked())) throw new Error('Häkchen «Zuständig Pflicht» fehlt');
+    await shot('108-status-zustaendig-pflicht');
+
+    const channel = (await api('GET', '/channels')).data.find((c) => c.label === 'Telefon').id;
+    const created = await api('POST', '/items', { type: 'incident', title: 'Zuständig Pflicht', description: '', channelId: channel });
+    await page.goto(`${BASE}/items/PW-${created.data.number}`);
+    await page.locator('#item-status').waitFor();
+    // Ohne Zuständigen fragt ein Fenster, nichts vorgewählt; «Abbrechen» lässt den Status
+    let refused = refusal();
+    await page.selectOption('#item-status', { label: 'In Arbeit' });
+    await refused;
+    const dialog = page.getByRole('dialog', { name: 'Wer ist zuständig?' });
+    await dialog.waitFor();
+    if ((await dialog.locator('select').inputValue()) !== '') throw new Error('Zuständig vorgewählt');
+    if (!(await dialog.getByRole('button', { name: 'OK' }).isDisabled())) throw new Error('OK ohne Wahl möglich');
+    await shot('109-wer-ist-zustaendig');
+    await dialog.getByRole('button', { name: 'Abbrechen' }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => document.querySelector('#item-status option:checked')?.textContent?.trim() === 'Neu');
+    // Mit Wahl: zugewiesen und in «In Arbeit»; «– niemand –» gibt es dann nicht mehr
+    refused = refusal();
+    await page.selectOption('#item-status', { label: 'In Arbeit' });
+    await refused;
+    await dialog.waitFor();
+    await dialog.locator('select').selectOption({ label: 'Ivan IT' });
+    await dialog.getByRole('button', { name: 'OK' }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => document.querySelector('#item-assignee option:checked')?.textContent?.trim() === 'Ivan IT');
+    if ((await page.locator('#item-status option:checked').innerText()).trim() !== 'In Arbeit') throw new Error('Status nicht gewechselt');
+    if ((await page.locator('#item-assignee option', { hasText: 'niemand' }).count()) > 0) throw new Error('«– niemand –» wählbar');
+    await shot('110-zustaendig-gesetzt');
+  } finally {
+    await api('PATCH', `/statuses/${inProgress.id}`, { assigneeRequired: false });
+    // Die zwei erwarteten Ablehnungen meldet der Browser in der Konsole
+    for (let i = problems.length - 1; i >= before; i--) if (problems[i].includes('status of 400')) problems.splice(i, 1);
+  }
+});
+
 await step('portal', async () => {
   const anna = (await api('GET', '/admin/users')).data.find((u) => u.email.startsWith('anna-'));
   await api('POST', '/auth/logout');
@@ -1672,6 +1773,15 @@ await step('portal', async () => {
   await page.goto(`${BASE}/portal/items/PW-1`);
   await page.locator('.timeline').waitFor();
   if (!(await page.locator('.portal-header .brand img[src="/logo.svg"]').isVisible())) throw new Error('Portal: Logo fehlt');
+  // Antworten mit dem Namen des Bearbeiters und seinen Initialen statt «IT» (Entscheid vom 04.11.2026)
+  const heads = page.locator('.timeline .msg-head');
+  const names = await heads.locator('strong').allInnerTexts();
+  if (!names.includes('Ada Admin') || names.includes('IT')) throw new Error(`Portal: Antworten ohne Namen (${names.join(', ')})`);
+  const adaHead = heads.filter({ has: page.getByText('Ada Admin', { exact: true }) }).first();
+  if ((await adaHead.locator('.avatar').innerText()).trim() !== 'AA') throw new Error('Portal: Initialen des Bearbeiters fehlen');
+  // Die Melderin sieht, wer beteiligt ist (Entscheid vom 04.11.2026)
+  const involved = await page.locator('.participants').innerText();
+  if (!/^Beteiligt: \S/.test(involved) || involved.includes('Du')) throw new Error(`Portal: Zeile «Beteiligt» falsch (${involved})`);
   await shot('15-portal', true);
   // Benutzermenü im Portal: Darstellung und Abmelden; «Dunkel» gilt sofort, im Konto gespeichert und danach auch auf
   // der Anmeldeseite (in diesem Browser gemerkt)
@@ -1689,6 +1799,36 @@ await step('portal', async () => {
   await page.locator('h1.brand img').waitFor();
   if ((await theme()) !== 'dark') throw new Error('Anmeldeseite: nicht dunkel');
   await shot('82-anmeldung-dunkel');
+});
+
+await step('portal-beteiligt', async () => {
+  // Beteiligte sehen die Meldung im Portal (Entscheid vom 04.11.2026): Bob wird vorübergehend an PW-1 beteiligt
+  await login('ada@test.local', 'geheim-geheim');
+  const bob = (await api('GET', '/admin/users')).data.find((u) => u.email.startsWith('bob-'));
+  if ((await api('POST', '/items/PW-1/participants', { email: bob.email })).status !== 204) throw new Error('Bob nicht beteiligt');
+  try {
+    await api('POST', '/auth/logout');
+    await login(bob.email, 'bob-passwort-12');
+    await page.goto(`${BASE}/portal`);
+    await page.getByRole('button', { name: 'Beteiligt', exact: true }).click();
+    await page.waitForURL(/view=participating/);
+    const card = page.locator('.item-card').filter({ hasText: 'VPN verbindet nicht' });
+    await card.getByText('Gemeldet von Anna Muster').waitFor();
+    await shot('106-portal-beteiligt');
+    await card.click();
+    await page.locator('.timeline').waitFor();
+    await page.getByText('Meldung von Anna Muster').waitFor();
+    const involved = await page.locator('.participants').innerText();
+    if (!involved.startsWith('Beteiligt: Du')) throw new Error(`Zeile «Beteiligt» falsch (${involved})`);
+    await shot('107-portal-beteiligt-meldung', true);
+    await page.getByRole('link', { name: '← Meine Vorgänge' }).click();
+    await page.waitForURL(/view=participating/);
+  } finally {
+    await api('POST', '/auth/logout');
+    await login('ada@test.local', 'geheim-geheim');
+    const added = (await api('GET', '/items/PW-1')).data.participants.find((p) => p.email === bob.email);
+    if (added) await api('DELETE', `/items/PW-1/participants/${added.id}`);
+  }
 });
 
 await browser.close();

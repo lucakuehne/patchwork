@@ -50,6 +50,17 @@ const descriptionHtml = computed(() => {
 });
 const entryHtml = (e: PortalItemDetail['entries'][number]) =>
   e.bodyHtml ? renderMailHtml(e.bodyHtml) : renderMarkdown(e.body, 'portal');
+// Wer beteiligt ist (Entscheid vom 04.11.2026), man selbst als «Du» zuerst, sonst alphabetisch
+const participantsText = computed(() =>
+  [...(item.value?.participants ?? [])]
+    .sort((a, b) => Number(b.own) - Number(a.own) || a.name.localeCompare(b.name, 'de'))
+    .map((p) => (p.own ? 'Du' : p.name))
+    .join(', '),
+);
+
+// Initialen der Person, bei einer Ablehnung und ohne Person «IT»
+const avatarText = (e: PortalItemDetail['entries'][number]) =>
+  e.own ? initials(session.user?.name ?? '') : e.author ? initials(e.author) : 'IT';
 
 async function send() {
   if ((!body.value.trim() && files.value.length === 0) || uploading.value) return;
@@ -76,12 +87,13 @@ async function send() {
   <div v-if="notFound" class="card empty">Meldung {{ refText }} wurde nicht gefunden.</div>
 
   <div v-else-if="item" class="stack">
-    <RouterLink to="/portal" class="back">← Meine Vorgänge</RouterLink>
+    <RouterLink :to="item.participating ? '/portal?view=participating' : '/portal'" class="back">← Meine Vorgänge</RouterLink>
     <div class="row">
       <span class="mono muted">{{ itemRef(item) }}</span>
       <PortalStatusBadge :status="item.status" />
     </div>
     <h1 class="title">{{ item.title }}</h1>
+    <div v-if="participantsText" class="participants muted small">Beteiligt: {{ participantsText }}</div>
 
     <div v-if="item.duplicateOf" class="card duplicate">
       Diese Meldung betrifft dasselbe wie
@@ -122,8 +134,8 @@ async function send() {
     <div class="timeline">
       <div v-for="e in entriesNewestFirst" :key="e.id" class="card message" :class="{ own: e.own, rejected: e.kind === 'rejected' }">
         <div class="msg-head">
-          <span class="avatar">{{ e.own ? initials(session.user?.name ?? '') : 'IT' }}</span>
-          <strong>{{ e.kind === 'rejected' ? 'Abgelehnt' : e.author }}</strong>
+          <span class="avatar">{{ avatarText(e) }}</span>
+          <strong>{{ e.kind === 'rejected' ? 'Abgelehnt' : (e.author ?? 'IT') }}</strong>
           <span v-if="e.simulated" class="badge simulated" title="Im Testbetrieb simuliert">simuliert</span>
           <span class="spacer" />
           <span class="faint small">{{ formatDateTime(e.createdAt) }}</span>
@@ -136,7 +148,7 @@ async function send() {
 
     <section class="card original">
       <div class="row original-head">
-        <span class="original-label">Deine Meldung</span>
+        <span class="original-label">{{ item.participating ? `Meldung von ${item.reporter ?? 'unbekannt'}` : 'Deine Meldung' }}</span>
         <span class="muted small">vom {{ formatDateTime(item.createdAt) }}</span>
         <span v-if="item.simulated" class="badge simulated" title="Im Testbetrieb simuliert">simuliert</span>
       </div>
@@ -162,6 +174,9 @@ async function send() {
 }
 .small {
   font-size: 12px;
+}
+.participants {
+  overflow-wrap: anywhere;
 }
 .composer {
   padding: 12px;

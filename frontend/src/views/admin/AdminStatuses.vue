@@ -39,6 +39,11 @@ const lists = ref<Record<ItemType, Status[]>>({ incident: [], task: [] });
 const usage = ref<Record<string, number>>({});
 const newLabel = ref<Record<ItemType, string>>({ incident: '', task: '' });
 const newClosed = ref<Record<ItemType, boolean>>({ incident: false, task: false });
+const newAssigneeRequired = ref<Record<ItemType, boolean>>({ incident: false, task: false });
+/** Erklärung zu «Zuständig Pflicht» (Entscheid vom 04.11.2026) */
+const ASSIGNEE_REQUIRED_HINT =
+  'Wer einen Vorgang von Hand in diesen Status setzt, muss einen Zuständigen wählen, falls keiner gesetzt ist. ' +
+  'Automatische Wechsel (Antwort des Melders, Regeln …) prüfen das nicht.';
 /** Auswahl im Block «Automatische Wechsel» ('' = keiner) */
 const targetDraft = ref<Record<ItemType, Draft>>({ incident: emptyDraft(), task: emptyDraft() });
 
@@ -121,13 +126,25 @@ async function setClosed(status: Status, e: Event) {
   await load();
 }
 
+async function setAssigneeRequired(status: Status, e: Event) {
+  const input = e.target as HTMLInputElement;
+  try {
+    await api.patch(`/statuses/${status.id}`, { assigneeRequired: input.checked });
+  } catch (err) {
+    toast.error(err);
+    input.checked = status.assigneeRequired;
+  }
+  await load();
+}
+
 async function add(type: ItemType) {
   const label = newLabel.value[type].trim();
   if (!label) return;
   try {
-    await api.post('/statuses', { type, label, closed: newClosed.value[type] });
+    await api.post('/statuses', { type, label, closed: newClosed.value[type], assigneeRequired: newAssigneeRequired.value[type] });
     newLabel.value[type] = '';
     newClosed.value[type] = false;
+    newAssigneeRequired.value[type] = false;
     await load();
   } catch (err) {
     toast.error(err);
@@ -296,6 +313,7 @@ async function confirmRemove() {
               <span />
               <span>Name</span>
               <span class="center">abgeschlossen</span>
+              <span class="center wrap-head" :title="ASSIGNEE_REQUIRED_HINT">Zuständig Pflicht</span>
               <span class="right">Vorgänge</span>
               <span />
             </div>
@@ -334,6 +352,16 @@ async function confirmRemove() {
                       @change="setClosed(element, $event)"
                     />
                   </span>
+                  <span class="center">
+                    <input
+                      type="checkbox"
+                      class="closed-box"
+                      :checked="element.assigneeRequired"
+                      :title="ASSIGNEE_REQUIRED_HINT"
+                      :aria-label="`${element.label}: Zuständig Pflicht`"
+                      @change="setAssigneeRequired(element, $event)"
+                    />
+                  </span>
                   <span class="right faint usage" title="Vorgänge mit diesem Status">{{ usage[element.id] ?? 0 }}</span>
                   <button class="btn btn-sm btn-ghost btn-danger" type="button" :aria-label="`${element.label} löschen`" @click="askRemove(element)">
                     ✕
@@ -347,6 +375,15 @@ async function confirmRemove() {
               <input v-model="newLabel[type]" class="input label-input" placeholder="Status hinzufügen" maxlength="60" aria-label="Neuer Status" />
               <span class="center">
                 <input v-model="newClosed[type]" type="checkbox" class="closed-box" title="abgeschlossen" aria-label="Neuer Status abgeschlossen" />
+              </span>
+              <span class="center">
+                <input
+                  v-model="newAssigneeRequired[type]"
+                  type="checkbox"
+                  class="closed-box"
+                  title="Zuständig Pflicht"
+                  aria-label="Neuer Status: Zuständig Pflicht"
+                />
               </span>
               <span />
               <button class="btn btn-sm" type="submit" :disabled="!newLabel[type].trim()" aria-label="Status hinzufügen">+</button>
@@ -518,12 +555,16 @@ async function confirmRemove() {
 /* Zeile: Griff, Farbe, Name mit Ziel-Schildern, abgeschlossen, Anzahl Vorgänge, Löschen */
 .status-row {
   display: grid;
-  grid-template-columns: 16px 22px minmax(0, 1fr) 88px 56px 26px;
+  grid-template-columns: 16px 22px minmax(0, 1fr) 88px 72px 56px 26px;
   align-items: center;
   gap: 8px;
 }
 .list-head {
   font-size: 12px;
+}
+.wrap-head {
+  text-align: center;
+  line-height: 1.2;
 }
 .center {
   display: flex;

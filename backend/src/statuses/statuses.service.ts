@@ -170,7 +170,7 @@ export class StatusesService {
     return result;
   }
 
-  async create(input: { type: ItemType; label: string; closed: boolean }): Promise<Status> {
+  async create(input: { type: ItemType; label: string; closed: boolean; assigneeRequired: boolean }): Promise<Status> {
     return this.db.transaction(async (tx) => {
       await this.lock(tx);
       const all = await this.list(tx);
@@ -186,6 +186,7 @@ export class StatusesService {
           key,
           label: input.label.trim(),
           closed: input.closed,
+          assigneeRequired: input.assigneeRequired,
           position,
           color: defaultColor(input.closed),
         })
@@ -196,7 +197,7 @@ export class StatusesService {
 
   async update(
     id: string,
-    input: { label?: string; closed?: boolean; color?: StatusColor; diagramX?: number; diagramY?: number },
+    input: { label?: string; closed?: boolean; assigneeRequired?: boolean; color?: StatusColor; diagramX?: number; diagramY?: number },
   ): Promise<Status> {
     return this.db.transaction(async (tx) => {
       await this.lock(tx);
@@ -204,6 +205,7 @@ export class StatusesService {
       const changes: Partial<Status> = {};
       if (input.label !== undefined) changes.label = input.label.trim();
       if (input.color !== undefined) changes.color = input.color;
+      if (input.assigneeRequired !== undefined) changes.assigneeRequired = input.assigneeRequired;
       if (input.diagramX !== undefined) changes.diagramX = input.diagramX;
       if (input.diagramY !== undefined) changes.diagramY = input.diagramY;
       if (input.closed !== undefined && input.closed !== current.closed) {

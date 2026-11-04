@@ -99,6 +99,8 @@ const typeChangeSchema = z.object({
   type: typeSchema,
   /** Status im neuen Typ; ohne Angabe der Vorschlag nach der Rolle des bisherigen Status (aus dem Eingang: Start) */
   statusId: nullableUuid.optional(),
+  /** Zuständig, falls der neue Status das verlangt und der Vorgang keinen hat (Entscheid vom 04.11.2026) */
+  assigneeId: z.uuid().optional(),
 });
 
 const moveSchema = z.object({
@@ -107,11 +109,15 @@ const moveSchema = z.object({
   afterId: nullableUuid.optional(),
   /** Abschliessen trotz offener Checklisten-Punkte bestätigt */
   force: z.boolean().default(false),
+  /** Zuständig, falls der neue Status das verlangt und der Vorgang keinen hat (Entscheid vom 04.11.2026) */
+  assigneeId: z.uuid().optional(),
 });
 
 const rejectSchema = z.object({
   reason: z.string().trim().min(1, 'Begründung fehlt').max(20000).transform(normalizeNewlines),
   notify: z.boolean().default(false),
+  /** Zuständig, falls der Ablehnen-Status das verlangt und der Vorgang keinen hat (Entscheid vom 04.11.2026) */
+  assigneeId: z.uuid().optional(),
 });
 
 const commentSchema = z.object({
@@ -119,6 +125,15 @@ const commentSchema = z.object({
   body: z.string().max(100000).default('').transform(normalizeNewlines),
   /** Nur Admins: im Namen dieses IT-Mitarbeitenden oder Admins schreiben (Entscheid vom 28.10.2026) */
   asUserId: z.uuid('Ungültiger Benutzer').optional(),
+  /** Status beim Senden (Entscheid vom 04.11.2026); ohne Angabe bleibt der Status */
+  statusId: z.uuid().optional(),
+  /** Abschliessen trotz offener Checklisten-Punkte bestätigt (Formularfeld, daher als Text) */
+  force: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
+  /** Zuständig, falls der neue Status das verlangt und der Vorgang keinen hat */
+  assigneeId: z.uuid().optional(),
 });
 
 const noteEditSchema = z.object({ body: z.string().max(100000).transform(normalizeNewlines) });
@@ -204,7 +219,7 @@ export class ItemsController {
   ) {
     // Nur in einen Bereich, den man selbst sieht (Entscheid vom 23.10.2026)
     await this.areas.assertType(user, body.type);
-    await this.items.setType(user, key, body.type, body.statusId);
+    await this.items.setType(user, key, body.type, body.statusId, body.assigneeId);
   }
 
   @Audit('items', (c) => (c.body.statusId === c.before?.statusId ? 'Im Board verschoben' : 'Status geändert'))
@@ -215,7 +230,7 @@ export class ItemsController {
     @Body(new ZodPipe(moveSchema)) body: z.infer<typeof moveSchema>,
     @CurrentUser() user: User,
   ) {
-    await this.items.move(user, key, body.statusId, body.beforeId ?? null, body.afterId ?? null, body.force);
+    await this.items.move(user, key, body.statusId, body.beforeId ?? null, body.afterId ?? null, body.force, body.assigneeId);
   }
 
   @Audit('items', 'Abgelehnt')
@@ -226,7 +241,7 @@ export class ItemsController {
     @Body(new ZodPipe(rejectSchema)) body: z.infer<typeof rejectSchema>,
     @CurrentUser() user: User,
   ) {
-    await this.items.reject(user, key, body.reason, body.notify);
+    await this.items.reject(user, key, body.reason, body.notify, body.assigneeId);
   }
 
   @Audit('items', (c) => toggled(c.body.discarded, 'Verworfen', 'Wiederhergestellt'))
@@ -240,7 +255,12 @@ export class ItemsController {
     await this.items.setDiscarded(user, key, body.discarded);
   }
 
-  @Audit('items', (c) => (c.body.kind === 'reply' ? 'Öffentliche Antwort geschrieben' : 'Interne Notiz geschrieben'))
+  @Audit(
+    'items',
+    (c) =>
+      (c.body.kind === 'reply' ? 'Öffentliche Antwort geschrieben' : 'Interne Notiz geschrieben') +
+      (c.body.statusId && c.body.statusId !== c.before?.statusId ? ', Status geändert' : ''),
+  )
   @Post('items/:ref/entries')
   @HttpCode(204)
   @UseInterceptors(uploads())
@@ -250,7 +270,8 @@ export class ItemsController {
     @UploadedFiles() files: UploadedFile[] | undefined,
     @CurrentUser() user: User,
   ) {
-    await this.items.comment(user, key, body.kind, body.body, files ?? [], body.asUserId);
+    const status = body.statusId ? { statusId: body.statusId, force: body.force, assigneeId: body.assigneeId } : undefined;
+    await this.items.comment(user, key, body.kind, body.body, files ?? [], body.asUserId, status);
   }
 
   @Audit('items', 'Interne Notiz bearbeitet', { target: 'entry' })

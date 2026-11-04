@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { manualStatusChoices, typeChangeChoices } from './status-move';
+import { createPinia, setActivePinia } from 'pinia';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from './api';
+import { manualStatusChoices, sendStatusChange, typeChangeChoices, type StatusExtra } from './status-move';
+import { useAssigneePrompt } from './stores/assignee-prompt';
+import { useConfirm } from './stores/confirm';
 import type { StatusTargetsByType } from './types';
 
 const s = (id: string) => ({ id });
@@ -50,5 +54,68 @@ describe('typeChangeChoices', () => {
     const rejectedIncident: StatusTargetsByType = { ...targets, incident: { ...targets.incident, reject: 'storniert' } };
     expect(ids(typeChangeChoices(task, rejectedIncident, { id: 'storniert', type: 'incident' }, 'task'))).not.toContain('rejected');
     expect(ids(typeChangeChoices(task, targets, null, 'task'))).toEqual(['backlog', 'geplant', 'doing', 'erledigt']);
+  });
+});
+
+describe('sendStatusChange (Zuständig Pflicht, offene Checklisten-Punkte)', () => {
+  beforeEach(() => setActivePinia(createPinia()));
+  const required = () =>
+    new ApiError(400, 'Im Status «In Arbeit» braucht der Vorgang einen Zuständigen.', { code: 'ASSIGNEE_REQUIRED' });
+  const checklist = () => new ApiError(409, 'Ein Punkt der Checklisten ist noch offen.', { code: 'OPEN_CHECKLIST' });
+
+  it('ohne Rückfrage: einmal senden, ohne Zusatzangaben', async () => {
+    const calls: StatusExtra[] = [];
+    expect(await sendStatusChange(async (extra) => void calls.push(extra))).toBe(true);
+    expect(calls).toEqual([{}]);
+  });
+
+  it('fragt nach dem Zuständigen und sendet mit der gewählten Person erneut', async () => {
+    const calls: StatusExtra[] = [];
+    const prompt = useAssigneePrompt();
+    const result = sendStatusChange(async (extra) => {
+      calls.push(extra);
+      if (!extra.assigneeId) throw required();
+    });
+    await vi.waitFor(() => expect(prompt.message).toBe('Im Status «In Arbeit» braucht der Vorgang einen Zuständigen.'));
+    prompt.answer('ivan');
+    expect(await result).toBe(true);
+    expect(calls).toEqual([{}, { assigneeId: 'ivan' }]);
+    expect(prompt.message).toBeNull();
+  });
+
+  it('Zuständig und dann Checkliste: beide Angaben im letzten Versuch', async () => {
+    const calls: StatusExtra[] = [];
+    const prompt = useAssigneePrompt();
+    const confirm = useConfirm();
+    const result = sendStatusChange(async (extra) => {
+      calls.push(extra);
+      if (!extra.assigneeId) throw required();
+      if (!extra.force) throw checklist();
+    });
+    await vi.waitFor(() => expect(prompt.message).not.toBeNull());
+    prompt.answer('ivan');
+    await vi.waitFor(() => expect(confirm.request?.message).toBe('Ein Punkt der Checklisten ist noch offen. Trotzdem abschliessen?'));
+    confirm.answer(true);
+    expect(await result).toBe(true);
+    expect(calls).toEqual([{}, { assigneeId: 'ivan' }, { assigneeId: 'ivan', force: true }]);
+  });
+
+  it('Abbrechen: false, kein weiterer Versuch', async () => {
+    const calls: StatusExtra[] = [];
+    const prompt = useAssigneePrompt();
+    const result = sendStatusChange(async (extra) => {
+      calls.push(extra);
+      throw required();
+    });
+    await vi.waitFor(() => expect(prompt.message).not.toBeNull());
+    prompt.answer(null);
+    expect(await result).toBe(false);
+    expect(calls).toEqual([{}]);
+  });
+
+  it('andere Fehler gehen weiter, ohne Fenster', async () => {
+    const prompt = useAssigneePrompt();
+    await expect(sendStatusChange(async () => Promise.reject(new ApiError(400, 'Kaputt')))).rejects.toThrow('Kaputt');
+    expect(prompt.message).toBeNull();
   });
 });

@@ -9,6 +9,7 @@ import type { ItemKey } from '../item-ref';
 import { listParams } from '../list-filters';
 import { itemRef } from '../format';
 import { itemHref, useOpenItem } from '../open-item';
+import { sendStatusChange } from '../status-move';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import type { ItemSummary, ItemType } from '../types';
@@ -70,7 +71,10 @@ async function assign(item: ItemSummary, type: ItemType) {
   }
   busy.value = item.id;
   try {
-    await api.post(`/items/${itemRef(item)}/type`, { type });
+    const sent = await sendStatusChange(({ assigneeId }) =>
+      api.post(`/items/${itemRef(item)}/type`, { type, ...(assigneeId ? { assigneeId } : {}) }),
+    );
+    if (!sent) return;
     toast.success(`${itemRef(item)} ist jetzt eine ${type === 'incident' ? 'Störung' : 'Aufgabe'}`);
     await Promise.all([load(), session.refreshCounts()]);
   } catch (err) {

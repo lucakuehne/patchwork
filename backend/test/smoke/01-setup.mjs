@@ -95,6 +95,14 @@ await step('IT-Benutzer anlegen', async () => {
     ['incident/resolved', 'task/done', 'task/rejected'],
   );
   assert.ok(statuses.every((s) => !('category' in s)));
+  // Zuständig Pflicht vorbelegt: alle ausser Neu, Backlog und Geplant (Entscheid vom 04.11.2026). Die übrigen Bereiche
+  // prüfen Statuswechsel ohne Zuständigen; die Pflicht selbst prüft 21-assignee-required, die schaltet sie wieder ein.
+  assert.deepEqual(
+    statuses.filter((s) => !s.assigneeRequired).map((s) => `${s.type}/${s.key}`).sort(),
+    ['incident/new', 'task/backlog', 'task/planned'],
+  );
+  for (const s of statuses.filter((x) => x.assigneeRequired)) await api('PATCH', `/statuses/${s.id}`, { assigneeRequired: false });
+  statuses = state.statuses = await api('GET', '/statuses');
   channels = state.channels = await api('GET', '/channels');
   assert.deepEqual(
     channels.map((c) => [c.label, c.icon, c.key]),

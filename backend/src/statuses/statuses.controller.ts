@@ -10,10 +10,17 @@ const typeSchema = z.enum(['incident', 'task']);
 const labelSchema = z.string().trim().min(1, 'Bezeichnung fehlt').max(60);
 const coordinate = z.number().finite().min(-100000).max(100000);
 
-const createSchema = z.object({ type: typeSchema, label: labelSchema, closed: z.boolean() });
+const createSchema = z.object({
+  type: typeSchema,
+  label: labelSchema,
+  closed: z.boolean(),
+  /** Zuständig Pflicht (Entscheid vom 04.11.2026) */
+  assigneeRequired: z.boolean().default(false),
+});
 const updateSchema = z.object({
   label: labelSchema.optional(),
   closed: z.boolean().optional(),
+  assigneeRequired: z.boolean().optional(),
   color: z.enum(STATUS_COLORS).optional(),
   diagramX: coordinate.optional(),
   diagramY: coordinate.optional(),

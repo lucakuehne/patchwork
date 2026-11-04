@@ -94,7 +94,8 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
   - IT kann Beteiligte hinzufügen und entfernen.
   - Antwort eines Beteiligten zählt als öffentliche Antwort und wirkt wie eine Antwort des Melders.
   - Eingangsbestätigung und Mail bei *Erledigt* gehen nur an den Melder.
-  - Im späteren Portal sieht ein Beteiligter den Vorgang nicht.
+  - Im späteren Portal sieht ein Beteiligter den Vorgang nicht. Geändert am 04.11.2026: Beteiligte sehen ihn im
+    Portal, siehe «Beteiligte im Portal, Genehmigungen».
 
 ## Etappe 2 (Stand 15.10.2026)
 
@@ -107,7 +108,7 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 - Eigener, schlichter Bereich unter `/portal`: «Meine Vorgänge» (offen/abgeschlossen) und «Neue Meldung». Admin und IT nutzen weiterhin die normale Oberfläche.
 - Mails an Melder enthalten einen Link zum Vorgang im Portal.
 - Neue Meldung: Auswahl «Etwas funktioniert nicht» / «Ich brauche etwas», Titel, Beschreibung, Anhänge, keine Priorität. Die Meldung landet im Eingang mit dem Vorschlag des Melders, die IT bestätigt mit einem Klick oder wählt den anderen Typ. Eingangsbestätigung per Mail.
-- Der Melder sieht Nummer, Titel, Beschreibung, öffentliche Antworten und Anhänge sowie den Statusnamen (seit 20.10.2026 der interne Name mit seiner Farbe, im Eingang «Eingegangen»; der Wartet-Status ist hervorgehoben). Nicht sichtbar: interne Notizen, Typ, Zuständiger, Beteiligte. Verworfene Vorgänge erscheinen nicht. Den Ablehnungsgrund sieht er nur, wenn «Melder informieren» gewählt war.
+- Der Melder sieht Nummer, Titel, Beschreibung, öffentliche Antworten und Anhänge sowie den Statusnamen (seit 20.10.2026 der interne Name mit seiner Farbe, im Eingang «Eingegangen»; der Wartet-Status ist hervorgehoben). Nicht sichtbar: interne Notizen, Typ, Zuständiger (Beteiligte seit 04.11.2026 sichtbar, siehe «Beteiligte im Portal, Genehmigungen»). Verworfene Vorgänge erscheinen nicht. Den Ablehnungsgrund sieht er nur, wenn «Melder informieren» gewählt war.
 - Der Melder kann nur antworten (mit Anhängen), das wirkt wie eine Antwort per Mail. Keine Statusänderung, kein Zurückziehen, kein Bearbeiten.
 - Portal freischalten (bestätigt am 20.10.2026): ganz aus, nur für ausgewählte oder für alle.
   - Karte «Portal» unter Verwaltung → Allgemein. «Ausgewählte» sind einzelne Personen (Personensuche wie beim Testbetrieb) und zusätzlich die Mitglieder einer AD-Gruppe.
@@ -156,7 +157,11 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
 
 ### Portal – Darstellung
 
-- Antworten der IT erscheinen im Portal als «IT» (ohne Namen des Bearbeiters), eigene Nachrichten als «Sie».
+- Antworten der IT erscheinen im Portal mit dem Namen des Bearbeiters und seinen Initialen, eigene Nachrichten als «Du»
+  (geändert am 04.11.2026, vorher als «IT» ohne Namen). Bei einer Antwort «Als» eine andere Person steht die gewählte
+  Person. Eine Ablehnung steht weiter als «Abgelehnt» ohne Namen. Deaktivierte Benutzer behalten ihren Namen; ohne
+  Person steht «IT». Die Antwort-Mail bleibt unverändert: Absender ist das Postfach, den Namen nennt die
+  eigene Signatur oder ein Textbaustein.
 - Automatische Mails des Melders (Abwesenheitsnotizen) erscheinen im Portal nicht.
 - Lokale Standard-Konten, denen ein Admin ein Passwort gibt (z.B. zum Testen ohne AD), können sich ebenfalls ins Portal anmelden.
 - Mails von Adressen ohne AD-Konto (Lieferanten, Newsletter …) landen weiterhin im Eingang.
@@ -366,6 +371,87 @@ Umfang: Regeln, Automatik für «Wartet auf Melder», Textbausteine und Auswertu
 - **«Abgelehnt» im Testbetrieb je Auslöser** (bestätigt am 03.11.2026): Die Mail «Abgelehnt» gibt es nur bei Typen mit
   Ablehnen-Status (Verwaltung → Status, «Ablehnen führt in»); nur dort erscheint der Auslöser im Block des Typs. Standard:
   nur bei Aufgaben. Eine gespeicherte Einstellung bleibt und gilt wieder, sobald der Typ einen Ablehnen-Status erhält.
+
+## Beteiligte im Portal, Genehmigungen (04.11.2026)
+
+Anlass: Ein Melder nahm für einen Berechtigungsantrag seinen Vorgesetzten ins CC. Dieser wurde Beteiligter, sah aber die
+ursprüngliche Meldung nicht und wusste nicht, was er genehmigen sollte. Verworfen: die Meldung oder den ganzen Verlauf
+in jeder Mail mitschicken (zu lang bzw. für Dritte verwirrend, weil alles dazwischen fehlt).
+
+- **Beteiligte sehen die Meldung im Portal** (bestätigt am 04.11.2026, wie die «Request participants» in Jira Service
+  Management):
+  - Eigene Ansicht «Beteiligt» neben «Offen» und «Abgeschlossen» unter «Meine Vorgänge», mit «Gemeldet von …»; offene
+    zuerst, dann abgeschlossene. Die eigenen Meldungen bleiben in «Offen» und «Abgeschlossen». Die Ansicht steht in der
+    Adresse (`/portal?view=participating`, `?view=closed`), «← Meine Vorgänge» führt dorthin zurück.
+    - Der Knopf «Beteiligt» erscheint nur, wenn man an mindestens einer Meldung beteiligt ist (die meisten Melder sind
+      es nie; bestätigt am 04.11.2026).
+  - Sichtbar ist dasselbe wie für den Melder: Meldung, Anhänge, Status, alle öffentlichen Antworten (auch die von vor
+    der Beteiligung) und eine Ablehnung, wenn der Melder informiert wurde. Interne Notizen nie.
+  - Beteiligte antworten auch im Portal; das wirkt wie per Mail (wie eine Antwort des Melders: zurück aus «Wartet»,
+    Regeln für Antworten im Portal, «Neue Antwort» an den Zuständigen). Melder und übrige Beteiligte erhalten dazu keine
+    Mail; sie erfahren es mit der nächsten öffentlichen Antwort der IT.
+  - Für Beteiligte steht unten «Meldung von …» statt «Deine Meldung», Nachrichten des Melders mit Namen und Initialen,
+    die eigenen als «Du».
+  - Melder und Beteiligte sehen unter dem Titel «Beteiligt: …» (man selbst als «Du» zuerst).
+  - Zugriff, solange die Person Beteiligter ist und das Portal nutzen darf (Verwaltung → Allgemein); entfernt die IT
+    sie, verschwindet der Vorgang aus ihrem Portal. Der Link «Meldung online ansehen» in der Mail gilt damit auch für
+    Beteiligte. Aus HelpSpot übernommene Vorgänge zeigt das Portal weiterhin nicht.
+  - Technisch: `GET /api/portal/participating`; die Prüfung «Melder oder Beteiligter» (`viewableInPortal`) gilt für
+    Ansicht, Antworten, Anhänge und den Link aufs Original bei Duplikaten.
+- **Genehmigung anfordern** (vorgemerkt für später, 04.11.2026, allenfalls zusammen mit anderen Themen): Im Vorgang
+  fordert die IT eine Genehmigung an (z.B. Berechtigungen, USB, Adminrechte), die Person gibt sie per Mail oder im
+  Portal mit «Genehmigen» oder «Ablehnen», das Ergebnis steht im Verlauf. Interne Vorgabe: Berechtigungen genehmigt der
+  Vorgesetzte. Die genehmigende Person sucht und wählt der IT-Mitarbeitende im Vorgang; Patchwork holt sie nicht aus
+  dem AD. Noch nicht besprochen.
+
+## Zuständig Pflicht je Status (bestätigt am 04.11.2026)
+
+- Sobald ein Vorgang nicht mehr in «Neu», «Backlog» oder «Geplant» steht, muss er einen Zuständigen haben. Weil die
+  Status frei sind, hängt das an einem Häkchen **«Zuständig Pflicht»** je Status unter Verwaltung → Status (neben
+  «abgeschlossen»), nicht am Namen.
+  - Beim Update vorbelegt für alle Status ausser dem Start-Status je Typ und «Geplant» der Aufgaben, also auch für die
+    abgeschlossenen inklusive «Abgelehnt». Neue Status ohne Häkchen, ausser man setzt es beim Hinzufügen.
+- **Wechsel von Hand ohne Zuständigen** (Board, Statusauswahl, Typ setzen): Ein Fenster «Wer ist zuständig?» fragt
+  nach einer Person (aktive IT-Mitarbeitende und Admins), **nichts vorgewählt**, man wählt aktiv. «OK» weist zu und
+  wechselt den Status in einem Schritt (beides im Verlauf, Mail «Zugewiesen»), «Abbrechen» lässt alles, wie es war.
+  - Beim Ablehnen und beim Erfassen mit Status ist «Zuständig» im jeweiligen Formular Pflicht (ohne Vorauswahl).
+  - Bleibt der Status gleich (Einordnen im Board), gilt die Pflicht nicht.
+- **Zuständig leeren:** In einem Status mit Pflicht lässt sich «Zuständig» nur auf eine andere Person ändern (die Option
+  «– niemand –» fehlt).
+- **Ohne Pflicht:** Wechsel, bei denen niemand im Vorgang den Status wählt: Antwort des Melders (zurück in «In
+  Arbeit»), automatisch schliessen nach «Wartet», Regeln, wiederkehrende Aufgaben, HelpSpot-Import, Ersatz beim Löschen
+  eines Status und Zusammenführen (das Duplikat wird ohne Zuständigen geschlossen).
+- **Bestehende Vorgänge** bleiben, wie sie sind; die Pflicht greift erst beim nächsten Statuswechsel. Betroffen waren
+  beim Update drei gelöste Störungen ohne Zuständigen (PW-36, PW-72, PW-81).
+- Technisch: Spalte `statuses.assignee_required` (Migration 0046); Wechsel von Hand senden bei Bedarf `assigneeId`
+  mit, sonst antwortet der Server mit dem Code `ASSIGNEE_REQUIRED` und die Oberfläche fragt nach.
+
+## Status beim Senden (bestätigt am 04.11.2026)
+
+Anlass: Es kommt vor, dass jemand an einem Vorgang arbeitet (antwortet, Notizen schreibt), ohne den Status zu ändern.
+Verworfen: ein vorangekreuztes Häkchen «In Arbeit nehmen» und ein automatischer Wechsel; Zuständig wird nie
+automatisch gesetzt.
+
+- **Knopf mit Liste** (Design «Status beim Senden», Variante A): «Antwort senden ▾» bzw. bei internen Notizen «Notiz
+  speichern ▾» öffnet eine Liste «Antwort senden und Status …» bzw. «Notiz speichern und Status …»: zuerst «bleibt
+  «‹aktueller Status›»», dann die Status, in die man von Hand wechseln darf (gemäss Ablauf), mit Farbpunkt, ohne den
+  Ablehnen-Status («Ablehnen» bleibt ein eigener Knopf). Ein Klick auf einen Eintrag sendet sofort.
+  - **Nie etwas vorgewählt**, in jedem Status: Man entscheidet bei jeder Antwort und Notiz bewusst. Ctrl+Enter öffnet
+    die Liste, Pfeiltasten und Enter wählen, Escape schliesst sie.
+  - Vorgänge im Eingang (ohne Typ und Status): der normale Knopf ohne Liste.
+  - Die Status-Auswahl in der Seitenleiste bleibt wie bisher.
+- **Antwort und Wechsel sind eine Einheit:** Verlangt der Status einen Zuständigen und fehlt er, fragt das Fenster
+  «Wer ist zuständig?»; bei offenen Checklisten-Punkten fragt die bekannte Rückfrage. Bricht man ab, geht nichts raus
+  und der Text bleibt im Feld.
+- **Mails:**
+  - Öffentliche Antwort und Abschluss (Wechsel, der den Vorgang erledigt, wie bei der Mail «Abgeschlossen»): eine
+    kombinierte Mail **«Antwort mit Abschluss»** (eigene Vorlage unter Verwaltung → E-Mail-Vorlagen) statt der
+    Antwort-Mail und der Mail «Abgeschlossen». Oben der Abschluss («… wurde auf «Gelöst» gesetzt»), darunter «Nachricht
+    von …» mit der Antwort als Zitat (Design M1), mit den Anhängen der Antwort. Betreff wie bei «Abgeschlossen».
+  - Öffentliche Antwort und ein anderer Wechsel (z.B. «In Arbeit», «Wartet auf Melder»): nur die Antwort-Mail.
+  - Interne Notiz und Abschluss: die Mail «Abgeschlossen» wie bei jedem Wechsel von Hand.
+  - Testbetrieb: «Antwort mit Abschluss» ist ein eigener Auslöser. Beim Update übernimmt er die Einstellung von
+    «Öffentliche Antwort» (bis man ihn selbst einstellt).
 
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 
@@ -600,7 +686,7 @@ abschalten.
   selbst; nach dem Senden steht die Auswahl wieder auf einem selbst. Die gewählte Person gilt als Autor: im Verlauf,
   bei den Platzhaltern {{Bearbeiter …}} der Textbausteine und bei Mails (die Person selbst bekommt weder die Antwort
   noch die Mail «Erwähnt», in «Erwähnt» steht ihr Name). Intern steht beim Darüberfahren über den Namen «erfasst von …»
-  mit dem Admin; Melder sehen das weder im Portal (dort wie jede Antwort der IT als «IT») noch in der Mail.
+  mit dem Admin; Melder sehen das weder im Portal (dort mit dem Namen der gewählten Person) noch in der Mail.
   - Bestätigt am 29.10.2026: Eine solche Notiz können in den ersten 3 Minuten die gewählte Person und der Admin
     bearbeiten, der sie erfasst hat (dieselbe Frist wie für alle Notizen).
   - Technisch: Spalte `entries.recorded_by_id` (nur gesetzt, wenn jemand im Namen eines anderen schreibt).

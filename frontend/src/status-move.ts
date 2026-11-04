@@ -1,5 +1,6 @@
 import { api, ApiError } from './api';
 import { itemRef, type ItemKey } from './item-ref';
+import { useAssigneePrompt } from './stores/assignee-prompt';
 import { useConfirm } from './stores/confirm';
 import type { ItemType, StatusTargets, StatusTargetsByType } from './types';
 
@@ -9,26 +10,50 @@ export interface MoveRequest {
   afterId?: string | null;
 }
 
+/** Zusatzangaben eines Statuswechsels von Hand, nach Rückfrage */
+export interface StatusExtra {
+  /** Zuständig, falls der neue Status einen verlangt und der Vorgang keinen hat (Entscheid vom 04.11.2026) */
+  assigneeId?: string;
+  /** Abschliessen trotz offener Checklisten-Punkte bestätigt */
+  force?: boolean;
+}
+
 /**
- * Setzt den Status eines Vorgangs. Meldet der Server offene Checklisten-Punkte (Wechsel von Hand in einen
- * abgeschlossenen Status ausser dem Ablehnen-Status), wird nachgefragt und bei Bestätigung erneut mit «force» gesendet.
- * Ergebnis: false, wenn abgebrochen wurde.
+ * Statuswechsel von Hand senden: Board, Statusauswahl, Typwechsel, Antworten und Notizen mit Status. Verlangt der neue
+ * Status einen Zuständigen und hat der Vorgang keinen, fragt das Fenster «Wer ist zuständig?»; meldet der Server offene
+ * Checklisten-Punkte, wird nachgefragt. Danach sendet «send» erneut mit den Zusatzangaben. Ergebnis: false, wenn
+ * abgebrochen wurde (dann ist nichts gespeichert).
  */
-export async function moveItem(item: ItemKey, request: MoveRequest): Promise<boolean> {
-  try {
-    await api.post(`/items/${itemRef(item)}/move`, { ...request });
-    return true;
-  } catch (err) {
-    if (!(err instanceof ApiError) || err.code !== 'OPEN_CHECKLIST') throw err;
-    const ok = await useConfirm().ask({
-      title: 'Checkliste nicht vollständig',
-      message: `${err.message} Trotzdem abschliessen?`,
-      confirmLabel: 'Trotzdem abschliessen',
-    });
-    if (!ok) return false;
-    await api.post(`/items/${itemRef(item)}/move`, { ...request, force: true });
-    return true;
+export async function sendStatusChange(send: (extra: StatusExtra) => Promise<unknown>): Promise<boolean> {
+  const extra: StatusExtra = {};
+  for (;;) {
+    try {
+      await send({ ...extra });
+      return true;
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      if (err.code === 'ASSIGNEE_REQUIRED' && !extra.assigneeId) {
+        const assigneeId = await useAssigneePrompt().ask(err.message);
+        if (!assigneeId) return false;
+        extra.assigneeId = assigneeId;
+      } else if (err.code === 'OPEN_CHECKLIST' && !extra.force) {
+        const ok = await useConfirm().ask({
+          title: 'Checkliste nicht vollständig',
+          message: `${err.message} Trotzdem abschliessen?`,
+          confirmLabel: 'Trotzdem abschliessen',
+        });
+        if (!ok) return false;
+        extra.force = true;
+      } else {
+        throw err;
+      }
+    }
   }
+}
+
+/** Setzt den Status eines Vorgangs (Board, Statusauswahl), mit den Rückfragen von sendStatusChange. */
+export function moveItem(item: ItemKey, request: MoveRequest): Promise<boolean> {
+  return sendStatusChange((extra) => api.post(`/items/${itemRef(item)}/move`, { ...request, ...extra }));
 }
 
 /**

@@ -9,7 +9,7 @@ import ItemDescription from '../components/ItemDescription.vue';
 import LinksPanel from '../components/LinksPanel.vue';
 import PersonSearch from '../components/PersonSearch.vue';
 import type { ItemKey } from '../item-ref';
-import { manualStatusChoices, moveItem } from '../status-move';
+import { manualStatusChoices, moveItem, sendStatusChange } from '../status-move';
 import RejectDialog from '../components/RejectDialog.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import TimelineEvents from '../components/TimelineEvents.vue';
@@ -104,8 +104,9 @@ watch(refText, () => load(), { immediate: true });
 async function run(action: () => Promise<unknown>, success?: string) {
   busy.value = true;
   try {
-    await action();
-    if (success) toast.success(success);
+    // false: abgebrochen (z.B. im Fenster «Wer ist zuständig?»)
+    const result = await action();
+    if (success && result !== false) toast.success(success);
     await load();
     void session.refreshCounts();
   } catch (err) {
@@ -128,6 +129,14 @@ const statusOptions = computed(() => {
 // Steht der Vorgang im Ablehnen-Status, erscheint dieser im Status-Feld als deaktivierte Option
 const inRejectStatus = computed(() => !!item.value?.type && session.isRejectStatus(item.value.status, item.value.type));
 const canReject = computed(() => !!item.value?.type && session.canReject(item.value.type, item.value.status?.id ?? null));
+// Zuständig Pflicht (Entscheid vom 04.11.2026): Verlangt der Ablehnen-Status einen Zuständigen und fehlt er, fragt der
+// Dialog «Ablehnen» danach. Im aktuellen Status mit dieser Pflicht lässt sich «Zuständig» nicht leeren.
+const needsAssignee = (statusId: string | null | undefined) =>
+  !!item.value?.type && !!statusId && !!session.statusesOf(item.value.type).find((s) => s.id === statusId)?.assigneeRequired;
+const rejectNeedsAssignee = computed(
+  () => !!item.value?.type && !item.value.assignee && needsAssignee(session.statusTargets[item.value.type].reject),
+);
+const assigneeLocked = computed(() => !!item.value?.assignee && needsAssignee(item.value.status?.id));
 // Neueste zuerst; Änderungen kurz hintereinander von derselben Person als eine Zeile, automatische Mails dazwischen
 const timeline = computed(() => (item.value ? groupTimeline([...item.value.entries].reverse(), item.value.mails) : []));
 const blockKey = (block: TimelineBlock) =>
@@ -150,7 +159,11 @@ const selectedMailboxId = computed(
 const typeChangeTo = ref<ItemType | null>(null);
 function setType(type: ItemType) {
   if (type === 'task' || (item.value?.type && item.value.status)) typeChangeTo.value = type;
-  else void run(() => api.post(`/items/${refText.value}/type`, { type }), `Typ ist jetzt «${TYPE_LABELS[type]}»`);
+  else
+    void run(
+      () => sendStatusChange(({ assigneeId }) => api.post(`/items/${refText.value}/type`, { type, ...(assigneeId ? { assigneeId } : {}) })),
+      `Typ ist jetzt «${TYPE_LABELS[type]}»`,
+    );
 }
 function onTypeChanged() {
   const type = typeChangeTo.value;
@@ -231,7 +244,7 @@ function onRejected() {
         </template>
 
         <!-- Beim Abmelden ist der Benutzer schon entfernt, bevor die Ansicht verschwindet -->
-        <CommentComposer :item="item" :current-user-id="session.user?.id ?? ''" @sent="load" />
+        <CommentComposer :item="item" :current-user-id="session.user?.id ?? ''" @sent="run(async () => undefined)" />
 
         <!-- Neuestes zuoberst; sonst die ursprüngliche Meldung als ältester Eintrag zuunterst -->
         <div class="timeline">
@@ -385,9 +398,10 @@ function onRejected() {
             class="select"
             :value="item.assignee?.id ?? ''"
             :disabled="busy"
+            :title="assigneeLocked ? `Im Status «${item.status?.label}» ist «Zuständig» Pflicht` : undefined"
             @change="patch({ assigneeId: ($event.target as HTMLSelectElement).value || null })"
           >
-            <option value="">– niemand –</option>
+            <option v-if="!assigneeLocked" value="">– niemand –</option>
             <option v-if="item.assignee && !session.staff.some((u) => u.id === item!.assignee!.id)" :value="item.assignee.id">
               {{ item.assignee.name }}
             </option>
@@ -449,7 +463,14 @@ function onRejected() {
       </aside>
     </div>
 
-    <RejectDialog v-if="rejectOpen && item" :item-key="item" :title="item.title" @close="rejectOpen = false" @done="onRejected" />
+    <RejectDialog
+      v-if="rejectOpen && item"
+      :item-key="item"
+      :title="item.title"
+      :ask-assignee="rejectNeedsAssignee"
+      @close="rejectOpen = false"
+      @done="onRejected"
+    />
     <TypeChangeDialog
       v-if="typeChangeTo && item"
       :item-key="item"

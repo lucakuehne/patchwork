@@ -8,6 +8,7 @@ const status = (id: string, closed: boolean, position: number, x: number | null 
   key: id,
   label: id,
   closed,
+  assigneeRequired: false,
   position,
   color: 'gray',
   diagramX: x,

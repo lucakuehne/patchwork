@@ -88,6 +88,23 @@ export class NotificationsService {
   }
 
   /**
+   * Öffentliche Antwort, die den Vorgang zugleich abschliesst (Entscheid vom 04.11.2026): eine Mail «Antwort mit
+   * Abschluss» an Melder und Beteiligte statt der Antwort-Mail und der Mail «Abgeschlossen».
+   */
+  async replyClosed(item: Item, author: User, body: string, entryId: string, attachmentIds: string[], statusLabel: string): Promise<void> {
+    const reporter = await this.eligible(item, item.reporterId, author.id);
+    const cc = await this.participantEmails(item, author.id);
+    const to = reporter ? [reporter.email] : cc.splice(0, cc.length);
+    await this.sendToReporter(item, to, cc, {
+      template: 'replyClosed',
+      values: { Status: statusLabel, Bearbeiter: author.name, Antwort: mentionsAsText(body) },
+      entryId,
+      attachmentIds,
+      automated: false,
+    });
+  }
+
+  /**
    * Vorgang wurde von Hand in einen abgeschlossenen Status (ausser dem Ablehnen-Status) gesetzt, oder eine Regel hat
    * eine neue Aufgabe abgeschlossen (actorId null).
    */

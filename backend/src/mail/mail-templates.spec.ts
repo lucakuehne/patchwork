@@ -18,9 +18,13 @@ const used = (text: string | null) => [...(text ?? '').matchAll(/\{\{\s*([^{}]+?
 
 describe('Mails im Verlauf', () => {
   it('alle Mails an Melder mit eigenem Text, ohne öffentliche Antwort und ohne Mails an die IT', () => {
-    const expected = TEMPLATES.filter((t) => t.group === 'reporter' && t.subject !== null && t.body !== null).map((t) => t.key);
+    // «Antwort mit Abschluss» erscheint wie die Antwort beim Eintrag («Mail ansehen»), nicht als eigene Zeile
+    const expected = TEMPLATES.filter((t) => t.group === 'reporter' && t.subject !== null && t.body !== null && t.key !== 'replyClosed').map(
+      (t) => t.key,
+    );
     expect([...TIMELINE_TEMPLATES].sort()).toEqual([...expected].sort());
     expect(TIMELINE_TEMPLATES).not.toContain('reply');
+    expect(TIMELINE_TEMPLATES).not.toContain('replyClosed');
   });
 });
 
@@ -115,6 +119,20 @@ describe('Platzhalter', () => {
 
 describe('Fertige Mail', () => {
   const values = { Nummer: 'PW-12', Titel: 'Fehler bei *.pdf und _Daten_', Link: 'https://pw.firma.local/portal/items/12' };
+
+  it('Antwort mit Abschluss: Abschluss oben, Antwort als Zitat mit ihrer Formatierung (Entscheid vom 04.11.2026)', () => {
+    const template = templateByKey('replyClosed')!;
+    const mail = composeMail(
+      { body: template.body!, link: '', footer: '' },
+      { ...values, 'Melder Vorname': 'Anna', Status: 'Gelöst', Bearbeiter: 'Ivan IT', Antwort: 'Toner **ersetzt**.\n\nGruss Ivan' },
+    );
+    expect(mail.text).toContain('Deine Meldung «Fehler bei *.pdf und _Daten_» (PW-12) wurde auf «Gelöst» gesetzt.');
+    expect(mail.text).toContain('Nachricht von Ivan IT:');
+    expect(mail.html).toContain('<strong>ersetzt</strong>');
+    // Die ganze Antwort steht im Zitat, auch der zweite Absatz
+    expect(mail.html).toMatch(/border-left:3px solid[^>]*>\s*<p style="margin:0 0 8px">Toner <strong>ersetzt<\/strong>\.<\/p>\s*<p style="margin:0">Gruss Ivan<\/p>/);
+    expect(fill(template.subject!, { ...values, Status: 'Gelöst' })).toBe('Gelöst: Fehler bei *.pdf und _Daten_');
+  });
 
   it('Text wörtlich, HTML maskiert: Zeichen aus Titeln lösen keine Formatierung aus', () => {
     const mail = composeMail(

@@ -4,7 +4,7 @@ import { api, errorMessage } from '../api';
 import { itemRef, TYPE_LABELS } from '../format';
 import type { ItemKey } from '../item-ref';
 import { suggestTypeChangeStatus } from '../status-flow';
-import { typeChangeChoices } from '../status-move';
+import { sendStatusChange, typeChangeChoices } from '../status-move';
 import { useSession } from '../stores/session';
 import type { ItemType, StatusRef } from '../types';
 import ModalDialog from './ModalDialog.vue';
@@ -34,8 +34,15 @@ async function submit() {
   saving.value = true;
   error.value = '';
   try {
-    await api.post(`/items/${itemRef(props.itemKey)}/type`, { type: props.targetType, statusId: statusId.value });
-    emit('done');
+    // Verlangt der Status einen Zuständigen und fehlt er, fragt ein Fenster danach; bei Abbruch bleibt der Dialog offen
+    const sent = await sendStatusChange(({ assigneeId }) =>
+      api.post(`/items/${itemRef(props.itemKey)}/type`, {
+        type: props.targetType,
+        statusId: statusId.value,
+        ...(assigneeId ? { assigneeId } : {}),
+      }),
+    );
+    if (sent) emit('done');
   } catch (err) {
     error.value = errorMessage(err);
   } finally {

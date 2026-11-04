@@ -56,6 +56,9 @@ const startLabel = computed(() => {
   const startId = session.statusTargets[type.value].start;
   return session.statuses.find((s) => s.id === startId)?.label;
 });
+// Zuständig Pflicht (Entscheid vom 04.11.2026), auch wenn der Standard-Status sie verlangt
+const chosenStatus = computed(() => session.statuses.find((s) => s.id === (statusId.value || session.statusTargets[type.value].start)));
+const assigneeRequired = computed(() => !!chosenStatus.value?.assigneeRequired);
 watch(type, (t) => {
   statusId.value = '';
   if (!channelChosen) channelId.value = defaultChannel(t);
@@ -69,6 +72,10 @@ async function save() {
   }
   if (!channelId.value) {
     error.value = 'Bitte den Meldeweg wählen.';
+    return;
+  }
+  if (assigneeRequired.value && !assigneeId.value) {
+    error.value = `Im Status «${chosenStatus.value!.label}» braucht der Vorgang einen Zuständigen.`;
     return;
   }
   saving.value = true;
@@ -121,8 +128,9 @@ async function save() {
       </div>
       <div class="field">
         <label for="new-assignee">Zuständig</label>
-        <select id="new-assignee" v-model="assigneeId" class="select">
-          <option value="">– niemand –</option>
+        <select id="new-assignee" v-model="assigneeId" class="select" :required="assigneeRequired">
+          <option v-if="assigneeRequired" value="" disabled>Bitte wählen …</option>
+          <option v-else value="">– niemand –</option>
           <option v-for="u in session.staff" :key="u.id" :value="u.id">{{ u.name }}</option>
         </select>
       </div>

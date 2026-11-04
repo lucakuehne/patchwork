@@ -138,6 +138,8 @@ export interface Status {
   label: string;
   /** Abgeschlossen (Listen offen/abgeschlossen, Board, Portal, Auswertungen) */
   closed: boolean;
+  /** Zuständig Pflicht: ein Wechsel von Hand in diesen Status braucht einen Zuständigen (seit 04.11.2026) */
+  assigneeRequired: boolean;
   /** Reihenfolge im Typ: Spalten des Boards und alle Auswahllisten */
   position: number;
   color: StatusColor;
@@ -329,14 +331,20 @@ export interface PortalItemSummary {
   updatedAt: string;
   closedAt: string | null;
   status: PortalStatus;
+  /** Nur in der Ansicht «Beteiligt»: wer gemeldet hat */
+  reporter?: string | null;
 }
 
 export interface PortalItemDetail {
   prefix: string;
   number: number;
   title: string;
-  /** Vorgang wurde als Duplikat geschlossen; «accessible»: Original ist ebenfalls eigener Vorgang */
+  /** Vorgang wurde als Duplikat geschlossen; «accessible»: Original ist im Portal sichtbar (Melder oder Beteiligter) */
   duplicateOf: { prefix: string; number: number; title: string; accessible: boolean } | null;
+  /** Beteiligt statt Melder */
+  participating: boolean;
+  reporter: string | null;
+  participants: { name: string; own: boolean }[];
   description: string;
   descriptionHtml: string | null;
   /** Im Testbetrieb aus einer simulierten Mail entstanden */
@@ -348,7 +356,8 @@ export interface PortalItemDetail {
   entries: {
     id: string;
     kind: 'reply' | 'rejected';
-    author: string;
+    /** «Du», der Name des Bearbeiters oder null (Ablehnung, ohne Person: «IT») */
+    author: string | null;
     own: boolean;
     simulated: boolean;
     body: string;

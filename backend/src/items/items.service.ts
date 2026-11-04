@@ -94,6 +94,26 @@ export function decodeFilename(name: string): string {
 
 type Pending = (() => Promise<void>)[];
 
+/** Geprüfter Statuswechsel von Hand (siehe prepareStatusChange) */
+interface StatusChange {
+  target: Status;
+  current: Status | undefined;
+  /** false: bleibt im selben Status (z.B. Einordnen im Board) */
+  changed: boolean;
+  /** Erledigt den Vorgang (Mail «Abgeschlossen», Rückfrage bei offenen Checklisten-Punkten), siehe isCompleting */
+  completing: boolean;
+  /** Neu zuzuweisende Person, wenn der Status einen Zuständigen verlangt */
+  assignee: User | null;
+}
+
+/** Fehler, wenn ein Status mit «Zuständig Pflicht» ohne Zuständigen gesetzt werden soll; die Oberfläche fragt dann nach */
+const assigneeRequired = (status: Status) =>
+  new BadRequestException({
+    statusCode: 400,
+    code: 'ASSIGNEE_REQUIRED',
+    message: `Im Status «${status.label}» braucht der Vorgang einen Zuständigen.`,
+  });
+
 @Injectable()
 export class ItemsService {
   constructor(
@@ -444,6 +464,8 @@ export class ItemsService {
       // Ohne Wahl «Neuer Vorgang erhält», der Ablehnen-Status ist nicht wählbar
       const status = newItemStatus(all, targets[input.type], input.type, input.statusId);
 
+      if (status.assigneeRequired && !input.assigneeId) throw assigneeRequired(status);
+
       const reporterId = input.reporterId ?? actor.id;
       await this.users.getById(reporterId, tx);
       if (input.assigneeId) await this.assertStaff(input.assigneeId, tx);
@@ -528,6 +550,10 @@ export class ItemsService {
         log.push({ field: 'channel', from: before?.label ?? null, to: after.label });
       }
       if (patch.assigneeId !== undefined && patch.assigneeId !== item.assigneeId) {
+        if (!patch.assigneeId && item.statusId) {
+          const current = await this.statuses.get(item.statusId, tx);
+          if (current.assigneeRequired) throw assigneeRequired(current);
+        }
         const before = item.assigneeId ? await this.users.getById(item.assigneeId, tx) : null;
         const after = patch.assigneeId ? await this.assertStaff(patch.assigneeId, tx) : null;
         changes.assigneeId = patch.assigneeId;
@@ -570,26 +596,31 @@ export class ItemsService {
    * Status im neuen Typ: der gewählte («statusId») oder der Vorschlag nach der Rolle des bisherigen Status, aus dem
    * Eingang «Neuer Vorgang erhält». Als automatischer Wechsel prüft der Typwechsel den Ablauf nicht.
    */
-  async setType(actor: User, key: ItemKey, type: ItemType, statusId?: string | null): Promise<void> {
+  async setType(actor: User, key: ItemKey, type: ItemType, statusId?: string | null, assigneeId?: string): Promise<void> {
+    const pending: Pending = [];
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, key);
       if (item.type === type && !item.discarded) return;
       const [all, targets] = await Promise.all([this.statuses.list(tx), this.statuses.targets(tx)]);
       const current = item.statusId ? all.find((s) => s.id === item.statusId) : undefined;
       const target = typeChangeStatus(all, targets, current, type, statusId);
+      const assignee = await this.assigneeForStatus(tx, item, target, assigneeId);
 
-      await tx
+      const [updated] = await tx
         .update(items)
         .set({
           type,
           statusId: target.id,
+          ...(assignee ? { assigneeId: assignee.id } : {}),
           suggestedType: null,
           discarded: false,
           closedAt: closedAtAfter(item.closedAt, current, target),
           boardPosition: await this.endOfColumn(tx, target.id),
           updatedAt: new Date(),
         })
-        .where(eq(items.id, item.id));
+        .where(eq(items.id, item.id))
+        .returning();
+      if (assignee) pending.push(...(await this.recordAssignment(tx, actor, updated!, assignee)));
       // Checklisten gibt es nur bei Aufgaben: Sie bleiben gespeichert und werden bei Störungen ausgeblendet
       const [hasChecklists] = await tx.select({ id: checklists.id }).from(checklists).where(eq(checklists.itemId, item.id)).limit(1);
       await this.addEntry(tx, item.id, actor.id, 'type', '', {
@@ -602,10 +633,11 @@ export class ItemsService {
         ...(item.dueDate ? { dueDate: type === 'task' ? 'shown' : 'hidden' } : {}),
       });
     });
+    await this.flush(pending);
   }
 
-  async setStatus(actor: User, key: ItemKey, statusId: string, force = false): Promise<void> {
-    await this.move(actor, key, statusId, null, null, force);
+  async setStatus(actor: User, key: ItemKey, statusId: string, force = false, assigneeId?: string): Promise<void> {
+    await this.move(actor, key, statusId, null, null, force, assigneeId);
   }
 
   /**
@@ -613,7 +645,8 @@ export class ItemsService {
    * In den Ablehnen-Status geht es nur über reject(), weil es eine Begründung braucht.
    * Ein Wechsel, der den Vorgang erledigt (in einen abgeschlossenen Status ausser dem Ablehnen-Status, siehe
    * isCompleting), schickt die Mail «Erledigt» und meldet sich bei «Behebt»; hat eine Aufgabe offene
-   * Checklisten-Punkte, verlangt er eine Bestätigung (force).
+   * Checklisten-Punkte, verlangt er eine Bestätigung (force). Verlangt der neue Status einen Zuständigen und hat der
+   * Vorgang keinen, bringt der Wechsel ihn mit («assigneeId», siehe assigneeForStatus).
    */
   async move(
     actor: User,
@@ -622,51 +655,85 @@ export class ItemsService {
     beforeId: string | null,
     afterId: string | null,
     force = false,
+    assigneeId?: string,
   ): Promise<void> {
     const pending: Pending = [];
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, key);
-      if (!item.type) throw new BadRequestException('Bitte zuerst einen Typ zuweisen');
-      const [all, targets] = await Promise.all([this.statuses.list(tx), this.statuses.targets(tx)]);
-      const target = moveTarget(all, targets[item.type], item.type, statusId);
-      const current = all.find((s) => s.id === item.statusId);
-      const completing = target.id !== item.statusId && isCompleting(targets[item.type], current, target);
-      // Wechsel von Hand nur gemäss Ablauf, falls er für den Typ eingeschränkt ist
-      if (target.id !== item.statusId) await this.statuses.assertTransition(item.type, current, target, tx);
-
-      if (completing && item.type === 'task' && !force) {
-        const open = await this.openChecklistItems(tx, item.id);
-        if (open > 0) {
-          throw new ConflictException({
-            statusCode: 409,
-            code: 'OPEN_CHECKLIST',
-            open,
-            message: `${open === 1 ? 'Ein Punkt' : `${open} Punkte`} der Checklisten ${open === 1 ? 'ist' : 'sind'} noch offen.`,
-          });
-        }
-      }
-
-      const changes: Partial<typeof items.$inferInsert> = { updatedAt: new Date() };
-      if (beforeId || afterId) {
-        changes.boardPosition = await this.positionBetween(tx, target.id, item.id, beforeId, afterId);
-      } else if (target.id !== item.statusId) {
-        changes.boardPosition = await this.endOfColumn(tx, target.id);
-      }
-      if (target.id !== item.statusId) {
-        changes.statusId = target.id;
-        changes.closedAt = closedAtAfter(item.closedAt, current, target);
-      }
-      const [updated] = await tx.update(items).set(changes).where(eq(items.id, item.id)).returning();
-
-      if (target.id !== item.statusId) {
-        await this.addEntry(tx, item.id, actor.id, 'status', '', statusMeta(current, target));
-        if (completing) {
-          pending.push(() => this.notifications.done(updated!, actor.id, target.label));
-          pending.push(...(await this.onFixingItemCompleted(tx, updated!, actor)));
-        }
-      }
+      const change = await this.prepareStatusChange(tx, item, statusId, force, assigneeId);
+      const position = beforeId || afterId ? await this.positionBetween(tx, change.target.id, item.id, beforeId, afterId) : undefined;
+      pending.push(...(await this.applyStatusChange(tx, actor, item, change, { position })).pending);
     });
     await this.flush(pending);
+  }
+
+  /**
+   * Statuswechsel von Hand prüfen, bevor etwas gespeichert wird: Typ, Ablauf (falls für den Typ eingeschränkt),
+   * Zuständig Pflicht und beim Erledigen einer Aufgabe offene Checklisten-Punkte (ohne «force» Fehler OPEN_CHECKLIST).
+   */
+  private async prepareStatusChange(
+    tx: Tx,
+    item: Item,
+    statusId: string,
+    force: boolean,
+    assigneeId: string | undefined,
+  ): Promise<StatusChange> {
+    if (!item.type) throw new BadRequestException('Bitte zuerst einen Typ zuweisen');
+    const [all, targets] = await Promise.all([this.statuses.list(tx), this.statuses.targets(tx)]);
+    const target = moveTarget(all, targets[item.type], item.type, statusId);
+    const current = all.find((s) => s.id === item.statusId);
+    const changed = target.id !== item.statusId;
+    const completing = changed && isCompleting(targets[item.type], current, target);
+    if (changed) await this.statuses.assertTransition(item.type, current, target, tx);
+    const assignee = await this.assigneeForStatus(tx, item, target, assigneeId);
+
+    if (completing && item.type === 'task' && !force) {
+      const open = await this.openChecklistItems(tx, item.id);
+      if (open > 0) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'OPEN_CHECKLIST',
+          open,
+          message: `${open === 1 ? 'Ein Punkt' : `${open} Punkte`} der Checklisten ${open === 1 ? 'ist' : 'sind'} noch offen.`,
+        });
+      }
+    }
+    return { target, current, changed, completing, assignee };
+  }
+
+  /**
+   * Geprüften Statuswechsel speichern: Status, Abschlussdatum, Platz im Board («position», sonst am Ende der neuen
+   * Spalte), Zuständig und die Einträge im Verlauf. «pending»: die Mails «Zugewiesen» und «Abgeschlossen» (ausser
+   * «doneMail» ist false) und die Meldung an Vorgänge, die dieser behebt.
+   */
+  private async applyStatusChange(
+    tx: Tx,
+    actor: User,
+    item: Item,
+    change: StatusChange,
+    options: { position?: number; doneMail?: boolean } = {},
+  ): Promise<{ updated: Item; pending: Pending }> {
+    const { target, current, changed, completing, assignee } = change;
+    const changes: Partial<typeof items.$inferInsert> = { updatedAt: new Date() };
+    if (options.position !== undefined) changes.boardPosition = options.position;
+    else if (changed) changes.boardPosition = await this.endOfColumn(tx, target.id);
+    if (changed) {
+      changes.statusId = target.id;
+      changes.closedAt = closedAtAfter(item.closedAt, current, target);
+    }
+    if (assignee) changes.assigneeId = assignee.id;
+    const [updated] = await tx.update(items).set(changes).where(eq(items.id, item.id)).returning();
+    const pending: Pending = [];
+    if (assignee) pending.push(...(await this.recordAssignment(tx, actor, updated!, assignee)));
+
+    if (changed) {
+      await this.addEntry(tx, item.id, actor.id, 'status', '', statusMeta(current, target));
+      if (completing) {
+        if (options.doneMail !== false) pending.push(() => this.notifications.done(updated!, actor.id, target.label));
+        pending.push(...(await this.onFixingItemCompleted(tx, updated!, actor)));
+      }
+    }
+    return { updated: updated!, pending };
   }
 
   /**
@@ -705,19 +772,26 @@ export class ItemsService {
    * Ablehnen mit Begründung: in den Status «Ablehnen führt in» des Typs. Ohne dieses Ziel, aus dem Ablehnen-Status
    * selbst und bei eingeschränktem Ablauf ohne Pfeil in den Ablehnen-Status nicht möglich (siehe rejectTarget).
    */
-  async reject(actor: User, key: ItemKey, reason: string, notify: boolean): Promise<void> {
+  async reject(actor: User, key: ItemKey, reason: string, notify: boolean, assigneeId?: string): Promise<void> {
     const pending: Pending = [];
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, key);
       if (!item.type) throw new BadRequestException('Bitte zuerst einen Typ zuweisen');
       const current = item.statusId ? await this.statuses.get(item.statusId, tx) : undefined;
       const target = await this.statuses.rejectTarget(item.type, current, tx);
+      const assignee = await this.assigneeForStatus(tx, item, target, assigneeId);
 
       const [updated] = await tx
         .update(items)
-        .set({ statusId: target.id, closedAt: closedAtAfter(item.closedAt, current, target), updatedAt: new Date() })
+        .set({
+          statusId: target.id,
+          ...(assignee ? { assigneeId: assignee.id } : {}),
+          closedAt: closedAtAfter(item.closedAt, current, target),
+          updatedAt: new Date(),
+        })
         .where(eq(items.id, item.id))
         .returning();
+      if (assignee) pending.push(...(await this.recordAssignment(tx, actor, updated!, assignee)));
       const entry = await this.addEntry(tx, item.id, actor.id, 'status', reason, {
         ...statusMeta(current, target),
         rejected: true,
@@ -746,6 +820,9 @@ export class ItemsService {
   /**
    * Öffentliche Antwort (geht per Mail an Melder und Beteiligte) oder interne Notiz. Admins können im Namen eines
    * aktiven IT-Mitarbeitenden oder Admins schreiben («asUserId»): Diese Person gilt dann als Autor, auch für Mails.
+   * «status»: Status beim Senden (Entscheid vom 04.11.2026), wie ein Wechsel von Hand durch «actor», geprüft bevor
+   * etwas gespeichert wird. Schliesst eine öffentliche Antwort den Vorgang ab, geht statt der Antwort-Mail und der Mail
+   * «Abgeschlossen» eine Mail «Antwort mit Abschluss».
    */
   async comment(
     actor: User,
@@ -754,12 +831,14 @@ export class ItemsService {
     body: string,
     files: UploadedFile[],
     asUserId?: string,
+    status?: { statusId: string; force: boolean; assigneeId?: string },
   ): Promise<void> {
     if (!body.trim() && files.length === 0) throw new BadRequestException('Der Text ist leer');
     const author = asUserId && asUserId !== actor.id ? await this.onBehalfAuthor(actor, asUserId) : actor;
     const pending: Pending = [];
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, key);
+      const change = status ? await this.prepareStatusChange(tx, item, status.statusId, status.force, status.assigneeId) : null;
       if (kind === 'reply' && !(await this.mailboxes.forSending(item.mailboxId, tx))) {
         const hasRecipients =
           item.reporterId !== author.id ||
@@ -772,18 +851,24 @@ export class ItemsService {
       // Bilder im Text hat hochgeladen, wer schreibt (auch im Namen eines anderen)
       const text = await this.claimEntryImages(tx, actor, entry);
       const saved = await this.saveFiles(tx, item.id, entry.id, files);
-      const [updated] = await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, item.id)).returning();
+      let [updated] = await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, item.id)).returning();
+      const closing = kind === 'reply' && !!change?.completing;
+      const afterChange: Pending = [];
+      if (change && (change.changed || change.assignee)) {
+        const applied = await this.applyStatusChange(tx, actor, updated!, change, { doneMail: !closing });
+        updated = applied.updated;
+        afterChange.push(...applied.pending);
+      }
       if (kind === 'reply') {
+        const withStatus = updated!;
+        const attachmentIds = saved.map((a) => a.id);
         pending.push(() =>
-          this.notifications.publicReply(
-            updated!,
-            author.id,
-            text,
-            entry.id,
-            saved.map((a) => a.id),
-          ),
+          closing
+            ? this.notifications.replyClosed(withStatus, author, text, entry.id, attachmentIds, change!.target.label)
+            : this.notifications.publicReply(withStatus, author.id, text, entry.id, attachmentIds),
         );
       }
+      pending.push(...afterChange);
       const mentioned = mentionedIds(text);
       if (mentioned.length) pending.push(() => this.notifications.mentioned(updated!, author, mentioned, kind, text));
     });
@@ -921,21 +1006,23 @@ export class ItemsService {
    * Antwort des Melders im Portal. Wirkt wie eine Antwort per Mail: holt den Vorgang aus dem Wartet-Status bzw.
    * aus einem abgeschlossenen Status (ausser dem Ablehnen-Status) zurück und informiert den Zuständigen.
    */
-  async portalReply(reporter: User, key: ItemKey, body: string, files: UploadedFile[], rules?: RuleRun): Promise<void> {
+  /** Antwort im Portal, vom Melder oder (seit 04.11.2026) von einem Beteiligten; wirkt wie eine Antwort per Mail. */
+  async portalReply(author: User, key: ItemKey, body: string, files: UploadedFile[], rules?: RuleRun): Promise<void> {
     if (!body.trim() && files.length === 0) throw new BadRequestException('Der Text ist leer');
     let updated: Item | undefined;
     let text = body;
     await this.db.transaction(async (tx) => {
       const item = await this.lock(tx, key);
-      if (item.reporterId !== reporter.id || item.discarded || item.prefix === HELPSPOT_PREFIX) throw new NotFoundException('Vorgang nicht gefunden');
+      const involved = item.reporterId === author.id || (await this.involvedIn(tx, author, [item.id])).has(item.id);
+      if (!involved || item.discarded || item.prefix === HELPSPOT_PREFIX) throw new NotFoundException('Vorgang nicht gefunden');
       const duplicateOf = await duplicateRedirect(tx, item);
       if (duplicateOf) {
         throw new BadRequestException(
           `Diese Meldung wird unter ${itemRef(duplicateOf)} weiterbearbeitet. Bitte antworte auf die zugehörige Mail.`,
         );
       }
-      const entry = await this.addEntry(tx, item.id, reporter.id, 'reply', body, { source: 'portal' });
-      text = await this.claimEntryImages(tx, reporter, entry);
+      const entry = await this.addEntry(tx, item.id, author.id, 'reply', body, { source: 'portal' });
+      text = await this.claimEntryImages(tx, author, entry);
       await this.saveFiles(tx, item.id, entry.id, files);
       await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, item.id));
       await this.reopenAfterReply(tx, item, 'portal');
@@ -944,7 +1031,7 @@ export class ItemsService {
     });
     await rules?.afterCommit();
     await rules?.afterConfirmation();
-    if (updated) await this.notifications.inboundReply(updated, reporter, text);
+    if (updated) await this.notifications.inboundReply(updated, author, text);
   }
 
   // ---------------------------------------------------------------- Mail-Eingang
@@ -1047,12 +1134,16 @@ export class ItemsService {
         .innerJoin(items, eq(items.id, attachments.itemId))
         .leftJoin(entries, eq(entries.id, attachments.entryId))
         .where(inArray(attachments.id, attachmentIds));
-      const areas = await this.areas.limit(actor);
+      const staff = actor.role === 'admin' || actor.role === 'it';
+      const [areas, involved] = await Promise.all([
+        this.areas.limit(actor),
+        staff ? new Set<string>() : this.involvedIn(tx, actor, rows.map((r) => r.item.id)),
+      ]);
       for (const { att, item, entryKind, entryMeta } of rows) {
         if (att.itemId === itemId && att.entryId === entryId) kept.add(att.id);
         else if (
           TEXT_IMAGE_TYPES.has(att.contentType) &&
-          this.canSeeAttachment(actor, item, att, entryKind, entryMeta, areas)
+          this.canSeeAttachment(actor, item, att, entryKind, entryMeta, areas, involved)
         ) {
           sources.set(`attachment:${att.id}`, att);
         }
@@ -1084,8 +1175,8 @@ export class ItemsService {
   }
 
   /**
-   * IT sieht alle Anhänge in ihren Bereichen («areas», null = alle), ein Melder nur die öffentlichen seiner eigenen
-   * Vorgänge (wie im Portal).
+   * IT sieht alle Anhänge in ihren Bereichen («areas», null = alle), Melder und Beteiligte («involved»: Vorgänge, an
+   * denen die Person beteiligt ist) nur die öffentlichen (wie im Portal).
    */
   private canSeeAttachment(
     actor: User,
@@ -1094,9 +1185,22 @@ export class ItemsService {
     entryKind: Entry['kind'] | null,
     entryMeta: Entry['meta'] | null,
     areas: Area[] | null,
+    involved: Set<string>,
   ): boolean {
     if (actor.role === 'admin' || actor.role === 'it') return !areas || areas.includes(item.type ?? 'inbox');
-    return item.reporterId === actor.id && !item.discarded && visibleInPortal(att.entryId, entryKind, entryMeta);
+    return (
+      (item.reporterId === actor.id || involved.has(item.id)) && !item.discarded && visibleInPortal(att.entryId, entryKind, entryMeta)
+    );
+  }
+
+  /** Die Vorgänge aus «itemIds», an denen die Person beteiligt ist */
+  private async involvedIn(tx: Tx, actor: User, itemIds: string[]): Promise<Set<string>> {
+    if (itemIds.length === 0) return new Set();
+    const rows = await tx
+      .select({ itemId: participants.itemId })
+      .from(participants)
+      .where(and(eq(participants.userId, actor.id), inArray(participants.itemId, itemIds)));
+    return new Set(rows.map((r) => r.itemId));
   }
 
   async saveFiles(tx: Tx, itemId: string, entryId: string | null, files: UploadedFile[]) {
@@ -1124,6 +1228,24 @@ export class ItemsService {
     const [item] = await tx.select().from(items).where(byKey(key)).for('update').limit(1);
     if (!item) throw new NotFoundException('Vorgang nicht gefunden');
     return item;
+  }
+
+  /**
+   * Zuständig Pflicht (Entscheid vom 04.11.2026): Ein Wechsel von Hand in einen Status mit «Zuständig Pflicht» braucht
+   * einen Zuständigen. Hat der Vorgang keinen, muss der Wechsel einen mitbringen («assigneeId», im Fenster aktiv
+   * gewählt), sonst Fehler ASSIGNEE_REQUIRED. Bleibt der Status gleich, gilt nichts. Automatische Wechsel (Antwort des
+   * Melders, Regeln, Zusammenführen …) prüfen das nicht. Ergebnis: die neu zuzuweisende Person oder null.
+   */
+  private async assigneeForStatus(tx: Tx, item: Item, target: Status, assigneeId: string | undefined): Promise<User | null> {
+    if (!target.assigneeRequired || target.id === item.statusId || item.assigneeId) return null;
+    if (!assigneeId) throw assigneeRequired(target);
+    return this.assertStaff(assigneeId, tx);
+  }
+
+  /** Zuweisung beim Statuswechsel im Verlauf festhalten; die Mail «Zugewiesen» geht nach dem Speichern */
+  private async recordAssignment(tx: Tx, actor: User, item: Item, assignee: User): Promise<Pending> {
+    await this.addEntry(tx, item.id, actor.id, 'change', '', { field: 'assignee', from: null, to: assignee.name });
+    return [() => this.notifications.assigned(item, actor.id)];
   }
 
   private async assertStaff(userId: string, tx: Tx): Promise<User> {

@@ -56,20 +56,22 @@ export const DEFAULT_STATUSES: {
   key: string;
   label: string;
   closed: boolean;
+  /** Zuständig Pflicht (Entscheid vom 04.11.2026): alle ausser Neu, Backlog und Geplant */
+  assigneeRequired: boolean;
   position: number;
   color: StatusColor;
   diagramX: number;
   diagramY: number;
 }[] = [
-  { type: 'incident', key: 'new', label: 'Neu', closed: false, position: 0, color: 'blue', diagramX: 0, diagramY: 0 },
-  { type: 'incident', key: 'in_progress', label: 'In Arbeit', closed: false, position: 1, color: 'orange', diagramX: 220, diagramY: 0 },
-  { type: 'incident', key: 'waiting', label: 'Wartet auf Melder', closed: false, position: 2, color: 'gray', diagramX: 220, diagramY: 135 },
-  { type: 'incident', key: 'resolved', label: 'Gelöst', closed: true, position: 3, color: 'green', diagramX: 440, diagramY: 0 },
-  { type: 'task', key: 'backlog', label: 'Backlog', closed: false, position: 0, color: 'blue', diagramX: 0, diagramY: 0 },
-  { type: 'task', key: 'planned', label: 'Geplant', closed: false, position: 1, color: 'blue', diagramX: 0, diagramY: 90 },
-  { type: 'task', key: 'in_progress', label: 'In Arbeit', closed: false, position: 2, color: 'orange', diagramX: 220, diagramY: 0 },
-  { type: 'task', key: 'done', label: 'Erledigt', closed: true, position: 3, color: 'green', diagramX: 440, diagramY: 0 },
-  { type: 'task', key: 'rejected', label: 'Abgelehnt', closed: true, position: 4, color: 'red', diagramX: 440, diagramY: 135 },
+  { type: 'incident', key: 'new', label: 'Neu', closed: false, assigneeRequired: false, position: 0, color: 'blue', diagramX: 0, diagramY: 0 },
+  { type: 'incident', key: 'in_progress', label: 'In Arbeit', closed: false, assigneeRequired: true, position: 1, color: 'orange', diagramX: 220, diagramY: 0 },
+  { type: 'incident', key: 'waiting', label: 'Wartet auf Melder', closed: false, assigneeRequired: true, position: 2, color: 'gray', diagramX: 220, diagramY: 135 },
+  { type: 'incident', key: 'resolved', label: 'Gelöst', closed: true, assigneeRequired: true, position: 3, color: 'green', diagramX: 440, diagramY: 0 },
+  { type: 'task', key: 'backlog', label: 'Backlog', closed: false, assigneeRequired: false, position: 0, color: 'blue', diagramX: 0, diagramY: 0 },
+  { type: 'task', key: 'planned', label: 'Geplant', closed: false, assigneeRequired: false, position: 1, color: 'blue', diagramX: 0, diagramY: 90 },
+  { type: 'task', key: 'in_progress', label: 'In Arbeit', closed: false, assigneeRequired: true, position: 2, color: 'orange', diagramX: 220, diagramY: 0 },
+  { type: 'task', key: 'done', label: 'Erledigt', closed: true, assigneeRequired: true, position: 3, color: 'green', diagramX: 440, diagramY: 0 },
+  { type: 'task', key: 'rejected', label: 'Abgelehnt', closed: true, assigneeRequired: true, position: 4, color: 'red', diagramX: 440, diagramY: 135 },
 ];
 
 /** Ziel-Status der Standardstatus (über den Schlüssel); «Offen» der Aufgaben gab es vom 21. bis 23.10.2026 */

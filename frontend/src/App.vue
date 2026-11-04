@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useStickyTop } from './composables';
 import { opensInBrowser } from './open-item';
 import AppHeader from './components/AppHeader.vue';
+import AssigneePromptHost from './components/AssigneePromptHost.vue';
 import CertificateBanner from './components/CertificateBanner.vue';
 import ConfirmHost from './components/ConfirmHost.vue';
 import ItemModal from './components/ItemModal.vue';
@@ -50,6 +51,7 @@ document.addEventListener('click', (event) => {
   <!-- Vorgang im Fenster (Einstellung «Fenster»), über ?item=PW-123 -->
   <ItemModal v-if="showHeader" />
   <ConfirmHost />
+  <AssigneePromptHost />
 </template>
 
 <style scoped>

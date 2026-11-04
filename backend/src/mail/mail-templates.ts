@@ -4,6 +4,7 @@ import { htmlMail, renderMarkdown } from './mail-content';
 export type TemplateKey =
   | 'confirmation'
   | 'reply'
+  | 'replyClosed'
   | 'done'
   | 'rejected'
   | 'duplicateMerged'
@@ -93,6 +94,25 @@ export const TEMPLATES: TemplateDefinition[] = [
     subject: '{{Titel}}',
     body: null,
     placeholders: [...ITEM, PORTAL_LINK],
+  },
+  {
+    key: 'replyClosed',
+    group: 'reporter',
+    label: 'Antwort mit Abschluss',
+    description:
+      'An Melder (An) und Beteiligte (CC), wenn jemand eine öffentliche Antwort schreibt und den Vorgang dabei abschliesst ' +
+      '(«Antwort senden» mit einem abgeschlossenen Status, nicht beim Ablehnen). Ersetzt dann die Mails «Öffentliche ' +
+      'Antwort» und «Abgeschlossen». Anhänge der Antwort gehen mit.',
+    subject: '{{Status}}: {{Titel}}',
+    body:
+      'Hallo {{Melder Vorname}}\n\nDeine Meldung «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +
+      '**Nachricht von {{Bearbeiter}}:**\n\n> {{Antwort}}\n\nFalls noch etwas offen ist, antworte einfach auf diese Mail.',
+    placeholders: [
+      ...ITEM,
+      p('Bearbeiter', 'Wer geantwortet hat', 'Ivan IT'),
+      p('Antwort', 'Text der Antwort', 'Der Toner ist ersetzt, der Drucker läuft wieder.'),
+      PORTAL_LINK,
+    ],
   },
   {
     key: 'done',
@@ -379,7 +399,7 @@ export const TIMELINE_TEMPLATES: TemplateKey[] = [
 ];
 
 /** Diese Werte sind schon Markdown oder Adressen und werden für die HTML-Fassung nicht maskiert. */
-const MARKDOWN_VALUES = new Set(['link', 'nummer', 'begründung']);
+const MARKDOWN_VALUES = new Set(['link', 'nummer', 'begründung', 'antwort']);
 
 const escapeMarkdown = (value: string) => value.replace(/[\\`*_{}[\]()#+\-.!|<>~]/g, '\\$&');
 

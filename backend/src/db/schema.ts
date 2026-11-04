@@ -149,6 +149,8 @@ export const statuses = pgTable(
     label: text('label').notNull(),
     /** Abgeschlossen (Abschlussdatum, Listen offen/abgeschlossen, Board, Portal, Auswertungen) */
     closed: boolean('closed').notNull().default(false),
+    /** Zuständig Pflicht: ein Wechsel von Hand in diesen Status braucht einen Zuständigen (seit 04.11.2026) */
+    assigneeRequired: boolean('assignee_required').notNull().default(false),
     /** Reihenfolge im Typ: Spalten des Boards und alle Auswahllisten */
     position: integer('position').notNull(),
     /** Farbe aus der Palette (siehe STATUS_COLORS) */
