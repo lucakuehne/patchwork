@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { TITLE_MAX } from '../format';
 
 /**
- * Zähler zum Titel (Entscheid vom 05.11.2026): ab 60 Zeichen «63/75», darüber rot mit «bitte kürzen» (z.B. ein langer
+ * Zähler zum Titel (Entscheid vom 05.11.2026): ab 60 Zeichen «63/90», darüber rot mit «bitte kürzen» (z.B. ein langer
  * Titel aus einem Mail-Betreff beim Bearbeiten). Darunter nichts.
  */
 const props = defineProps<{ value: string }>();

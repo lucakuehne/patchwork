@@ -1710,17 +1710,17 @@ await step('status-beim-senden', async () => {
   await shot('112-gesendet-mit-status', true);
 });
 
-await step('titel-75', async () => {
-  // Titel höchstens 75 Zeichen (Entscheid vom 05.11.2026): Zähler ab 60, die Eingabe stoppt bei 75
+await step('titel-90', async () => {
+  // Titel höchstens 90 Zeichen (Entscheid vom 05.11.2026): Zähler ab 60, die Eingabe stoppt bei 90
   await page.goto(`${BASE}/items/PW-1`);
   await page.locator('h1.title').click();
   const input = page.getByRole('textbox', { name: 'Titel', exact: true });
   await input.press('Control+a');
-  await page.keyboard.type('Titel mit sehr vielen Zeichen '.padEnd(90, 'x'));
-  if ((await input.inputValue()).length !== 75) throw new Error(`Titel: ${(await input.inputValue()).length} statt 75 Zeichen`);
-  if ((await page.locator('.title-count').innerText()).trim() !== '75/75') throw new Error('Zähler fehlt');
-  await page.locator('.title-edit').screenshot({ path: `${OUT}/113-titel-75.png` });
-  console.log('Bild 113-titel-75');
+  await page.keyboard.type('Titel mit sehr vielen Zeichen '.padEnd(110, 'x'));
+  if ((await input.inputValue()).length !== 90) throw new Error(`Titel: ${(await input.inputValue()).length} statt 90 Zeichen`);
+  if ((await page.locator('.title-count').innerText()).trim() !== '90/90') throw new Error('Zähler fehlt');
+  await page.locator('.title-edit').screenshot({ path: `${OUT}/113-titel-90.png` });
+  console.log('Bild 113-titel-90');
   await page.getByRole('button', { name: 'Abbrechen' }).click();
 });
 

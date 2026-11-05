@@ -5,10 +5,10 @@ export { itemRef } from './item-ref';
 export const TYPE_LABELS: Record<ItemType, string> = { incident: 'Störung', task: 'Aufgabe' };
 
 /**
- * Höchstlänge eines Titels, der in Patchwork oder im Portal eingegeben wird (Entscheid vom 05.11.2026). Titel aus
- * Mail-Betreffen dürfen länger sein, bis jemand sie bearbeitet.
+ * Höchstlänge eines Titels, der in Patchwork oder im Portal eingegeben wird (Entscheid vom 05.11.2026, zuerst 75,
+ * gleichentags auf 90 erhöht). Titel aus Mail-Betreffen dürfen länger sein, bis jemand sie bearbeitet.
  */
-export const TITLE_MAX = 75;
+export const TITLE_MAX = 90;
 /** Leitfrage je Typ: beim Erfassen und als Erklärung beim Feld «Typ» eines Vorgangs */
 export const TYPE_HINTS: Record<ItemType, string> = {
   incident: 'Etwas funktioniert nicht mehr, das vorher ging',

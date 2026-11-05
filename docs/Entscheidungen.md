@@ -453,17 +453,18 @@ automatisch gesetzt.
   - Testbetrieb: «Antwort mit Abschluss» ist ein eigener Auslöser. Beim Update übernimmt er die Einstellung von
     «Öffentliche Antwort» (bis man ihn selbst einstellt).
 
-## Titel höchstens 75 Zeichen (bestätigt am 05.11.2026)
+## Titel höchstens 90 Zeichen (bestätigt am 05.11.2026)
 
-- Titel, die in Patchwork oder im Portal eingegeben werden, haben höchstens 75 Zeichen: beim Erfassen (auch «+» im
-  Board), beim Bearbeiten, im Portal bei «Neue Meldung» und bei der Vorlage der wiederkehrenden Aufgaben.
+- Titel, die in Patchwork oder im Portal eingegeben werden, haben höchstens 90 Zeichen (zuerst 75, gleichentags auf
+  90 erhöht): beim Erfassen (auch «+» im Board), beim Bearbeiten, im Portal bei «Neue Meldung» und bei der Vorlage der
+  wiederkehrenden Aufgaben.
 - Ohne Grenze (wie bisher bis 500 Zeichen): Titel aus Mail-Betreffen, simulierte Mails und der HelpSpot-Import.
-- **Bearbeiten eines längeren Titels:** Das Feld zeigt ihn vollständig mit rotem Zähler («112/75 · bitte kürzen»),
+- **Bearbeiten eines längeren Titels:** Das Feld zeigt ihn vollständig mit rotem Zähler («112/90 · bitte kürzen»),
   Speichern geht erst nach dem Kürzen. Wer nur andere Felder ändert, berührt den Titel nicht.
-- **Zähler:** ab 60 Zeichen «63/75» unter dem Feld; bei 75 Zeichen stoppt die Eingabe.
+- **Zähler:** ab 60 Zeichen «63/90» unter dem Feld; bei 90 Zeichen stoppt die Eingabe.
 - **Wiederkehrende Aufgaben:** Die Vorlage wird mit dem längsten Wert jedes Platzhalters geprüft (z.B. «September»,
-  «Donnerstag»), damit jeder fertige Titel höchstens 75 Zeichen hat.
-- Bestehende längere Titel bleiben, bis jemand sie bearbeitet (beim Einführen 114 aus Mails, 3 intern erfasste).
+  «Donnerstag»), damit jeder fertige Titel höchstens 90 Zeichen hat.
+- Bestehende längere Titel bleiben, bis jemand sie bearbeitet (über 90 Zeichen beim Erhöhen: 42 aus Mails, 1 intern erfasster).
 
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 
