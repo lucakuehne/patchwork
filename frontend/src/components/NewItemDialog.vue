@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
-import { PRIORITY_LABELS } from '../format';
+import { PRIORITY_LABELS, TITLE_MAX } from '../format';
 import type { ItemKey } from '../item-ref';
 import { manualStatusChoices } from '../status-move';
 import { useSession } from '../stores/session';
@@ -10,6 +10,7 @@ import FilePicker from './FilePicker.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
 import ModalDialog from './ModalDialog.vue';
 import TypeChoice from './TypeChoice.vue';
+import TitleCount from './TitleCount.vue';
 import UserPicker from './UserPicker.vue';
 
 /**
@@ -109,7 +110,8 @@ async function save() {
     </div>
     <div class="field">
       <label for="new-title">Titel</label>
-      <input id="new-title" v-model="title" class="input" maxlength="500" autofocus />
+      <input id="new-title" v-model="title" class="input" :maxlength="TITLE_MAX" autofocus />
+      <TitleCount :value="title" />
     </div>
     <div class="field">
       <span class="label">Beschreibung</span>

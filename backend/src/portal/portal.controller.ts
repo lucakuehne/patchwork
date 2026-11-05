@@ -24,6 +24,7 @@ import type { User } from '../db/schema';
 import type { ItemKey } from '../items/item-ref';
 import { ItemRefPipe } from '../items/item-ref.pipe';
 import { ItemsService, type UploadedFile } from '../items/items.service';
+import { TITLE_MAX, TITLE_TOO_LONG } from '../items/title';
 import { RulesService } from '../rules/rules.service';
 import { buildPreview, nestedAttachment, sendFile } from '../storage/attachment-preview';
 import { sendAttachment } from '../storage/attachment-response';
@@ -35,7 +36,7 @@ const normalizeNewlines = (s: string) => s.replace(/\r\n?/g, '\n');
 const createSchema = z.object({
   /** «Etwas funktioniert nicht» = incident, «Ich brauche etwas» = task */
   type: z.enum(['incident', 'task']),
-  title: z.string().trim().min(1, 'Titel fehlt').max(500),
+  title: z.string().trim().min(1, 'Titel fehlt').max(TITLE_MAX, TITLE_TOO_LONG),
   description: z.string().max(100000).default('').transform(normalizeNewlines),
 });
 

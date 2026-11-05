@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { api, errorMessage } from '../api';
-import { formatDay, PRIORITY_LABELS, today } from '../format';
+import { formatDay, PRIORITY_LABELS, TITLE_MAX, today } from '../format';
 import type { ItemKey } from '../item-ref';
 import { dayWithWeekday, leadText, MONTHS, NTH_LABELS, TITLE_PLACEHOLDERS, WEEKDAYS, WEEKDAYS_SHORT } from '../recurrence-text';
 import { manualStatusChoices } from '../status-move';
@@ -13,6 +13,7 @@ import ItemLink from './ItemLink.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
 import ModalDialog from './ModalDialog.vue';
 import StatusBadge from './StatusBadge.vue';
+import TitleCount from './TitleCount.vue';
 
 /**
  * Wiederkehrende Aufgabe anlegen oder bearbeiten: Inhalt der Aufgaben, Rhythmus und Vorschau der nächsten Termine. Bei
@@ -251,7 +252,8 @@ async function remove() {
   <ModalDialog :title="task ? 'Wiederkehrende Aufgabe' : 'Neue wiederkehrende Aufgabe'" wide @close="emit('close')">
     <div class="field">
       <label for="rec-title">Titel</label>
-      <input id="rec-title" v-model="draft.title" class="input" maxlength="300" placeholder="z.B. Patchday {{Monat}} {{Jahr}}" autofocus />
+      <input id="rec-title" v-model="draft.title" class="input" :maxlength="TITLE_MAX" placeholder="z.B. Patchday {{Monat}} {{Jahr}}" autofocus />
+      <TitleCount :value="draft.title" />
       <span class="hint">
         Platzhalter für den Termin:
         <code v-for="p in placeholderTags" :key="p" class="placeholder">{{ p }}</code>

@@ -34,6 +34,7 @@ const AREAS = [
   '20-audit-counts',
   '21-assignee-required',
   '22-send-with-status',
+  '23-title-length',
 ];
 
 for (const area of AREAS) await import(`./smoke/${area}.mjs`);

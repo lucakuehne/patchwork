@@ -15,9 +15,10 @@ import StatusBadge from '../components/StatusBadge.vue';
 import TimelineEvents from '../components/TimelineEvents.vue';
 import TimelineMail from '../components/TimelineMail.vue';
 import TimelineMessage from '../components/TimelineMessage.vue';
+import TitleCount from '../components/TitleCount.vue';
 import TypeChangeDialog from '../components/TypeChangeDialog.vue';
 import UserPicker from '../components/UserPicker.vue';
-import { dueState, formatDateTime, itemRef, PRIORITY_LABELS, TYPE_HINTS, TYPE_LABELS } from '../format';
+import { dueState, formatDateTime, itemRef, PRIORITY_LABELS, TITLE_MAX, TYPE_HINTS, TYPE_LABELS } from '../format';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import { groupTimeline, type TimelineBlock } from '../timeline';
@@ -197,7 +198,9 @@ function startTitle() {
   titleDraft.value = item.value?.title ?? '';
   editingTitle.value = true;
 }
+const titleTooLong = computed(() => titleDraft.value.trim().length > TITLE_MAX);
 async function saveTitle() {
+  if (titleTooLong.value) return;
   editingTitle.value = false;
   if (titleDraft.value.trim() && titleDraft.value.trim() !== item.value?.title) await patch({ title: titleDraft.value });
 }
@@ -222,10 +225,20 @@ function onRejected() {
           <StatusBadge :status="item.status" />
           <span v-if="item.discarded" class="badge st-red">Verworfen</span>
         </div>
-        <div v-if="editingTitle" class="row">
-          <input v-model="titleDraft" class="input title-input" maxlength="500" @keydown.enter="saveTitle" @keydown.esc="editingTitle = false" />
-          <button class="btn btn-primary" type="button" @click="saveTitle">Speichern</button>
-          <button class="btn" type="button" @click="editingTitle = false">Abbrechen</button>
+        <div v-if="editingTitle" class="title-edit">
+          <div class="row">
+            <input
+              v-model="titleDraft"
+              class="input title-input"
+              :maxlength="TITLE_MAX"
+              aria-label="Titel"
+              @keydown.enter="saveTitle"
+              @keydown.esc="editingTitle = false"
+            />
+            <button class="btn btn-primary" type="button" :disabled="titleTooLong" @click="saveTitle">Speichern</button>
+            <button class="btn" type="button" @click="editingTitle = false">Abbrechen</button>
+          </div>
+          <TitleCount :value="titleDraft" />
         </div>
         <h1 v-else class="title" title="Klicken zum Bearbeiten" @click="startTitle">{{ item.title }}</h1>
         <!-- Aus HelpSpot übernommen: ursprünglicher Status und Melder laut HelpSpot -->
@@ -510,6 +523,11 @@ function onRejected() {
 .title-input {
   font-size: 18px;
   height: 38px;
+}
+.title-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .small {
   font-size: 12px;

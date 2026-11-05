@@ -40,10 +40,13 @@ import { itemRef, type ItemKey } from './item-ref';
 import { ItemRefPipe } from './item-ref.pipe';
 import { ItemsService, type UploadedFile } from './items.service';
 import { LinksService } from './links.service';
+import { TITLE_MAX, TITLE_TOO_LONG } from './title';
 
 const typeSchema = z.enum(['incident', 'task']);
 const prioritySchema = z.enum(['high', 'normal', 'low']);
 const titleSchema = z.string().trim().min(1, 'Titel fehlt').max(500);
+/** Neu erfasst: höchstens 75 Zeichen; beim Bearbeiten prüft ItemsService.update nur einen geänderten Titel */
+const newTitleSchema = z.string().trim().min(1, 'Titel fehlt').max(TITLE_MAX, TITLE_TOO_LONG);
 /** Formular-Uploads liefern Zeilenumbrüche als CRLF */
 const normalizeNewlines = (s: string) => s.replace(/\r\n?/g, '\n');
 const descriptionSchema = z.string().max(100000).transform(normalizeNewlines);
@@ -73,7 +76,7 @@ const listSchema = z.object({
 
 const createSchema = z.object({
   type: typeSchema,
-  title: titleSchema,
+  title: newTitleSchema,
   description: z.string().max(100000).default('').transform(normalizeNewlines),
   priority: prioritySchema.default('normal'),
   reporterId: nullableUuid.optional(),

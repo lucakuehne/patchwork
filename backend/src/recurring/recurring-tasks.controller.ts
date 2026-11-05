@@ -4,7 +4,9 @@ import { Audit, NoAudit } from '../audit/audit.decorators';
 import { AdminOnly, CurrentUser } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
+import { TITLE_MAX } from '../items/title';
 import { AreasService } from '../settings/areas';
+import { longestTaskTitle } from './recurrence';
 import { RecurringTasksService } from './recurring-tasks.service';
 
 const interval = z.number().int().min(1, 'Mindestens 1').max(99, 'Höchstens 99');
@@ -39,7 +41,16 @@ const recurrenceSchema = z.discriminatedUnion('kind', [
 ]);
 
 const scheduleFields = {
-  title: z.string().trim().min(1, 'Titel fehlt').max(300),
+  // Höchstlänge auch mit den längsten Werten der Platzhalter, z.B. «September» (Entscheid vom 05.11.2026)
+  title: z
+    .string()
+    .trim()
+    .min(1, 'Titel fehlt')
+    .max(300)
+    .refine(
+      (t) => longestTaskTitle(t).length <= TITLE_MAX,
+      `Der Titel darf höchstens ${TITLE_MAX} Zeichen lang sein, auch mit den längsten Werten der Platzhalter (z.B. «September», «Donnerstag»).`,
+    ),
   schedule: recurrenceSchema,
   startDate: z.iso.date({ error: 'Ungültiges Startdatum' }),
   endDate: z.iso.date({ error: 'Ungültiges Enddatum' }).nullable(),

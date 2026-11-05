@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dueNow, dueOf, firstOpen, localTime, nextOccurrence, taskTitle, upcoming, type Recurrence, type Schedule } from './recurrence';
+import { dueNow, dueOf, firstOpen, localTime, longestTaskTitle, nextOccurrence, taskTitle, upcoming, type Recurrence, type Schedule } from './recurrence';
 
 /** Die ersten Termine ab «start» */
 function first(rule: Recurrence, start: string, count = 4): string[] {
@@ -145,5 +145,11 @@ describe('Titel', () => {
       'Freitag, 01.01.2027 (1.) · KW 53 · Q1',
     );
     expect(taskTitle('Backup prüfen {{Unbekannt}}', '2026-11-10')).toBe('Backup prüfen {{Unbekannt}}');
+  });
+
+  it('längster möglicher Titel für die Höchstlänge (Entscheid vom 05.11.2026)', () => {
+    expect(longestTaskTitle('Patchday {{Monat}} {{Jahr}}')).toBe('Patchday September 2026');
+    expect(longestTaskTitle('{{Wochentag}} {{Datum}} KW {{Woche}} {{Quartal}} {{Tag}}')).toBe('Donnerstag 31.12.2026 KW 53 Q4 31');
+    expect(longestTaskTitle('Ohne Platzhalter')).toBe('Ohne Platzhalter');
   });
 });

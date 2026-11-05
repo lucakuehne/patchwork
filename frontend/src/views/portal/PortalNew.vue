@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router';
 import { api, errorMessage } from '../../api';
 import FilePicker from '../../components/FilePicker.vue';
 import MarkdownEditor from '../../components/MarkdownEditor.vue';
-import { itemRef } from '../../format';
+import TitleCount from '../../components/TitleCount.vue';
+import { itemRef, TITLE_MAX } from '../../format';
 import type { ItemKey } from '../../item-ref';
 import { useToast } from '../../stores/toast';
 
@@ -76,7 +77,8 @@ async function submit() {
       </div>
       <div class="field">
         <label for="portal-title">Titel</label>
-        <input id="portal-title" v-model="title" class="input" maxlength="500" placeholder="z.B. Drucker im 2. OG druckt nicht" />
+        <input id="portal-title" v-model="title" class="input" :maxlength="TITLE_MAX" placeholder="z.B. Drucker im 2. OG druckt nicht" />
+        <TitleCount :value="title" />
       </div>
       <div class="field">
         <span class="label">Beschreibung</span>

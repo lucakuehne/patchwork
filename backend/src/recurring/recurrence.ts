@@ -209,6 +209,20 @@ export function dateValues(on: string): Record<string, string> {
   };
 }
 
+/** Längster mögliche Titel einer Vorlage: jeder Platzhalter mit seinem längsten Wert (für die Höchstlänge) */
+export function longestTaskTitle(template: string): string {
+  const longest = (list: string[]) => list.reduce((a, b) => (b.length > a.length ? b : a));
+  return fill(template, {
+    Datum: '31.12.2026',
+    Tag: '31',
+    Wochentag: longest(WEEKDAYS),
+    Woche: '53',
+    Monat: longest(MONTHS),
+    Quartal: 'Q4',
+    Jahr: '2026',
+  }).trim();
+}
+
 /** Titel der Aufgabe zu einem Termin, z.B. «Patchday {{Monat}} {{Jahr}}» → «Patchday November 2026» */
 export function taskTitle(template: string, on: string): string {
   return fill(template, dateValues(on)).trim().slice(0, 500);

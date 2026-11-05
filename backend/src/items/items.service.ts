@@ -46,6 +46,7 @@ import { noteEditRefusal, noteTimeRefusal } from './note-rules';
 import { byKey, HELPSPOT_PREFIX, itemRef, type ItemKey } from './item-ref';
 import { annotateReferences, referencedKeys, referenceMeta } from './references';
 import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
+import { TITLE_MAX, TITLE_TOO_LONG } from './title';
 import type { RuleRun } from '../rules/rules.service';
 import { areaCondition, AreasService, type Area } from '../settings/areas';
 import {
@@ -530,6 +531,8 @@ export class ItemsService {
         log.push({ field: 'dueDate', from: swissDate(item.dueDate), to: swissDate(patch.dueDate) });
       }
       if (patch.title !== undefined && patch.title.trim() !== item.title) {
+        // Lange Titel aus Mail-Betreffen bleiben, bis jemand sie ändert; dann gilt die Höchstlänge
+        if (patch.title.trim().length > TITLE_MAX) throw new BadRequestException(TITLE_TOO_LONG);
         changes.title = patch.title.trim();
         log.push({ field: 'title', from: item.title, to: changes.title });
       }
