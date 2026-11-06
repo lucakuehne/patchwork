@@ -1,4 +1,4 @@
-import { htmlMail, renderMarkdown } from './mail-content';
+import { factsHtml, htmlMail, linkLineHtml, renderMarkdown, replyHeadingHtml } from './mail-content';
 
 /** Vorlagen für die Mails von Patchwork: Betreff und Text (Markdown) mit Platzhaltern wie {{Titel}}. */
 export type TemplateKey =
@@ -45,6 +45,11 @@ export interface TemplateDefinition {
   standalone?: boolean;
   /** Wird nicht mehr verschickt; bleibt für den Namen älterer Mails im Protokoll und im Verlauf, fehlt in der Verwaltung */
   retired?: boolean;
+  /**
+   * Frühere Standardtexte: Eine gespeicherte Fassung mit einem davon gilt als Standard (sie konnte nur als Standard
+   * entstehen, gespeichert wird nur, was abweicht), damit ein neuer Standard auch dort gilt.
+   */
+  formerBodies?: string[];
   placeholders: Placeholder[];
 }
 
@@ -90,7 +95,7 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Öffentliche Antwort',
     description:
       'An Melder (An) und Beteiligte (CC), wenn jemand in der IT im Vorgang eine öffentliche Antwort schreibt. Den Text ' +
-      'schreibt der Bearbeiter.',
+      'schreibt der Bearbeiter; er steht als Zitat unter der Zeile «Name hat geantwortet:».',
     subject: '{{Titel}}',
     body: null,
     placeholders: [...ITEM, PORTAL_LINK],
@@ -106,7 +111,11 @@ export const TEMPLATES: TemplateDefinition[] = [
     subject: '{{Status}}: {{Titel}}',
     body:
       'Hallo {{Melder Vorname}}\n\nDeine Meldung «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +
-      '**Nachricht von {{Bearbeiter}}:**\n\n> {{Antwort}}\n\nFalls noch etwas offen ist, antworte einfach auf diese Mail.',
+      '**{{Bearbeiter}}** hat geantwortet:\n\n> {{Antwort}}\n\nFalls noch etwas offen ist, antworte einfach auf diese Mail.',
+    formerBodies: [
+      'Hallo {{Melder Vorname}}\n\nDeine Meldung «{{Titel}}» ({{Nummer}}) wurde auf «{{Status}}» gesetzt.\n\n' +
+        '**Nachricht von {{Bearbeiter}}:**\n\n> {{Antwort}}\n\nFalls noch etwas offen ist, antworte einfach auf diese Mail.',
+    ],
     placeholders: [
       ...ITEM,
       p('Bearbeiter', 'Wer geantwortet hat', 'Ivan IT'),
@@ -225,7 +234,10 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Fusszeile (Melder)',
     description: 'Klein gesetzt am Ende jeder Mail an Melder und Beteiligte. Einfacher Text ohne Formatierung.',
     subject: null,
-    body: 'Patchwork · {{Nummer}}\nBitte lass bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.',
+    body:
+      'Antworte einfach auf diese E-Mail, dann landet deine Antwort direkt bei der Meldung. Bitte lass die Nummer ' +
+      '[{{Nummer}}] im Betreff stehen.',
+    formerBodies: ['Patchwork · {{Nummer}}\nBitte lass bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.'],
     plain: true,
     placeholders: FRAME(PORTAL_LINK),
   },
@@ -235,11 +247,13 @@ export const TEMPLATES: TemplateDefinition[] = [
     label: 'Zugewiesen',
     description:
       'An den neu Zuständigen, wenn ihm jemand oder eine Regel einen Vorgang zuweist. Nicht, wenn man sich selbst ' +
-      'zuweist.',
+      'zuweist. Unter dem Text stehen immer Status, Typ und Priorität, Melder und der Anfang der Beschreibung.',
     subject: 'Zugewiesen: {{Titel}}',
-    body:
+    body: '**{{Zugewiesen durch}}** hat dir {{Nummer}} zugewiesen.',
+    formerBodies: [
       'Zugewiesen: {{Nummer}} «{{Titel}}»\nZugewiesen durch: {{Zugewiesen durch}}\n' +
-      'Melder: {{Melder Vorname}} {{Melder Nachname}} ({{Melder E-Mail}})',
+        'Melder: {{Melder Vorname}} {{Melder Nachname}} ({{Melder E-Mail}})',
+    ],
     placeholders: [
       ...ITEM,
       p('Zugewiesen durch', 'Wer zugewiesen hat (Person oder Regel)', 'Ada Admin'),
@@ -479,16 +493,40 @@ function linksAsText(markdown: string): string {
   });
 }
 
+/** Eckdaten einer Mail, z.B. «Status: In Bearbeitung» */
+export interface MailFact {
+  label: string;
+  value: string;
+}
+
+export interface MailParts {
+  body: string;
+  link: string;
+  footer: string;
+  /** Text des Bearbeiters (öffentliche Antwort), ohne Platzhalter übernommen */
+  written?: boolean;
+  /** Verfasser einer öffentlichen Antwort: Kopfzeile «Name hat geantwortet:», der Text darunter als Zitat */
+  author?: string;
+  /** Eckdaten nach dem Text, nebeneinander (Mail «Zugewiesen») */
+  facts?: MailFact[];
+  /** Anfang der Beschreibung als Zitat nach den Eckdaten (Mail «Zugewiesen»), einfacher Text */
+  excerpt?: string;
+}
+
+/** Markdown als Zitat: jede Zeile mit «> », leere Zeilen trennen die Absätze im Zitat. */
+const asQuote = (markdown: string) =>
+  markdown
+    .split('\n')
+    .map((line) => (line.trim() ? `> ${line}` : '>'))
+    .join('\n');
+
 /**
  * Fertige Mail aus Text, Link-Zeile und Fusszeile (Vorlagen mit Platzhaltern), als Text und als HTML.
  * Im Text stehen die Werte wörtlich, im HTML maskiert, damit z.B. ein «*» im Titel keine Formatierung auslöst.
- * Text und Link-Zeile sind Markdown aus dem Editor, die Fusszeile einfacher Text.
- * «written»: Text des Bearbeiters (öffentliche Antwort), ohne Platzhalter übernommen.
+ * Text und Link-Zeile sind Markdown aus dem Editor, die Fusszeile einfacher Text. Eine Link-Zeile, die nur aus einem
+ * Link besteht, erscheint im HTML als Knopf.
  */
-export function composeMail(
-  parts: { body: string; link: string; footer: string; written?: boolean },
-  values: Record<string, string>,
-): { text: string; html: string } {
+export function composeMail(parts: MailParts, values: Record<string, string>): { text: string; html: string } {
   const textValues = forText(values);
   const plain = (template: string) => fill(markdownAsText(template), textValues).trim();
   const markdown = (template: string) => fill(template, forMarkdown(values)).trim();
@@ -497,10 +535,59 @@ export function composeMail(
   const bodyMarkdown = parts.written ? parts.body.trim() : markdown(parts.body);
   const link = plain(linksAsText(parts.link));
   const footer = fill(parts.footer, values).trim();
-  return {
-    text: [body, link, footer ? `-- \n${footer}` : ''].filter(Boolean).join('\n\n'),
-    html: htmlMail(`${renderMarkdown(bodyMarkdown)}${renderMarkdown(markdown(parts.link))}`, footer),
-  };
+  const author = parts.author?.trim();
+  const facts = (parts.facts ?? []).filter((f) => f.value.trim());
+  const excerpt = parts.excerpt?.trim() ?? '';
+
+  const text = [
+    author ? `${author} hat geantwortet:` : '',
+    author && body ? asQuote(body) : body,
+    facts.map((f) => `${f.label}: ${f.value}`).join('\n'),
+    excerpt ? asQuote(excerpt) : '',
+    link,
+    footer ? `-- \n${footer}` : '',
+  ];
+  const html = [
+    author ? replyHeadingHtml(author) : '',
+    bodyMarkdown ? renderMarkdown(author ? asQuote(bodyMarkdown) : bodyMarkdown) : '',
+    facts.length ? factsHtml(facts) : '',
+    excerpt ? renderMarkdown(asQuote(escapeMarkdown(excerpt))) : '',
+    linkLineHtml(renderMarkdown(markdown(parts.link))),
+  ];
+  return { text: text.filter(Boolean).join('\n\n'), html: htmlMail(html.join(''), footer) };
+}
+
+/** Länge des Auszugs aus der Beschreibung in der Mail «Zugewiesen» (Zeichen) */
+export const EXCERPT_LENGTH = 300;
+
+/**
+ * Anfang eines Texts (Markdown) als einfacher Text auf einer Zeile, gekürzt an einer Wortgrenze mit «…».
+ * Bilder und Erwähnungen ersetzt der Aufrufer vorher durch Text.
+ */
+export function excerpt(markdown: string, max = EXCERPT_LENGTH): string {
+  const text = renderMarkdown(markdown)
+    // Absätze, Listen, Zitate (Tabellen) trennen mit einem Leerzeichen, Fett, Links usw. verschwinden ohne Lücke
+    .replace(/<\/?(?:p|br|li|ul|ol|h[1-6]|pre|hr|table|tr|td|div)\b[^>]*>/g, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (all, entity: string) => ENTITIES[entity] ?? all)
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max + 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > max * 0.6 ? cut.slice(0, space) : text.slice(0, max)).trimEnd()} …`;
+}
+
+/**
+ * Eckdaten der Mail «Zugewiesen» (Entscheid vom 06.11.2026): Status, Typ und Priorität, Melder (ohne Mail-Adresse).
+ * Ohne Typ (Vorgang im Eingang) nur die Priorität; ohne Status fällt er weg.
+ */
+export function assignedFacts(input: { status: string; type: string | null; priority: string; reporter: string }): MailFact[] {
+  return [
+    { label: 'Status', value: input.status },
+    input.type ? { label: 'Typ · Priorität', value: `${input.type} · ${input.priority}` } : { label: 'Priorität', value: input.priority },
+    { label: 'Melder', value: input.reporter },
+  ].filter((f) => f.value.trim());
 }
 
 /**
@@ -513,8 +600,8 @@ export function sameText(a: string, b: string): boolean {
 }
 
 /**
- * Angepasste Fassungen ohne die Teile, die dem Standard entsprechen; null = nichts zu entfernen. «removed»: Vorlagen,
- * die damit ganz wieder Standard sind. Unbekannte Vorlagen bleiben unverändert.
+ * Angepasste Fassungen ohne die Teile, die dem Standard (oder einem früheren Standard) entsprechen; null = nichts zu
+ * entfernen. «removed»: Vorlagen, die damit ganz wieder Standard sind. Unbekannte Vorlagen bleiben unverändert.
  */
 export function withoutDefaults(
   overrides: Record<string, { subject?: string; body?: string }>,
@@ -530,7 +617,8 @@ export function withoutDefaults(
     }
     const kept: { subject?: string; body?: string } = {};
     if (entry.subject !== undefined && entry.subject !== definition.subject) kept.subject = entry.subject;
-    if (entry.body !== undefined && (definition.body === null || !sameText(entry.body, definition.body))) kept.body = entry.body;
+    const defaults = definition.body === null ? [] : [definition.body, ...(definition.formerBodies ?? [])];
+    if (entry.body !== undefined && !defaults.some((text) => sameText(entry.body!, text))) kept.body = entry.body;
     if (Object.keys(kept).length !== Object.keys(entry).length) changed = true;
     if (Object.keys(kept).length > 0) result[key] = kept;
     else removed.push(key);

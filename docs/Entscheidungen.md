@@ -161,7 +161,8 @@ Umfang: Portal, Verknüpfungen, Checklisten. **Unteraufgaben/Projekte sind zurü
   (geändert am 04.11.2026, vorher als «IT» ohne Namen). Bei einer Antwort «Als» eine andere Person steht die gewählte
   Person. Eine Ablehnung steht weiter als «Abgelehnt» ohne Namen. Deaktivierte Benutzer behalten ihren Namen; ohne
   Person steht «IT». Die Antwort-Mail bleibt unverändert: Absender ist das Postfach, den Namen nennt die
-  eigene Signatur oder ein Textbaustein.
+  eigene Signatur oder ein Textbaustein. Geändert am 06.11.2026: Die Antwort-Mail beginnt mit «Name hat geantwortet:»,
+  siehe «Gestaltung der Mails».
 - Automatische Mails des Melders (Abwesenheitsnotizen) erscheinen im Portal nicht.
 - Lokale Standard-Konten, denen ein Admin ein Passwort gibt (z.B. zum Testen ohne AD), können sich ebenfalls ins Portal anmelden.
 - Mails von Adressen ohne AD-Konto (Lieferanten, Newsletter …) landen weiterhin im Eingang.
@@ -447,7 +448,8 @@ automatisch gesetzt.
   - Öffentliche Antwort und Abschluss (Wechsel, der den Vorgang erledigt, wie bei der Mail «Abgeschlossen»): eine
     kombinierte Mail **«Antwort mit Abschluss»** (eigene Vorlage unter Verwaltung → E-Mail-Vorlagen) statt der
     Antwort-Mail und der Mail «Abgeschlossen». Oben der Abschluss («… wurde auf «Gelöst» gesetzt»), darunter «Nachricht
-    von …» mit der Antwort als Zitat (Design M1), mit den Anhängen der Antwort. Betreff wie bei «Abgeschlossen».
+    von …» mit der Antwort als Zitat (Design M1), mit den Anhängen der Antwort. Betreff wie bei «Abgeschlossen». Seit
+    06.11.2026 «**Name** hat geantwortet:» statt «Nachricht von …» (siehe «Gestaltung der Mails»).
   - Öffentliche Antwort und ein anderer Wechsel (z.B. «In Arbeit», «Wartet auf Melder»): nur die Antwort-Mail.
   - Interne Notiz und Abschluss: die Mail «Abgeschlossen» wie bei jedem Wechsel von Hand.
   - Testbetrieb: «Antwort mit Abschluss» ist ein eigener Auslöser. Beim Update übernimmt er die Einstellung von
@@ -465,6 +467,32 @@ automatisch gesetzt.
 - **Wiederkehrende Aufgaben:** Die Vorlage wird mit dem längsten Wert jedes Platzhalters geprüft (z.B. «September»,
   «Donnerstag»), damit jeder fertige Titel höchstens 90 Zeichen hat.
 - Bestehende längere Titel bleiben, bis jemand sie bearbeitet (über 90 Zeichen beim Erhöhen: 42 aus Mails, 1 intern erfasster).
+
+## Gestaltung der Mails (bestätigt am 06.11.2026)
+
+- Ziel: schlicht wie eine normale Mail, nicht überladen, mit Kleinigkeiten weniger «billig». Nicht gewünscht: Bilder in
+  der Mail (auch kein Profilbild, kein Logo), eine Hintergrundfarbe der ganzen Mail, eine Box mit Nummer und Status
+  sowie Postfachname oder Nummer als Kopfzeile in der Mail (stehen schon bei Absender und Betreff).
+- Umgesetzt ist Variante **V1** (Entwürfe im Design «Mail-Benachrichtigungen»):
+  - **Öffentliche Antwort:** oben klein «**Name** hat geantwortet:» (der Verfasser, bei «Im Namen» die gewählte
+    Person), darunter der Text als Zitat mit Strich links. Damit sieht man in der Mail, von wem die Antwort stammt
+    (ändert «Die Antwort-Mail bleibt unverändert» vom 04.11.2026). «Antwort mit Abschluss» sagt neu ebenfalls
+    «**Name** hat geantwortet:» statt «Nachricht von …».
+  - **Knopf:** Eine Link-Zeile, die nur aus einem Link besteht («Meldung online ansehen», «Vorgang öffnen»), erscheint
+    als kleiner blauer Knopf (Akzentblau, weisse Schrift 13 px, etwa 30 px hoch). Andere Link-Zeilen bleiben Text.
+  - **Fusszeile an Melder** (neuer Standard): «Antworte einfach auf diese E-Mail, dann landet deine Antwort direkt bei
+    der Meldung. Bitte lass die Nummer [PW-123] im Betreff stehen.» Die Fusszeile an die IT bleibt.
+  - **Zugewiesen** (an die IT): Standardtext «**Ada Admin** hat dir PW-123 zugewiesen.», darunter immer die Eckdaten
+    auf einer Zeile (Status, Typ · Priorität, Melder ohne Mail-Adresse; im Eingang ohne Typ nur die Priorität), die
+    ersten rund 300 Zeichen der Beschreibung als Zitat und der Knopf «Vorgang öffnen». Der Titel steht im Betreff.
+  - Etwas mehr Zeilenabstand (1,6).
+- **V3** (Nachricht in einem feinen Rahmen, feine Linien vor und nach der Nachricht) bleibt als mögliche spätere
+  Variante im Hinterkopf.
+- Technisch: Knopf, Eckdaten und Zitate sind Tabellenzellen, damit Outlook (Word) sie zeigt; dort hat der Knopf eckige
+  Ecken, den Abstand darüber gibt eine leere Zeile. In der Textfassung steht «Name hat geantwortet:» mit dem Text als
+  Zitat («> »), die Eckdaten als Zeilen «Status: …». Gespeicherte Vorlagen mit dem früheren Standardtext (Zugewiesen,
+  Fusszeile an Melder, Antwort mit Abschluss) gelten beim Start als Standard und bekommen den neuen Text; selbst
+  angepasste bleiben.
 
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 
@@ -984,7 +1012,8 @@ Bestätigt am 19.10.2026:
     - Die Nummer `[PW-123]` setzt Patchwork immer vor den Betreff, damit Antworten zugeordnet werden.
     - Markdown mit Platzhaltern wie bei den Textbausteinen; zu jeder Vorlage steht, welche Platzhalter es gibt.
     - Liste nach Empfänger gruppiert, Editor mit Vorschau mit Beispieldaten und «Auf Standard zurücksetzen».
-    - Das Aussehen der Mail (Rahmen, Schrift) bleibt fest, kein Logo.
+    - Das Aussehen der Mail (Rahmen, Schrift) bleibt fest, kein Logo. Seit 06.11.2026 mit Knopf, Kopfzeile bei
+      Antworten und Eckdaten bei «Zugewiesen», siehe «Gestaltung der Mails».
     - Überarbeitung, bestätigt am 20.10.2026 (umgesetzt nach dem Status-Umbau):
       - Benutzer erhalten eigene Felder **Vorname** und **Nachname**. AD-Konten füllen sie aus givenName und sn (bei der Anmeldung und beim Vorab-Anlegen; Kontakte aus Mails werden bei aktivem LDAP per E-Mail im AD nachgeschlagen). Sonst werden sie aus dem Namen geschätzt («Muster, Anna» bzw. letztes Wort = Nachname). Unter Verwaltung → Benutzer korrigierbar.
       - Platzhalter nur noch mit Vor- und Nachname: {{Melder Vorname}}, {{Melder Nachname}}, {{Zuständig Vorname}}, {{Zuständig Nachname}} (ohne Zuweisung leer). Bestehendes {{Melder}} in gespeicherten Vorlagen wird zu «{{Melder Vorname}} {{Melder Nachname}}».

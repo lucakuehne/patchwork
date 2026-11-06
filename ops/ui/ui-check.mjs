@@ -673,6 +673,21 @@ await step('vorlagen', async () => {
   await page.locator('section.editor').screenshot({ path: `${OUT}/25-vorlage-zugewiesen.png` });
   console.log('Bild 25-vorlage-zugewiesen');
   await page.getByRole('button', { name: 'Änderungen verwerfen' }).click();
+  // Vorschau «Zugewiesen» (Gestaltung vom 06.11.2026): Eckdaten, Anfang der Beschreibung, Knopf «Vorgang öffnen»
+  const frame = page.frameLocator('iframe.preview-frame');
+  // Die Vorschau zieht kurz nach dem Verwerfen nach, ohne den eingefügten Platzhalter
+  await frame.getByText(/zugewiesen\.\s+Ivan/).waitFor({ state: 'detached' });
+  await frame.getByText('Typ · Priorität').waitFor();
+  await frame.getByText('Seit heute Morgen druckt').waitFor();
+  if (!(await frame.locator('td[bgcolor="#2f5bea"]', { hasText: 'Vorgang öffnen' }).count())) throw new Error('kein Knopf «Vorgang öffnen»');
+  await page.locator('.preview').screenshot({ path: `${OUT}/25b-vorschau-zugewiesen.png` });
+  console.log('Bild 25b-vorschau-zugewiesen');
+  // Öffentliche Antwort: Kopfzeile mit dem Namen, Text als Zitat, Knopf «Meldung online ansehen»
+  await page.locator('nav.list .entry', { hasText: 'Öffentliche Antwort' }).click();
+  await frame.getByText('hat geantwortet:').waitFor();
+  if (!(await frame.locator('td[bgcolor="#2f5bea"]', { hasText: 'Meldung online ansehen' }).count())) throw new Error('kein Knopf «Meldung online ansehen»');
+  await page.locator('.preview').screenshot({ path: `${OUT}/25c-vorschau-antwort.png` });
+  console.log('Bild 25c-vorschau-antwort');
   // Link-Zeile: Link mit dem Ziel {{Link}} bleibt im Editor erhalten
   await page.locator('nav.list .entry', { hasText: 'Link-Zeile (Melder)' }).click();
   await page.locator('section.editor .ProseMirror a').waitFor();
@@ -989,8 +1004,14 @@ await step('liste-board', async () => {
 await step('fenster', async () => {
   // Einstellungen im Benutzermenü: Standard überall «Fenster»; Störungen auf «Seite» umstellen
   await page.goto(`${BASE}/tasks`);
-  await page.locator('.user-btn').click();
-  await page.getByRole('link', { name: 'Einstellungen' }).click();
+  // Die Hinweisbalken laden nach und schieben die Kopfzeile nach unten; ein Klick in diesem Moment geht daneben.
+  // Deshalb öffnen, bis der Eintrag sichtbar ist.
+  const settingsLink = page.getByRole('link', { name: 'Einstellungen' });
+  for (let attempt = 0; attempt < 3 && !(await settingsLink.isVisible()); attempt++) {
+    await page.locator('.user-btn').click();
+    await settingsLink.waitFor({ timeout: 3000 }).catch(() => undefined);
+  }
+  await settingsLink.click();
   await page.waitForURL(/\/settings$/);
   await page.getByRole('heading', { name: 'Vorgang öffnen als' }).waitFor();
   for (const area of ['Vorgänge im Eingang', 'Störungen', 'Aufgaben']) {

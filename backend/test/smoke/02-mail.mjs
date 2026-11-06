@@ -84,9 +84,14 @@ await step('Mail mit CC landet im Eingang, Bestätigung an Melder', async () => 
   assert.ok(/auto-submitted: auto-generated/i.test(confirmation.headers));
   // Das Portal ist ohne Einstellung aus: kein Link dorthin
   assert.ok(!confirmation.source.includes('/portal/items/'), 'ohne Portal keine Link-Zeile');
-  // Standardtext per Du mit Vorname; Standard-Fusszeile mit «Patchwork», nicht dem App-Namen
+  // Standardtext per Du mit Vorname; Standard-Fusszeile (06.11.2026) ohne den App-Namen
   assert.ok(confirmation.text.startsWith('Hallo Anna\n\nDeine Meldung ist bei uns eingegangen'), confirmation.text);
-  assert.ok(confirmation.text.includes(`Patchwork · PW-${itemNo}\nBitte lass bei Antworten die Nummer [PW-${itemNo}] im Betreff stehen.`), confirmation.text);
+  assert.ok(
+    confirmation.text.includes(
+      `Antworte einfach auf diese E-Mail, dann landet deine Antwort direkt bei der Meldung. Bitte lass die Nummer [PW-${itemNo}] im Betreff stehen.`,
+    ),
+    confirmation.text,
+  );
   assert.ok(!confirmation.text.includes('Patchwork Test'), 'kein App-Name in der Mail');
 });
 
@@ -150,9 +155,16 @@ await step('Zuweisen: Mail an Zuständigen', async () => {
   }
   await api('PATCH', `/items/${itemNo}`, { assigneeId: ivan.id, priority: 'high' });
   const mail = await waitForMail(IVAN, (m) => m.subject === `[PW-${itemNo}] Zugewiesen: VPN verbindet nicht`, 'Zuweisung');
-  // Standardtext mit Vor- und Nachname des Melders, Link-Zeile «Vorgang öffnen», Fusszeile mit «Patchwork»
-  assert.ok(mail.text.includes(`Melder: Anna Muster (${ANNA})`), mail.text);
+  // Standardtext, Eckdaten mit Vor- und Nachname des Melders (06.11.2026), Link-Zeile «Vorgang öffnen» als Knopf,
+  // Fusszeile mit «Patchwork»
+  assert.ok(mail.text.startsWith(`**Ada Admin** hat dir PW-${itemNo} zugewiesen.`), mail.text);
+  assert.ok(
+    mail.text.includes('Status: Neu\nTyp · Priorität: Störung · Hoch\nMelder: Anna Muster\n\n> Seit heute Morgen geht das VPN nicht mehr.'),
+    mail.text,
+  );
   assert.match(mail.text, new RegExp(`Vorgang öffnen: \\S+/items/PW-${itemNo}\\b`));
+  const html = (await simpleParser(mail.source)).html;
+  assert.match(html, new RegExp(`<td bgcolor="#2f5bea"[^>]*><p[^>]*><a href="[^"]+/items/PW-${itemNo}"[^>]*>Vorgang öffnen</a>`), 'Knopf');
   assert.ok(mail.text.includes(`Patchwork · Benachrichtigung zu PW-${itemNo}`), mail.text);
   assert.ok(!mail.text.includes('Patchwork Test'), 'kein App-Name in der Mail');
   const mine = await api('GET', '/items?view=incidents&mine=1');

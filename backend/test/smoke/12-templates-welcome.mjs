@@ -66,11 +66,14 @@ await step('E-Mail-Vorlagen: Platzhalter mit Vor- und Nachname, ohne {{App}}, Vo
   for (const t of templates) {
     assert.deepEqual(t.placeholders.map((p) => p.name).filter((n) => ['Melder', 'Zuständig', 'App'].includes(n)), [], t.key);
   }
-  // Standard-Fusszeilen einer neuen Installation: mit «Patchwork», nicht dem App-Namen
+  // Standard-Fusszeilen einer neuen Installation: ohne den App-Namen (an Melder seit 06.11.2026 ohne «Patchwork»)
   assert.deepEqual(
     ['reporterFooter', 'staffFooter'].map((key) => [template(key).body, template(key).custom]),
     [
-      ['Patchwork · {{Nummer}}\nBitte lass bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.', false],
+      [
+        'Antworte einfach auf diese E-Mail, dann landet deine Antwort direkt bei der Meldung. Bitte lass die Nummer [{{Nummer}}] im Betreff stehen.',
+        false,
+      ],
       ['Patchwork · Benachrichtigung zu {{Nummer}}', false],
     ],
   );

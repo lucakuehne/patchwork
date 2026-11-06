@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import {
+  assignedFacts,
   composeMail,
   exampleValues,
   fill,
@@ -13,8 +14,13 @@ import {
   type TemplateText,
 } from './mail-templates';
 
-/** Text des Bearbeiters in der Vorschau der öffentlichen Antwort */
+/** Text und Verfasser in der Vorschau der öffentlichen Antwort */
 const EXAMPLE_REPLY = 'Hallo Anna\n\nDer Drucker ist wieder eingerichtet. Melde dich, falls noch etwas fehlt.\n\nGruss\nIvan';
+const EXAMPLE_AUTHOR = 'Ivan IT';
+/** Eckdaten und Beschreibung in der Vorschau der Mail «Zugewiesen» */
+const EXAMPLE_FACTS = assignedFacts({ status: 'In Bearbeitung', type: 'Störung', priority: 'Hoch', reporter: 'Anna Muster' });
+const EXAMPLE_DESCRIPTION =
+  'Seit heute Morgen druckt der Drucker im 2. Stock nur noch leere Seiten. Einen Neustart habe ich schon versucht.';
 
 const normalize = (text: string) => text.replace(/\r\n?/g, '\n').trim();
 
@@ -123,6 +129,8 @@ export class MailTemplatesService implements OnApplicationBootstrap {
         link: link.body ?? '',
         footer: footer.body ?? '',
         written: shown === 'reply',
+        ...(shown === 'reply' ? { author: EXAMPLE_AUTHOR } : {}),
+        ...(shown === 'assigned' ? { facts: EXAMPLE_FACTS, excerpt: EXAMPLE_DESCRIPTION } : {}),
       },
       values,
     );

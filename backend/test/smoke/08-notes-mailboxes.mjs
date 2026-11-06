@@ -161,7 +161,12 @@ await step('Admin schreibt im Namen eines anderen: Autor ist die gewählte Perso
   const replyText = `Antwort im Namen von Ivan ${RUN}`;
   await api('POST', `/items/${itemNo}/entries`, entry('reply', replyText, ivanUser.id));
   assert.equal((await detail(itemNo)).entries.find((e) => e.body === replyText).author.email, IVAN);
-  await waitForMail(ANNA, (m) => m.text.includes(replyText), 'Antwort im Namen an die Melderin');
+  const replyMail = await waitForMail(ANNA, (m) => m.text.includes(replyText), 'Antwort im Namen an die Melderin');
+  // Kopfzeile mit dem Namen des Verfassers, der Text als Zitat (Entscheid vom 06.11.2026)
+  assert.ok(replyMail.text.startsWith(`Ivan IT hat geantwortet:\n\n> ${replyText}`), replyMail.text);
+  const replyHtml = (await simpleParser(replyMail.source)).html;
+  assert.ok(replyHtml.includes('<strong style="color:#1f2328">Ivan IT</strong> hat geantwortet:'), 'Kopfzeile im HTML');
+  assert.match(replyHtml, /border-left:3px solid[^>]*>\s*<p style="margin:0">Antwort im Namen von Ivan/, 'Text als Zitat');
   await loginAs(ANNA, 'anna-passwort-1');
   const portal = await api('GET', `/portal/items/${itemNo}`);
   const onBehalf = portal.entries.find((e) => e.body === replyText);

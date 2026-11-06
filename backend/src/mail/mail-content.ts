@@ -90,8 +90,10 @@ const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 
 // Schrift der Mail. Outlook (Word) übernimmt sie in Tabellenzellen nicht vom body, sie steht deshalb auch dort.
 const FONT_FAMILY = 'font-family:Segoe UI,Helvetica,Arial,sans-serif';
-const TEXT_STYLE = `${FONT_FAMILY};font-size:14px;line-height:1.5;color:#1f2328`;
+const TEXT_STYLE = `${FONT_FAMILY};font-size:14px;line-height:1.6;color:#1f2328`;
+const MUTED_COLOR = '#59636e';
 const LINE_COLOR = '#d0d7de';
+const ACCENT_COLOR = '#2f5bea';
 const LAYOUT_TABLE = 'role="presentation" cellpadding="0" cellspacing="0" border="0"';
 
 // Zitate als Tabelle mit Balken links: Outlook (Word) zeigt Rahmen nur an Tabellenzellen zuverlässig, ein
@@ -118,6 +120,47 @@ export function renderMarkdown(source: string): string {
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+/*
+ * Gestaltung der Mails (Entscheid vom 06.11.2026, Variante V1): schlicht wie eine normale Mail, ohne Bilder und ohne
+ * Hintergrundfarbe der ganzen Mail. Die Link-Zeile wird zum kleinen blauen Knopf, eine öffentliche Antwort bekommt die
+ * Kopfzeile «Name hat geantwortet:» und steht als Zitat darunter, die Mail «Zugewiesen» Eckdaten nebeneinander.
+ */
+
+/**
+ * Link-Zeile, die nur aus einem Link besteht, als kleiner blauer Knopf. Hintergrund und Abstand an einer Tabellenzelle,
+ * damit Outlook (Word) den Knopf zeigt; die Ecken sind dort eckig. Den Abstand darüber gibt eine leere Zeile (Word
+ * kennt keinen Rand an Tabellen), der Absatz ohne Abstand mit fester Zeilenhöhe hält den Knopf in Word klein. Andere
+ * Link-Zeilen bleiben, wie sie sind.
+ */
+export function linkLineHtml(html: string): string {
+  const single = /^<p><a href="([^"]*)">((?:(?!<\/?a\b)[\s\S])*)<\/a><\/p>\s*$/.exec(html);
+  if (!single) return html;
+  const [, href, label] = single;
+  return (
+    `<table ${LAYOUT_TABLE} style="border-collapse:separate">` +
+    `<tr><td style="border:none;padding:0;height:10px;font-size:0;line-height:0">&nbsp;</td></tr><tr>` +
+    `<td bgcolor="${ACCENT_COLOR}" style="border:none;border-radius:4px;background:${ACCENT_COLOR};padding:6px 14px">` +
+    `<p style="margin:0;${FONT_FAMILY};font-size:13px;line-height:18px;mso-line-height-rule:exactly">` +
+    `<a href="${href}" style="font-weight:600;color:#ffffff;text-decoration:none">${label}</a></p>` +
+    `</td></tr></table>\n`
+  );
+}
+
+/** Kopfzeile über einer öffentlichen Antwort: «Name hat geantwortet:», klein, der Name hervorgehoben. */
+export function replyHeadingHtml(name: string): string {
+  return `<p style="margin:0 0 12px;font-size:13px;color:${MUTED_COLOR}"><strong style="color:#1f2328">${escapeHtml(name)}</strong> hat geantwortet:</p>\n`;
+}
+
+/** Eckdaten nebeneinander (Mail «Zugewiesen»): oben die Bezeichnung klein, darunter der Wert. */
+export function factsHtml(facts: { label: string; value: string }[]): string {
+  const cells = facts.map(
+    (f, i) =>
+      `<td valign="top" style="border:none;padding:0 ${i < facts.length - 1 ? 28 : 0}px 0 0;${FONT_FAMILY};font-size:13px;line-height:1.5;color:#1f2328">` +
+      `<span style="font-size:12px;color:${MUTED_COLOR}">${escapeHtml(f.label)}</span><br>${escapeHtml(f.value)}</td>`,
+  );
+  return `<table ${LAYOUT_TABLE} style="margin:14px 0;border-collapse:collapse"><tr>${cells.join('')}</tr></table>\n`;
+}
+
 /**
  * HTML-Gerüst für ausgehende Mails. Die Trennlinie über der Fusszeile ist aus demselben Grund wie die Zitate eine
  * Tabelle. Den Abstand darüber gibt eine leere Zeile (Word kennt keinen Rand an Tabellen), der Absatz ohne Abstand
@@ -128,7 +171,7 @@ export function htmlMail(bodyHtml: string, footer: string): string {
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="margin:0;padding:24px;${TEXT_STYLE};background:#ffffff">
 <div style="max-width:680px">${bodyHtml}</div>
-<table ${LAYOUT_TABLE} width="100%" style="max-width:680px;border-collapse:collapse"><tr><td style="border:none;padding:0;height:12px;font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="border:none;border-top:1px solid ${LINE_COLOR};padding:12px 0 0;${FONT_FAMILY};font-size:12px;line-height:1.5;color:#59636e"><p style="margin:0">${escapeHtml(footer).replace(/\n/g, '<br>')}</p></td></tr></table>
+<table ${LAYOUT_TABLE} width="100%" style="max-width:680px;border-collapse:collapse"><tr><td style="border:none;padding:0;height:12px;font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="border:none;border-top:1px solid ${LINE_COLOR};padding:12px 0 0;${FONT_FAMILY};font-size:12px;line-height:1.5;color:${MUTED_COLOR}"><p style="margin:0">${escapeHtml(footer).replace(/\n/g, '<br>')}</p></td></tr></table>
 </body></html>`;
 }
 

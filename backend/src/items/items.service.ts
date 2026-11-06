@@ -41,6 +41,7 @@ import { StorageService } from '../storage/storage.service';
 import { toPublicUser, UsersService } from '../users/users.service';
 import { duplicateRedirect } from './duplicates';
 import { imageRefs, replaceImages, TEXT_IMAGE_TYPES } from './inline-images';
+import { PRIORITY_LABELS, TYPE_LABELS } from './labels';
 import { mentionedIds } from './mentions';
 import { noteEditRefusal, noteTimeRefusal } from './note-rules';
 import { byKey, HELPSPOT_PREFIX, itemRef, type ItemKey } from './item-ref';
@@ -72,8 +73,7 @@ export interface UploadedFile {
   buffer: Buffer;
 }
 
-export const PRIORITY_LABELS: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
-export const TYPE_LABELS: Record<ItemType, string> = { incident: 'Störung', task: 'Aufgabe' };
+export { PRIORITY_LABELS, TYPE_LABELS };
 
 /**
  * Angaben eines Statuswechsels im Verlauf: Namen für die Anzeige, IDs für Auswertungen (bleiben nach dem Umbenennen
@@ -868,7 +868,7 @@ export class ItemsService {
         pending.push(() =>
           closing
             ? this.notifications.replyClosed(withStatus, author, text, entry.id, attachmentIds, change!.target.label)
-            : this.notifications.publicReply(withStatus, author.id, text, entry.id, attachmentIds),
+            : this.notifications.publicReply(withStatus, author, text, entry.id, attachmentIds),
         );
       }
       pending.push(...afterChange);

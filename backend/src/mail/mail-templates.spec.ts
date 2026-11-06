@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  assignedFacts,
   composeMail,
   exampleValues,
+  excerpt,
+  EXCERPT_LENGTH,
   fill,
   mailKinds,
   markdownAsText,
@@ -70,11 +73,28 @@ describe('Platzhalter', () => {
     expect([examples['Zuständig Vorname'], examples['Zuständig Nachname']]).toEqual(['Ivan', 'IT']);
   });
 
-  it('Standardtexte mit Vor- und Nachname, per Du, Fusszeilen mit «Patchwork» (übernommen am 21.10.2026)', () => {
-    expect(templateByKey('assigned')!.body).toContain('Melder: {{Melder Vorname}} {{Melder Nachname}} ({{Melder E-Mail}})');
+  it('Standardtexte per Du (21.10.2026), Fusszeile an Melder und «Zugewiesen» neu (06.11.2026)', () => {
+    expect(templateByKey('assigned')!.body).toBe('**{{Zugewiesen durch}}** hat dir {{Nummer}} zugewiesen.');
     expect(templateByKey('confirmation')!.body).toMatch(/^Hallo \{\{Melder Vorname\}\}\n\nDeine Meldung/);
-    expect(templateByKey('reporterFooter')!.body).toBe('Patchwork · {{Nummer}}\nBitte lass bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.');
+    expect(templateByKey('reporterFooter')!.body).toBe(
+      'Antworte einfach auf diese E-Mail, dann landet deine Antwort direkt bei der Meldung. Bitte lass die Nummer [{{Nummer}}] im Betreff stehen.',
+    );
     expect(templateByKey('staffFooter')!.body).toBe('Patchwork · Benachrichtigung zu {{Nummer}}');
+  });
+
+  it('gespeicherte Fassungen mit einem früheren Standardtext gelten als Standard', () => {
+    const former = (key: string) => templateByKey(key)!.formerBodies![0]!;
+    expect(
+      withoutDefaults({
+        assigned: { body: former('assigned') },
+        reporterFooter: { body: former('reporterFooter') },
+        replyClosed: { subject: 'Fertig: {{Titel}}', body: former('replyClosed') },
+        done: { body: 'Eigener Text' },
+      }),
+    ).toEqual({
+      overrides: { replyClosed: { subject: 'Fertig: {{Titel}}' }, done: { body: 'Eigener Text' } },
+      removed: ['assigned', 'reporterFooter'],
+    });
   });
 
   it('mehrzeilige Werte im Zitat bleiben ganz im Zitat', () => {
@@ -127,7 +147,9 @@ describe('Fertige Mail', () => {
       { ...values, 'Melder Vorname': 'Anna', Status: 'Gelöst', Bearbeiter: 'Ivan IT', Antwort: 'Toner **ersetzt**.\n\nGruss Ivan' },
     );
     expect(mail.text).toContain('Deine Meldung «Fehler bei *.pdf und _Daten_» (PW-12) wurde auf «Gelöst» gesetzt.');
-    expect(mail.text).toContain('Nachricht von Ivan IT:');
+    // Wie die Kopfzeile der öffentlichen Antwort (06.11.2026)
+    expect(mail.text).toContain('**Ivan IT** hat geantwortet:');
+    expect(mail.html).toContain('<strong>Ivan IT</strong> hat geantwortet:');
     expect(mail.html).toContain('<strong>ersetzt</strong>');
     // Die ganze Antwort steht im Zitat, auch der zweite Absatz
     expect(mail.html).toMatch(/border-left:3px solid[^>]*>\s*<p style="margin:0 0 8px">Toner <strong>ersetzt<\/strong>\.<\/p>\s*<p style="margin:0">Gruss Ivan<\/p>/);
@@ -144,8 +166,62 @@ describe('Fertige Mail', () => {
     );
     expect(mail.html).toContain('Zu «Fehler bei *.pdf und _Daten_» (PW-12)');
     expect(mail.html).not.toContain('<em>');
-    expect(mail.html).toContain('<a href="https://pw.firma.local/portal/items/12">Ihre Meldung online ansehen</a>');
+    expect(mail.html).toMatch(/<a href="https:\/\/pw\.firma\.local\/portal\/items\/12" style="[^"]*">Ihre Meldung online ansehen<\/a>/);
     expect(mail.html).toContain('IT · PW-12</p></td>');
+  });
+
+  it('Link-Zeile mit nur einem Link als kleiner blauer Knopf in einer Tabellenzelle (Outlook), sonst wie geschrieben', () => {
+    const button = composeMail({ body: 'Text', link: '[Meldung online ansehen]({{Link}})', footer: '' }, values).html;
+    expect(button).toMatch(
+      /<td bgcolor="#2f5bea" style="[^"]*background:#2f5bea;padding:6px 14px"><p style="margin:0;[^"]*font-size:13px;line-height:18px[^"]*"><a href="https:\/\/pw\.firma\.local\/portal\/items\/12" style="[^"]*color:#ffffff;text-decoration:none">Meldung online ansehen<\/a><\/p><\/td>/,
+    );
+    expect(button).not.toContain('<p><a ');
+    // Weiterer Text in der Link-Zeile: kein Knopf
+    const sentence = composeMail({ body: '', link: 'Online: [ansehen]({{Link}})', footer: '' }, values).html;
+    expect(sentence).toContain('<p>Online: <a href="https://pw.firma.local/portal/items/12">ansehen</a></p>');
+    expect(sentence).not.toContain('bgcolor');
+  });
+
+  it('öffentliche Antwort: Kopfzeile «Name hat geantwortet:», der Text als Zitat (Entscheid vom 06.11.2026)', () => {
+    const mail = composeMail(
+      { body: 'Hoi Anna  \nerledigt.\n\nGruss Ivan', link: '', footer: '', written: true, author: 'Ivan <IT>' },
+      values,
+    );
+    expect(mail.text).toBe('Ivan <IT> hat geantwortet:\n\n> Hoi Anna\n> erledigt.\n>\n> Gruss Ivan');
+    expect(mail.html).toContain('<strong style="color:#1f2328">Ivan &lt;IT&gt;</strong> hat geantwortet:</p>');
+    expect(mail.html).toMatch(
+      /border-left:3px solid #d0d7de;[^>]*>\s*<p style="margin:0 0 8px">Hoi Anna<br>\s*erledigt\.<\/p>\s*<p style="margin:0">Gruss Ivan<\/p>/,
+    );
+    // Nur Anhänge, kein Text: nur die Kopfzeile, kein leeres Zitat
+    const empty = composeMail({ body: '', link: '', footer: '', written: true, author: 'Ivan IT' }, values);
+    expect(empty.text).toBe('Ivan IT hat geantwortet:');
+    expect(empty.html).not.toContain('border-left');
+  });
+
+  it('Eckdaten nebeneinander und Anfang der Beschreibung als Zitat (Mail «Zugewiesen»)', () => {
+    const facts = assignedFacts({ status: 'In Bearbeitung', type: 'Störung', priority: 'Hoch', reporter: 'Anna & Co' });
+    const mail = composeMail({ body: '**Ada** hat dir PW-12 zugewiesen.', link: '', footer: '', facts, excerpt: 'Druckt *nur* leer' }, values);
+    expect(mail.text).toBe(
+      '**Ada** hat dir PW-12 zugewiesen.\n\nStatus: In Bearbeitung\nTyp · Priorität: Störung · Hoch\nMelder: Anna & Co\n\n> Druckt *nur* leer',
+    );
+    expect(mail.html.match(/<td valign="top"/g)).toHaveLength(3);
+    expect(mail.html).toContain('<span style="font-size:12px;color:#59636e">Melder</span><br>Anna &amp; Co</td>');
+    // Der Auszug ist einfacher Text: keine Formatierung
+    expect(mail.html).toContain('<p style="margin:0">Druckt *nur* leer</p>');
+    // Ohne Typ (Eingang) nur die Priorität, ohne Status ohne ihn
+    expect(assignedFacts({ status: '', type: null, priority: 'Normal', reporter: 'Anna' })).toEqual([
+      { label: 'Priorität', value: 'Normal' },
+      { label: 'Melder', value: 'Anna' },
+    ]);
+  });
+
+  it('Auszug: einfacher Text auf einer Zeile, an einer Wortgrenze gekürzt', () => {
+    expect(excerpt('**Drucker** im 2. OG\n\n- druckt leer\n- A &amp; B')).toBe('Drucker im 2. OG druckt leer A & B');
+    expect(excerpt('nur **leere Seiten**. Siehe [Anleitung](https://x.test/a).\n\n> zitiert')).toBe('nur leere Seiten. Siehe Anleitung. zitiert');
+    expect(excerpt('eins zwei drei vier', 12)).toBe('eins zwei …');
+    expect(excerpt('abcdefghijklmnop', 10)).toBe('abcdefghij …');
+    expect(excerpt('')).toBe('');
+    expect(excerpt('x '.repeat(400)).length).toBeLessThanOrEqual(EXCERPT_LENGTH + 2);
   });
 
   it('Zitat mit Balken links und Trennlinie über der Fusszeile als Tabellenzellen (Outlook)', () => {
@@ -160,7 +236,7 @@ describe('Fertige Mail', () => {
     expect(mail.html).toMatch(/<td style="border:none;border-top:1px solid #d0d7de;[^"]*font-size:12px[^"]*"><p style="margin:0">IT · PW-12<\/p><\/td>/);
     // Absätze ausserhalb von Zitaten bleiben ohne eigene Formatierung
     expect(mail.html).toContain('<p>Neue Antwort:</p>');
-    expect(mail.html).toContain('<p><a href="https://pw.firma.local/portal/items/12">Vorgang öffnen</a></p>');
+    expect(mail.html).toMatch(/<a href="https:\/\/pw\.firma\.local\/portal\/items\/12" style="[^"]*">Vorgang öffnen<\/a><\/p><\/td>/);
   });
 
   it('verschachtelte Zitate ergeben verschachtelte Balken', () => {
@@ -196,14 +272,14 @@ describe('Fertige Mail', () => {
     );
     expect(mail.html).toContain('Guten Tag Anna Muster<br>');
     expect(mail.html).toContain('<strong>PW-12</strong>: A &amp; B &lt;C&gt; *nicht fett* [x]');
-    expect(mail.html).toContain('<a href="https://pw.firma.local/portal/items/12">Ihre Meldung [online] ansehen</a>');
+    expect(mail.html).toMatch(/<a href="https:\/\/pw\.firma\.local\/portal\/items\/12" style="[^"]*">Ihre Meldung \[online\] ansehen<\/a>/);
   });
 
   it('Link-Zeile: Platzhalter als Ziel auch mit Leerzeichen, Titel und Ziel in spitzen Klammern', () => {
     const url = values.Link;
     const line = (link: string) => composeMail({ body: '', link, footer: '' }, values);
     expect(line('[Ansehen]({{ Link }})').text).toBe(`Ansehen: ${url}`);
-    expect(line('[Ansehen]({{ Link }})').html).toContain(`<a href="${url}">Ansehen</a>`);
+    expect(line('[Ansehen]({{ Link }})').html).toContain(`<a href="${url}" style=`);
     expect(line('[Ansehen]({{Link}} "Portal")').text).toBe(`Ansehen: ${url}`);
     expect(line('[Ansehen](<{{Link}}>)').text).toBe(`Ansehen: ${url}`);
     expect(line('[{{Link}}]({{Link}})').text).toBe(url);
@@ -298,9 +374,13 @@ describe('Vorlagen verwalten', () => {
 
     const footer = await templates.preview('staffFooter', { subject: null, body: 'IT-Team · {{Nummer}}' });
     expect(footer.subject).toBe('[PW-123] Zugewiesen: Drucker druckt nicht');
-    expect(footer.text).toContain('Melder: Anna Muster (anna.muster@firma.ch)');
+    // Mail «Zugewiesen» mit Eckdaten und Anfang der Beschreibung
+    expect(footer.text).toContain('**Ada Admin** hat dir PW-123 zugewiesen.\n\nStatus: In Bearbeitung\nTyp · Priorität: Störung · Hoch\nMelder: Anna Muster');
+    expect(footer.text).toContain('> Seit heute Morgen druckt');
     expect(footer.text).toContain('-- \nIT-Team · PW-123');
-    expect((await templates.preview('reply', { subject: '{{Titel}}', body: null })).text).toContain('Der Drucker ist wieder eingerichtet');
+    const reply = await templates.preview('reply', { subject: '{{Titel}}', body: null });
+    expect(reply.text).toContain('Ivan IT hat geantwortet:\n\n> Hallo Anna');
+    expect(reply.text).toContain('> Der Drucker ist wieder eingerichtet');
   });
 
   it('Vorschau mit Vor- und Nachname, {{App}} bleibt stehen, Standard-Fusszeile', async () => {
@@ -311,11 +391,13 @@ describe('Vorlagen verwalten', () => {
     });
     expect(confirmation.subject).toBe('[PW-123] Für Muster');
     expect(confirmation.text).toContain('Hallo Anna Muster, es meldet sich Ivan IT. {{App}}');
-    expect(confirmation.text).toContain('-- \nPatchwork · PW-123\nBitte lass bei Antworten die Nummer [PW-123] im Betreff stehen.');
+    expect(confirmation.text).toContain(
+      '-- \nAntworte einfach auf diese E-Mail, dann landet deine Antwort direkt bei der Meldung. Bitte lass die Nummer [PW-123] im Betreff stehen.',
+    );
 
     const staff = await templates.preview('staffLink', { subject: null, body: '[Öffnen]({{Link}})' });
     expect(staff.text).toContain('Öffnen: https://patchwork.firma.local/items/123\n\n-- \nPatchwork · Benachrichtigung zu PW-123');
-    expect(staff.html).toContain('<a href="https://patchwork.firma.local/items/123">Öffnen</a>');
+    expect(staff.html).toMatch(/<a href="https:\/\/patchwork\.firma\.local\/items\/123" style="[^"]*">Öffnen<\/a>/);
   });
 });
 

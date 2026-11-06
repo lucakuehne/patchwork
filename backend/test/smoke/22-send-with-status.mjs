@@ -45,7 +45,7 @@ await step('Status beim Senden: Antwort und «Gelöst» = eine Mail «Antwort mi
   assert.ok(d.closedAt, 'Abschlussdatum');
   const mail = await waitForMail(ANNA, (m) => m.subject === `[PW-${n}] Gelöst: Abschluss ${RUN}`, 'Antwort mit Abschluss');
   assert.ok(mail.text.includes(`Deine Meldung «Abschluss ${RUN}» (PW-${n}) wurde auf «Gelöst» gesetzt.`), mail.text);
-  assert.ok(mail.text.includes('Nachricht von Ada Admin:'), mail.text);
+  assert.ok(mail.text.includes('**Ada Admin** hat geantwortet:'), mail.text);
   assert.ok((await simpleParser(mail.source)).html.includes('<strong>ersetzt</strong>'), 'Antwort mit Formatierung');
   await sleep(3000);
   const templates = (await mailsOf(n)).map((m) => m.template);

@@ -12,7 +12,17 @@ import { StorageService } from '../storage/storage.service';
 import { itemRef, subjectFor } from './mail-content';
 import { HELPSPOT_PREFIX, type ItemKey } from '../items/item-ref';
 import { mentionsAsText } from '../items/mentions';
-import { composeMail, fill, markdownAsText, personValues, type TemplateKey } from './mail-templates';
+import { PRIORITY_LABELS, TYPE_LABELS } from '../items/labels';
+import {
+  assignedFacts,
+  composeMail,
+  excerpt,
+  fill,
+  markdownAsText,
+  personValues,
+  type MailParts,
+  type TemplateKey,
+} from './mail-templates';
 import { MailTemplatesService } from './mail-templates.service';
 import { MailboxesService } from './mailboxes.service';
 import { MailSenderService, newMessageId } from './mail-sender.service';
@@ -32,6 +42,8 @@ interface ReporterMail {
   values?: Record<string, string>;
   /** Öffentliche Antwort: Text des Bearbeiters (Markdown) statt des Texts der Vorlage */
   written?: string;
+  /** Öffentliche Antwort: Name des Verfassers für die Kopfzeile */
+  author?: string;
   entryId?: string;
   attachmentIds?: string[];
   automated: boolean;
@@ -72,13 +84,17 @@ export class NotificationsService {
     await this.sendToReporter(item, [reporter.email], [], { template: 'confirmation', automated: true });
   }
 
-  /** Öffentliche Antwort an Melder (An) und Beteiligte (CC). */
-  async publicReply(item: Item, actorId: string, body: string, entryId: string, attachmentIds: string[]): Promise<void> {
-    const reporter = await this.eligible(item, item.reporterId, actorId);
-    const cc = await this.participantEmails(item, actorId);
+  /**
+   * Öffentliche Antwort an Melder (An) und Beteiligte (CC), mit der Kopfzeile «Name hat geantwortet:» und dem Text als
+   * Zitat (Entscheid vom 06.11.2026).
+   */
+  async publicReply(item: Item, author: User, body: string, entryId: string, attachmentIds: string[]): Promise<void> {
+    const reporter = await this.eligible(item, item.reporterId, author.id);
+    const cc = await this.participantEmails(item, author.id);
     const to = reporter ? [reporter.email] : cc.splice(0, cc.length);
     await this.sendToReporter(item, to, cc, {
       template: 'reply',
+      author: author.name,
       // Erwähnungen sieht der Melder als gewöhnlichen Text «@Vorname Nachname»
       written: mentionsAsText(body),
       entryId,
@@ -131,10 +147,22 @@ export class NotificationsService {
     const assignee = await this.eligible(item, item.assigneeId, actorId);
     if (!assignee) return;
     const [actor, reporter] = await Promise.all([actorId ? this.user(actorId) : undefined, this.user(item.reporterId)]);
-    await this.sendToStaff(item, assignee, 'assigned', {
-      'Zugewiesen durch': by ?? actor?.name ?? '–',
-      'Melder E-Mail': reporter?.email ?? '–',
-    });
+    await this.sendToStaff(
+      item,
+      assignee,
+      'assigned',
+      { 'Zugewiesen durch': by ?? actor?.name ?? '–', 'Melder E-Mail': reporter?.email ?? '–' },
+      // Eckdaten und Anfang der Beschreibung unter dem Text (Entscheid vom 06.11.2026)
+      (values) => ({
+        facts: assignedFacts({
+          status: values.Status ?? '',
+          type: item.type ? TYPE_LABELS[item.type] : null,
+          priority: PRIORITY_LABELS[item.priority],
+          reporter: `${values['Melder Vorname'] ?? ''} ${values['Melder Nachname'] ?? ''}`.trim() || (reporter?.name ?? ''),
+        }),
+        excerpt: excerpt(imagesAsText(mentionsAsText(item.description))),
+      }),
+    );
   }
 
   /** Mail an den Zuständigen, wenn Melder oder Beteiligte geantwortet haben. */
@@ -301,6 +329,7 @@ export class NotificationsService {
           link: withLink ? (link.body ?? '') : '',
           footer: footer.body ?? '',
           written: mail.written !== undefined,
+          author: mail.author,
         },
         values,
       ),
@@ -353,7 +382,14 @@ export class NotificationsService {
     return { text: imagesAsText(mail.text), html: embedImageTags(mail.html, images), inline: [...images.keys()] };
   }
 
-  private async sendToStaff(item: Item, recipient: User, key: TemplateKey, extra: Record<string, string>) {
+  /** «layout»: Eckdaten und Auszug unter dem Text, aus den Werten der Platzhalter (Mail «Zugewiesen») */
+  private async sendToStaff(
+    item: Item,
+    recipient: User,
+    key: TemplateKey,
+    extra: Record<string, string>,
+    layout?: (values: Record<string, string>) => Pick<MailParts, 'facts' | 'excerpt'>,
+  ) {
     // Ohne Zugriff auf den Bereich des Vorgangs keine Mail (Bereiche je Rolle), auch wenn zuständig oder erwähnt
     if (!(await this.areas.canSee(recipient, item.type))) return;
     const mailbox = await this.mailboxes.forSending(item.mailboxId);
@@ -367,7 +403,10 @@ export class NotificationsService {
       this.templates.get('staffLink'),
       this.templates.get('staffFooter'),
     ]);
-    const { text, html } = composeMail({ body: template.body ?? '', link: link.body ?? '', footer: footer.body ?? '' }, values);
+    const { text, html } = composeMail(
+      { body: template.body ?? '', link: link.body ?? '', footer: footer.body ?? '', ...layout?.(values) },
+      values,
+    );
     await this.sender.enqueue({
       mailboxId: mailbox.id,
       itemId: item.id,
