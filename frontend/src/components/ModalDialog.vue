@@ -92,14 +92,28 @@ onBeforeUnmount(() => {
 .dialog.wide {
   max-width: 760px;
 }
-/* Vorgang im Fenster: fast so gross wie die Seite, Hintergrund wie die Seite */
+/*
+ * Vorgang im Fenster: fast so gross wie die Seite, Hintergrund wie die Seite. Es passt in den Bildschirm, die Kopfzeile
+ * bleibt stehen und nur der Inhalt scrollt (Entscheid vom 06.11.2026)
+ */
 .backdrop.huge {
   padding: 2vh 16px;
+  overflow: hidden;
 }
 .dialog.huge {
   max-width: min(1500px, 96vw);
+  max-height: 96vh;
+  display: flex;
+  flex-direction: column;
+}
+.dialog.huge .head {
+  flex-shrink: 0;
 }
 .dialog.huge .body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--bg);
   border-radius: 0 0 var(--radius) var(--radius);
 }

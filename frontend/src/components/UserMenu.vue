@@ -20,8 +20,9 @@ async function logout() {
   }
 }
 
+// Beim Seitenwechsel schliessen, nicht wenn eine Liste ihre Filter in die Adresse schreibt (gleich nach dem Laden)
 watch(
-  () => route.fullPath,
+  () => route.path,
   () => (open.value = false),
 );
 

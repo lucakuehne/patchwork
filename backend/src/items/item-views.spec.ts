@@ -52,8 +52,19 @@ describe('Nur meine', () => {
     }
   });
 
+  it('bei Aufgaben: mir zugewiesen oder offen ohne Zuständige, ausser im Start-Status (Backlog)', () => {
+    for (const view of ['board', 'tasks', 'tasks-done', 'tasks-rejected'] as const) {
+      expect(mine(view).sql, view).toBe(
+        '("items"."assignee_id" = $1 or ("items"."assignee_id" is null and "statuses"."closed" = $2 and not exists ' +
+          '(select 1 from "status_targets" where ("status_targets"."type" = "items"."type" and "status_targets"."target" = $3 ' +
+          'and "status_targets"."status_id" = "items"."status_id"))))',
+      );
+      expect(mine(view).params, view).toEqual(['u1', false, 'start']);
+    }
+  });
+
   it('sonst nur mir zugewiesen', () => {
-    for (const view of ['inbox', 'board', 'tasks', 'tasks-done', 'tasks-rejected', 'search'] as const) {
+    for (const view of ['inbox', 'search'] as const) {
       expect(mine(view).sql, view).toBe('"items"."assignee_id" = $1');
     }
   });

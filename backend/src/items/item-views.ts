@@ -123,14 +123,18 @@ function boardCondition(type: 'incident' | 'task'): SQL | undefined {
 }
 
 const INCIDENT_VIEWS: readonly View[] = ['incidents', 'incidents-board', 'incidents-closed'];
+const TASK_VIEWS: readonly View[] = ['board', 'tasks', 'tasks-done', 'tasks-rejected'];
 
 /**
- * Filter «Nur meine»: mir zugewiesen. Bei Störungen auch offene ohne Zuständige, damit sie jemand übernimmt; gelöste
- * ohne Zuständige nicht.
+ * Filter «Nur meine»: mir zugewiesen, dazu offene ohne Zuständige, damit sie jemand übernimmt; abgeschlossene ohne
+ * Zuständige nicht. Bei Störungen alle offenen (Entscheid vom 02.11.2026), bei Aufgaben ohne die im Start-Status, z.B.
+ * «Backlog» (Entscheid vom 06.11.2026).
  */
 export function mineCondition(view: View, userId: string): SQL | undefined {
   const assigned = eq(items.assigneeId, userId);
-  return INCIDENT_VIEWS.includes(view) ? or(assigned, and(isNull(items.assigneeId), OPEN)) : assigned;
+  if (INCIDENT_VIEWS.includes(view)) return or(assigned, and(isNull(items.assigneeId), OPEN));
+  if (TASK_VIEWS.includes(view)) return or(assigned, and(isNull(items.assigneeId), OPEN, not(inTarget('start'))));
+  return assigned;
 }
 
 export function viewQuery(view: View): { where: SQL | undefined; orderBy: SQL[] } {

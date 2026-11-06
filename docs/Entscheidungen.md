@@ -827,6 +827,9 @@ abschalten.
   Gespeichert pro Benutzer. Die Wahl gilt überall in Patchwork (Listen, Board, Suche, Verknüpfungen, Verweise im Verlauf,
   «Öffnen» in Meldungen), jeweils nach dem Typ des Vorgangs; Links aus Mails öffnen immer als Seite. Solange das Fenster
   (oder ein anderer Dialog) offen ist, scrollt die Seite dahinter nicht mit. Ctrl+Klick bzw. die mittlere Maustaste öffnen wie gewohnt einen neuen Browser-Tab.
+  - Bestätigt am 06.11.2026: Das Fenster passt in den Bildschirm. Die Kopfzeile (Kennung, «Als Seite öffnen», ✕)
+    bleibt stehen, nur der Inhalt scrollt im Fenster; die rechte Spalte bleibt dabei oben stehen wie in der Seitenansicht.
+    Vorher wuchs das Fenster mit dem Inhalt und scrollte als Ganzes.
 - Technisch (entschieden am 27.10.2026): Das Fenster steht in der Adresse (`?vorgang=123`, seit 28.10.2026 `?item=123`, seit 29.10.2026 `?item=PW-123`), «Zurück» im Browser schliesst
   es, Neuladen öffnet es wieder. Im Fenster gibt es «Als Seite öffnen». Ein Link auf einen anderen Vorgang öffnet diesen je
   nach Wahl wieder im Fenster (ersetzt den Inhalt, «Zurück» führt zum vorherigen) oder als Seite. Nach dem Schliessen lädt
@@ -1022,5 +1025,8 @@ Beim Bauen aufgefallene Randfälle:
 8. **«Nur meine»** = mir zugewiesen. Bei Störungen (bestätigt am 02.11.2026) zusätzlich die offenen ohne Zuständige,
    damit sie jemand übernimmt, in Liste und Board. Gelöste ohne Zuständige gehören nicht dazu, auch nicht in den
    abgeschlossenen Spalten des Boards. Der Knopf heisst weiter «Nur meine», beim Darüberfahren erscheint «Dir zugewiesen
-   und offene ohne Zuständige» (unter «Gelöst» kein Hinweis). Aufgaben und Eingang bleiben bei «mir zugewiesen».
+   und offene ohne Zuständige» (unter «Gelöst» kein Hinweis). Bei Aufgaben ebenso (bestätigt am 06.11.2026), ausser im
+   Start-Status (Backlog): offene ohne Zuständige ausserhalb des Start-Status, in Liste und Board; Erledigt, Abgelehnt
+   und die Spalte «Erledigt» nur mit Zuweisung. Hinweis «Dir zugewiesen und offene ohne Zuständige (ausser «Backlog»)»
+   mit dem Namen des Start-Status. Der Eingang hat kein «Nur meine».
 9. **Eingang** ist nach Eingang sortiert, neueste zuerst.

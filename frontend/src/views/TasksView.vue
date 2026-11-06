@@ -30,6 +30,11 @@ const filters = useListFilters('board', 'tasks');
 const sort = useListSort('tasks');
 const asBoard = computed(() => session.preferences.layout.tasks === 'board');
 const openStatuses = computed(() => session.statusesOf('task').filter((s) => !s.closed));
+// «Nur meine» zeigt auch offene ohne Zuständige, ausser im Start-Status (Entscheid vom 06.11.2026)
+const mineHint = computed(() => {
+  const start = session.statuses.find((s) => s.id === session.statusTargets.task.start)?.label;
+  return `Dir zugewiesen und offene ohne Zuständige${start ? ` (ausser «${start}»)` : ''}`;
+});
 
 const board = ref<InstanceType<typeof ItemBoard> | null>(null);
 const items = ref<ItemSummary[]>([]);
@@ -74,7 +79,7 @@ function onCreated(created: ItemKey) {
       <TasksNav />
       <LayoutToggle kind="tasks" />
       <div class="spacer" />
-      <MineToggle v-model="mine" />
+      <MineToggle v-model="mine" :title="mineHint" />
       <button class="btn" type="button" @click="createIn()">+ Aufgabe</button>
     </div>
     <ListFilters v-model="filters" :mine="mine" :statuses="asBoard ? undefined : openStatuses" />

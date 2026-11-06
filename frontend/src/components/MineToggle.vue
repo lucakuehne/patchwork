@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const model = defineModel<boolean>({ required: true });
-/** Hinweis beim Darüberfahren, wenn «Nur meine» mehr zeigt als die zugewiesenen (Störungen) */
+/** Hinweis beim Darüberfahren, wenn «Nur meine» mehr zeigt als die zugewiesenen (offene Störungen und Aufgaben) */
 defineProps<{ title?: string }>();
 </script>
 

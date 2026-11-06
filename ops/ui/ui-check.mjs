@@ -1021,6 +1021,15 @@ await step('fenster', async () => {
   }
   const behind = await page.evaluate(() => window.scrollY);
   if (behind !== 0) throw new Error(`Seite hinter dem Fenster gescrollt: ${behind} px`);
+  // Das Fenster passt in den Bildschirm, die Kopfzeile bleibt stehen, nur der Inhalt scrollt (Entscheid vom 06.11.2026)
+  const frame = await dialog.boundingBox();
+  const viewport = page.viewportSize();
+  if (frame.y < 0 || frame.y + frame.height > viewport.height) throw new Error(`Fenster ragt über den Bildschirm: ${JSON.stringify(frame)}`);
+  const head = await dialog.locator(':scope > .head').boundingBox();
+  if (head.y < frame.y || head.y > frame.y + 2) throw new Error('Kopfzeile des Fensters weggescrollt');
+  const scroll = await dialog.locator(':scope > .body').evaluate((b) => ({ top: b.scrollTop, tall: b.scrollHeight > b.clientHeight }));
+  if (scroll.tall && scroll.top === 0) throw new Error('Inhalt des Fensters scrollt nicht');
+  await shot('63b-vorgang-fenster-gescrollt');
   // «Zurück» im Browser schliesst das Fenster, das Board bleibt
   await page.goBack();
   await page.waitForURL((url) => url.pathname === '/tasks' && !url.search);
