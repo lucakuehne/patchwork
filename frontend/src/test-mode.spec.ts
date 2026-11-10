@@ -58,6 +58,10 @@ describe('Testbetrieb: Hinweis', () => {
     expect(keys('incident')).not.toContain('dueReminder');
     expect(keys('task')).toContain('dueReminder');
     expect(keys('task')).not.toContain('welcome');
+    // «Antwort mit Abschluss» braucht einen Status, «Neuer Eintrag» gibt es überall (wie im Backend)
+    expect(keys('general')).not.toContain('replyClosed');
+    expect(keys('incident')).toContain('replyClosed');
+    for (const b of ['general', 'incident', 'task'] as const) expect(keys(b)).toContain('newEntry');
     expect(blockText('general', { ...live, triggers: { done: 'none' } })).toBe('alle Mails');
   });
 

@@ -11,7 +11,7 @@ import { AreasService } from '../settings/areas';
 import { StorageService } from '../storage/storage.service';
 import { itemRef, subjectFor } from './mail-content';
 import { HELPSPOT_PREFIX, type ItemKey } from '../items/item-ref';
-import { mentionsAsText } from '../items/mentions';
+import { mentionedIds, mentionsAsText } from '../items/mentions';
 import { PRIORITY_LABELS, TYPE_LABELS } from '../items/labels';
 import {
   assignedFacts,
@@ -32,6 +32,15 @@ import { MailSenderService, newMessageId } from './mail-sender.service';
  * bestehende bleiben gespeichert und gelten wieder, sobald dies auf true steht und die Option wieder sichtbar ist.
  */
 export const MUTES_ACTIVE = false;
+
+/** Art eines neuen Eintrags für die Mail «Neuer Eintrag» */
+export type NewEntryKind = 'note' | 'reply' | 'mailStaff' | 'mailExternal';
+const NEW_ENTRY_KINDS: Record<NewEntryKind, string> = {
+  note: 'interne Notiz',
+  reply: 'öffentliche Antwort',
+  mailStaff: 'per Mail, als interne Notiz erfasst',
+  mailExternal: 'per Mail, nicht beteiligt, als interne Notiz erfasst',
+};
 
 const formatDate = (d: Date) =>
   new Intl.DateTimeFormat('de-CH', { timeZone: appConfig.timeZone, day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
@@ -163,6 +172,25 @@ export class NotificationsService {
         excerpt: excerpt(imagesAsText(mentionsAsText(item.description))),
       }),
     );
+  }
+
+  /**
+   * Neuer Eintrag (Entscheid vom 10.11.2026): Mail an den Zuständigen, wenn jemand anderes eine interne Notiz oder
+   * öffentliche Antwort schreibt oder eine Mail als interne Notiz landet. Nicht an den Verfasser selbst und nicht, wenn
+   * der Zuständige im Eintrag erwähnt ist (dann kommt «Erwähnt»).
+   */
+  async newEntry(item: Item, author: User, kind: NewEntryKind, body: string): Promise<void> {
+    if (!item.assigneeId || mentionedIds(body).includes(item.assigneeId)) return;
+    const assignee = await this.eligible(item, item.assigneeId, author.id);
+    if (!assignee) return;
+    // Bei Mails von Unbeteiligten mit Mail-Adresse, damit man weiss, von wem sie kommt
+    const showEmail = kind === 'mailExternal' && author.name.trim().toLowerCase() !== author.email.toLowerCase();
+    await this.sendToStaff(item, assignee, 'newEntry', {
+      Verfasser: showEmail ? `${author.name} (${author.email})` : author.name,
+      Art: NEW_ENTRY_KINDS[kind],
+      // Bilder sieht der Zuständige in Patchwork; in der Benachrichtigung nur ihr Name
+      Text: markdownAsText(imagesAsText(mentionsAsText(body))),
+    });
   }
 
   /** Mail an den Zuständigen, wenn Melder oder Beteiligte geantwortet haben. */

@@ -156,6 +156,19 @@ describe('Fertige Mail', () => {
     expect(fill(template.subject!, { ...values, Status: 'Gelöst' })).toBe('Gelöst: Fehler bei *.pdf und _Daten_');
   });
 
+  it('Neuer Eintrag: Verfasser, Art und Text als Zitat (Entscheid vom 10.11.2026)', () => {
+    const template = templateByKey('newEntry')!;
+    expect(template.group).toBe('staff');
+    const mail = composeMail(
+      { body: template.body!, link: '', footer: '' },
+      { ...values, Verfasser: 'Hans <extern>', Art: 'interne Notiz', Text: 'Zeile 1\nZeile 2' },
+    );
+    expect(mail.text).toBe('**Hans <extern>** hat in PW-12 geschrieben (interne Notiz):\n\n> Zeile 1\n> Zeile 2');
+    expect(mail.html).toContain('<strong>Hans &lt;extern&gt;</strong> hat in PW-12 geschrieben (interne Notiz):');
+    expect(mail.html).toMatch(/border-left:3px solid[^>]*>\s*<p style="margin:0">Zeile 1<br>\s*Zeile 2<\/p>/);
+    expect(fill(template.subject!, values)).toBe('Neuer Eintrag: Fehler bei *.pdf und _Daten_');
+  });
+
   it('Text wörtlich, HTML maskiert: Zeichen aus Titeln lösen keine Formatierung aus', () => {
     const mail = composeMail(
       { body: 'Zu «{{Titel}}» ({{Nummer}})', link: '[Ihre Meldung online ansehen]({{Link}})', footer: 'IT · {{Nummer}}' },

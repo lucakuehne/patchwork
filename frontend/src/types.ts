@@ -95,6 +95,7 @@ export interface DeliveryCircles {
 export type DeliveryTrigger =
   | 'confirmation'
   | 'reply'
+  | 'replyClosed'
   | 'done'
   | 'rejected'
   | 'duplicateMerged'
@@ -105,6 +106,7 @@ export type DeliveryTrigger =
   | 'inboundReply'
   | 'fixCompleted'
   | 'mentioned'
+  | 'newEntry'
   | 'dueReminder'
   | 'welcome';
 

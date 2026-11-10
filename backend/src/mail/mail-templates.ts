@@ -17,6 +17,7 @@ export type TemplateKey =
   | 'inboundReply'
   | 'fixCompleted'
   | 'mentioned'
+  | 'newEntry'
   | 'dueReminder'
   | 'staffLink'
   | 'staffFooter'
@@ -308,6 +309,25 @@ export const TEMPLATES: TemplateDefinition[] = [
       p('Bearbeiter', 'Wer erwähnt hat', 'Ada Admin'),
       p('Art', 'Öffentliche Antwort oder interne Notiz', 'interne Notiz'),
       p('Text', 'Text der Antwort bzw. Notiz', '@Ivan Informatik, kannst du das übernehmen?'),
+      STAFF_LINK,
+    ],
+  },
+  {
+    key: 'newEntry',
+    group: 'staff',
+    label: 'Neuer Eintrag',
+    description:
+      'An den Zuständigen, wenn jemand anderes im Vorgang eine interne Notiz oder öffentliche Antwort schreibt, und bei ' +
+      'Mails, die als interne Notiz landen (von Unbeteiligten oder von IT-Mitarbeitenden). Nicht bei eigenen Einträgen, ' +
+      'nicht beim Bearbeiten, nicht bei automatischen Mails wie Abwesenheitsnotizen und nicht, wenn der Zuständige im ' +
+      'Eintrag erwähnt ist (dann «Erwähnt»). Ohne Zuständigen keine Mail.',
+    subject: 'Neuer Eintrag: {{Titel}}',
+    body: '**{{Verfasser}}** hat in {{Nummer}} geschrieben ({{Art}}):\n\n> {{Text}}',
+    placeholders: [
+      ...ITEM,
+      p('Verfasser', 'Wer geschrieben hat (bei Mails von Unbeteiligten mit Mail-Adresse)', 'Ada Admin'),
+      p('Art', 'Interne Notiz, öffentliche Antwort oder Mail, die als interne Notiz erfasst wurde', 'interne Notiz'),
+      p('Text', 'Text des Eintrags', 'Kannst du das bis Freitag erledigen?'),
       STAFF_LINK,
     ],
   },

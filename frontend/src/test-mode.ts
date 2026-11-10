@@ -20,6 +20,7 @@ export const DELIVERY_BLOCKS: { value: DeliveryBlock; label: string; hint: strin
 export const DELIVERY_TRIGGERS: { value: DeliveryTrigger; label: string; group: 'reporter' | 'staff' }[] = [
   { value: 'confirmation', label: 'Eingangsbestätigung', group: 'reporter' },
   { value: 'reply', label: 'Öffentliche Antwort', group: 'reporter' },
+  { value: 'replyClosed', label: 'Antwort mit Abschluss', group: 'reporter' },
   { value: 'done', label: 'Abgeschlossen', group: 'reporter' },
   { value: 'rejected', label: 'Abgelehnt', group: 'reporter' },
   { value: 'duplicateMerged', label: 'Duplikat: ins Original übernommen', group: 'reporter' },
@@ -29,6 +30,7 @@ export const DELIVERY_TRIGGERS: { value: DeliveryTrigger; label: string; group: 
   { value: 'inboundReply', label: 'Neue Antwort', group: 'staff' },
   { value: 'fixCompleted', label: 'Behebender Vorgang erledigt', group: 'staff' },
   { value: 'mentioned', label: 'Erwähnt', group: 'staff' },
+  { value: 'newEntry', label: 'Neuer Eintrag', group: 'staff' },
   { value: 'dueReminder', label: 'Fällig', group: 'staff' },
   { value: 'welcome', label: 'Willkommen', group: 'staff' },
 ];
@@ -38,6 +40,7 @@ export const DELIVERY_TRIGGERS: { value: DeliveryTrigger; label: string; group: 
  * «Fällig» gibt es nur bei Aufgaben, «Willkommen» nur ohne Vorgang.
  */
 const NOT_IN: Partial<Record<DeliveryTrigger, DeliveryBlock[]>> = {
+  replyClosed: ['general'],
   done: ['general'],
   rejected: ['general'],
   waitingReminder: ['general'],

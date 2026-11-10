@@ -489,6 +489,9 @@ export class MailFetcherService implements OnModuleInit {
     let body = text;
     let notifyAuthor: User | null = null;
     let notifyItem: Item | null = null;
+    /** Mail eines Unbeteiligten, als interne Notiz erfasst: Mail «Neuer Eintrag» an den Zuständigen */
+    let noteAuthor: User | null = null;
+    let noteItem: Item | null = null;
     let outcome: Outcome = { result: 'ignored', reason: 'Vorgang nicht mehr vorhanden' };
     // Regeln für Antworten, nicht für Abwesenheitsnotizen und andere automatische Mails
     const rules = automated
@@ -564,12 +567,20 @@ export class MailFetcherService implements OnModuleInit {
         notifyAuthor = author;
         notifyItem = locked;
       }
+      if (!involved && !automated) {
+        noteAuthor = author;
+        noteItem = locked;
+      }
       await rules?.apply(tx, locked);
     });
     await rules?.afterCommit();
     await rules?.afterConfirmation();
 
     if (notifyAuthor && notifyItem) await this.notifications.inboundReply(notifyItem, notifyAuthor, body);
+    if (noteAuthor && noteItem) {
+      const staff = (noteAuthor as User).role === 'it' || (noteAuthor as User).role === 'admin';
+      await this.notifications.newEntry(noteItem, noteAuthor, staff ? 'mailStaff' : 'mailExternal', body);
+    }
     return outcome;
   }
 

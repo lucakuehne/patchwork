@@ -84,6 +84,8 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
   Keine Mails zu internen Notizen und anderen Statuswechseln. Keine Mails zu Änderungen, die der Melder selbst gemacht hat.
 - Ablehnen: Checkbox «Melder informieren», standardmässig aus.
 - IT: Der Zuständige erhält eine Mail bei Zuweisung und bei Antworten des Melders. Kein Mailversand für neue Vorgänge im Eingang.
+  Seit 10.11.2026 auch bei Einträgen anderer (interne Notiz, öffentliche Antwort, Mail als interne Notiz), siehe
+  «Neuer Eintrag an den Zuständigen».
   Stummschalten pro Vorgang unterdrückt Mails an diesen Benutzer zu diesem Vorgang.
 - Format: Beschreibung und Kommentare in Markdown. Ausgehende Mails als HTML mit Text-Alternative. Eingehende HTML-Mails werden bereinigt gespeichert.
   - Technisch (02.11.2026): Zitate (Balken links) und die Trennlinie über der Fusszeile sind Tabellenzellen mit Rahmen
@@ -494,6 +496,23 @@ automatisch gesetzt.
   Fusszeile an Melder, Antwort mit Abschluss) gelten beim Start als Standard und bekommen den neuen Text; selbst
   angepasste bleiben.
 
+## Neuer Eintrag an den Zuständigen (bestätigt am 10.11.2026)
+
+- Anlass: Eine Mail einer unbeteiligten Person in einem Vorgang (als interne Notiz erfasst, Randfall 1) erreichte den
+  Zuständigen nicht; interne Notizen anderer benachrichtigten ihn ebenfalls nicht.
+- Der Zuständige erhält die Mail **«Neuer Eintrag»**, wenn jemand anderes in seinem Vorgang schreibt:
+  - eine **interne Notiz** oder eine **öffentliche Antwort** in Patchwork (auch «Im Namen» einer anderen Person);
+  - eine **Mail, die als interne Notiz landet**: von Unbeteiligten (mit Mail-Adresse und dem Hinweis «nicht beteiligt,
+    als interne Notiz erfasst») oder von IT-Mitarbeitenden, die auf eine Benachrichtigung antworten.
+- Keine Mail: bei eigenen Einträgen, beim Bearbeiten einer Notiz, bei automatischen Mails (z.B. Abwesenheitsnotizen),
+  ohne Zuständigen, wenn der Zuständige im Eintrag erwähnt ist (dann nur «Erwähnt») und wenn er im selben Schritt
+  zuständig wird (dann nur «Zugewiesen»). Antworten von Melder und Beteiligten bleiben bei «Neue Antwort».
+- Eigene Vorlage «Neuer Eintrag» (IT): Betreff «Neuer Eintrag: {{Titel}}», Text «**{{Verfasser}}** hat in {{Nummer}}
+  geschrieben ({{Art}}):» mit dem Text als Zitat und dem Knopf «Vorgang öffnen». Eigener Auslöser im Testbetrieb;
+  ohne eigene Einstellung gilt die des Blocks.
+- Die Mail bleibt interne Notiz, ändert den Status nicht, und die Person wird nicht automatisch Beteiligte (Randfall 1
+  bleibt); soll sie mitreden, fügt man sie als Beteiligte hinzu.
+
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 
 - **Bereiche je Rolle:** Unter Verwaltung legt man für die Rolle IT fest, welche Bereiche (Eingang, Störungen, Aufgaben) sie sieht. Admins sehen immer alles. Standard-Benutzer nutzen wie bisher nur das Portal.
@@ -699,7 +718,8 @@ abschalten.
   Personen des Blocks; deren Auswahl erscheint auch, wenn nur ein Auslöser sie braucht.
 - Auslöser sind die Mails mit eigener Vorlage: an Melder und Beteiligte Eingangsbestätigung, Öffentliche Antwort,
   Abgeschlossen, Abgelehnt, Duplikat (beide Fassungen), Erinnerung, Automatisch geschlossen; an IT-Mitarbeitende
-  Zugewiesen, Neue Antwort, Behebender Vorgang erledigt, Erwähnt, Fällig, Willkommen. Je Block nur die, die dort
+  Zugewiesen, Neue Antwort, Behebender Vorgang erledigt, Erwähnt, Fällig, Willkommen (seit 04.11.2026 zusätzlich
+  Antwort mit Abschluss, seit 10.11.2026 Neuer Eintrag). Je Block nur die, die dort
   vorkommen: Abgeschlossen, Abgelehnt, Erinnerung und Automatisch geschlossen nicht bei Generell (ohne Typ kein Status),
   Fällig nur bei Aufgaben, Willkommen nur bei Generell.
 - Der Vermerk zum Testbetrieb im Antwortfeld richtet sich nach dem Auslöser «Öffentliche Antwort» im Block des Vorgangs.
@@ -1044,7 +1064,7 @@ Zum Vergleich: HelpSpot bietet einen eigenen, im Internet betriebenen Anmeldedie
 
 Beim Bauen aufgefallene Randfälle:
 
-1. **Mail von Unbeteiligten auf einen bestehenden Vorgang** (z.B. IT antwortet auf eine Benachrichtigung, oder eine fremde Person nennt `[PW-…]` im Betreff): wird als **interne Notiz** erfasst, ändert den Status nicht und macht die Person nicht zum Beteiligten.
+1. **Mail von Unbeteiligten auf einen bestehenden Vorgang** (z.B. IT antwortet auf eine Benachrichtigung, oder eine fremde Person nennt `[PW-…]` im Betreff): wird als **interne Notiz** erfasst, ändert den Status nicht und macht die Person nicht zum Beteiligten. Seit 10.11.2026 erhält der Zuständige dazu die Mail «Neuer Eintrag».
 2. **Erster Abruf eines Postfachs:** Übernommen werden alle Mails ab dem Zeitpunkt «Mails abholen ab», gelesen oder nicht (geändert am 19.10.2026, vorher nur ungelesene). Verarbeitete Mails bleiben unverändert im Postfach: nicht als gelesen markiert, nicht verschoben, nicht gelöscht (geändert am 19.10.2026, vorher als gelesen markiert). Patchwork öffnet den Ordner nur lesend, erkennt danach neue Mails an der IMAP-UID (bei Microsoft 365 über die Delta-Abfrage, siehe Abschnitt Microsoft 365 Punkt 11) und bereits übernommene an der Message-ID. Nach einem Wechsel von Server, Ordner, Benutzername oder Startzeitpunkt beginnt der Abruf wieder ab dem Startzeitpunkt, ohne doppelte Vorgänge.
 3. **Antworten per Mail:** Der zitierte Verlauf wird entfernt und nur der neue Text angezeigt (als Text, ohne HTML-Formatierung). Die Originalmail (.eml) lässt sich herunterladen. Neue Vorgänge aus Mails zeigen das HTML der Mail.
 4. **Antwort des Melders auf eine abgelehnte Aufgabe:** Die Aufgabe bleibt abgelehnt (nur der Wartet-Status und abgeschlossene Status ausser dem Ablehnen-Status öffnen wieder), die Antwort erscheint in der Timeline.

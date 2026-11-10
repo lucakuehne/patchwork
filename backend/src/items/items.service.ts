@@ -874,6 +874,8 @@ export class ItemsService {
       pending.push(...afterChange);
       const mentioned = mentionedIds(text);
       if (mentioned.length) pending.push(() => this.notifications.mentioned(updated!, author, mentioned, kind, text));
+      // Neuer Eintrag an den Zuständigen (Entscheid vom 10.11.2026); wer gerade zuständig wurde, erhält «Zugewiesen»
+      if (updated!.assigneeId === item.assigneeId) pending.push(() => this.notifications.newEntry(updated!, author, kind, text));
     });
     await this.flush(pending);
   }

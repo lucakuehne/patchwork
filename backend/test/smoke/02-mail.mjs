@@ -183,7 +183,7 @@ await step('Öffentliche Antwort an Melder (An) und Beteiligte (CC), mit Anhang'
   await waitForMail(BOB, (m) => m.subject === `[PW-${itemNo}] VPN verbindet nicht`, 'Antwort CC');
 });
 
-await step('Interne Notiz geht nicht raus', async () => {
+await step('Interne Notiz geht nicht an den Melder, aber an den Zuständigen', async () => {
   const before = (await inbox(ANNA)).length;
   await api('POST', `/items/${itemNo}/entries`, (() => {
     const f = new FormData();
@@ -193,6 +193,13 @@ await step('Interne Notiz geht nicht raus', async () => {
   })());
   await sleep(4000);
   assert.equal((await inbox(ANNA)).length, before);
+  // «Neuer Eintrag» an Ivan (zuständig), Verfasserin ist Ada (Entscheid vom 10.11.2026)
+  const note = await waitForMail(
+    IVAN,
+    (m) => m.subject === `[PW-${itemNo}] Neuer Eintrag: VPN verbindet nicht` && m.text.includes('Intern: Zertifikat abgelaufen?'),
+    'Neuer Eintrag',
+  );
+  assert.ok(note.text.startsWith(`**Ada Admin** hat in PW-${itemNo} geschrieben (interne Notiz):`), note.text);
 });
 
 await step('Antwort des Melders holt den Vorgang aus «Wartet auf Melder»', async () => {
@@ -239,6 +246,18 @@ await step('Unbeteiligter Dritter mit Nummer im Betreff wird interne Notiz', asy
   assert.equal(last.kind, 'note');
   assert.equal(last.meta.external, true);
   assert.equal(item.status.label, 'Wartet auf Melder');
+  // Mail «Neuer Eintrag» an den Zuständigen, mit der Mail-Adresse und dem Hinweis (Entscheid vom 10.11.2026); Ivan
+  // hat schon «Neuer Eintrag» zu Adas Antwort und Notiz erhalten
+  const subject = `[PW-${itemNo}] Neuer Eintrag: VPN verbindet nicht`;
+  const fromStranger = (m) => m.subject === subject && m.text.includes(STRANGER);
+  const note = await waitForMail(IVAN, fromStranger, 'Neuer Eintrag');
+  assert.ok(note.text.includes(`hat in PW-${itemNo} geschrieben (per Mail, nicht beteiligt, als interne Notiz erfasst):\n\n> Ich mische mich ein.`), note.text);
+  // Automatische Mail eines Unbeteiligten: keine Mail
+  await sendMail({ from: STRANGER, subject: `Abwesend: [PW-${itemNo}] Hallo`, text: 'Bin weg.', headers: { 'Auto-Submitted': 'auto-replied' } });
+  await sleep(500);
+  await poll();
+  await sleep(2500);
+  assert.equal((await inbox(IVAN)).filter(fromStranger).length, 1, 'keine Mail zur Abwesenheitsnotiz');
 });
 
 await step('Typwechsel Störung → Aufgabe nur mit gewähltem Status, zurück zur Störung nach seiner Rolle', async () => {
