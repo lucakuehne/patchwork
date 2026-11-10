@@ -78,7 +78,7 @@ export interface DeliveryCircles {
 }
 
 /** Auslöser im Testbetrieb: die Mails mit eigener Vorlage, ohne Link- und Fusszeilen */
-export type DeliveryTrigger = Exclude<TemplateKey, 'reporterLink' | 'reporterFooter' | 'staffLink' | 'staffFooter'>;
+export type DeliveryTrigger = Exclude<TemplateKey, 'reporterLink' | 'reporterFooter' | 'importHint' | 'staffLink' | 'staffFooter'>;
 
 /**
  * Blöcke des Testbetriebs je Typ des Vorgangs (Entscheid vom 28.10.2026). «general» gilt für Vorgänge ohne Typ

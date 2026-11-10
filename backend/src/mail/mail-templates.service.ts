@@ -123,9 +123,11 @@ export class MailTemplatesService implements OnApplicationBootstrap {
       version(reporter ? 'reporterFooter' : 'staffFooter'),
     ]);
     const values: Record<string, string> = { ...exampleValues(this.definition(shown)), ...exampleValues(definition) };
+    // Hinweis bei importierten Mails: in der Eingangsbestätigung unter deren Text
+    const hint = key === 'importHint' ? (draft.body ?? '') : '';
     const composed = composeMail(
       {
-        body: shown === 'reply' ? EXAMPLE_REPLY : (main.body ?? ''),
+        body: shown === 'reply' ? EXAMPLE_REPLY : [main.body ?? '', hint].filter((part) => part.trim()).join('\n\n'),
         link: link.body ?? '',
         footer: footer.body ?? '',
         written: shown === 'reply',

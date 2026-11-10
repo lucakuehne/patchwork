@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { Response } from 'express';
 import { simpleParser } from 'mailparser';
 import { z } from 'zod';
@@ -30,6 +31,9 @@ import { StorageService } from '../storage/storage.service';
 import { MailFetcherService } from './mail-fetcher.service';
 import { MailSimulationService } from './mail-simulation.service';
 import { disposition, mailAttachmentPreview, mailView, sendMailAttachment } from './mail-view';
+
+/** Wer eine Mail importiert hat (zweiter Bezug auf die Benutzer neben «simuliert von») */
+const importer = alias(users, 'importer');
 
 /** Ohne den Ablageschlüssel, der nur intern gebraucht wird */
 const withoutKey = <T extends { storageKey: string }>({ storageKey: _, ...rest }: T) => rest;
@@ -184,15 +188,17 @@ export class IncomingMailsController {
         item: { prefix: items.prefix, number: items.number, title: items.title, type: items.type },
         mailbox: { id: mailboxes.id, name: mailboxes.name, address: mailboxes.address },
         simulatedBy: users.name,
+        importedBy: importer.name,
       })
       .from(incomingMails)
       .leftJoin(items, eq(items.id, incomingMails.itemId))
       .leftJoin(mailboxes, eq(mailboxes.id, incomingMails.mailboxId))
       .leftJoin(users, eq(users.id, incomingMails.simulatedById))
+      .leftJoin(importer, eq(importer.id, incomingMails.importedById))
       .where(where)
       .orderBy(desc(incomingMails.createdAt))
       .limit(limit);
-    return rows.map(({ mail, item, mailbox, simulatedBy }) => ({
+    return rows.map(({ mail, item, mailbox, simulatedBy, importedBy }) => ({
       id: mail.id,
       createdAt: mail.createdAt,
       processedAt: mail.processedAt,
@@ -208,6 +214,8 @@ export class IncomingMailsController {
       attempts: mail.attempts,
       simulated: mail.simulated,
       simulatedBy,
+      /** Im Eingang importiert von (Entscheid vom 10.11.2026), sonst null */
+      importedBy: mail.importedById ? (importedBy ?? '–') : null,
       item: item?.number ? item : null,
       storageKey: mail.storageKey,
     }));

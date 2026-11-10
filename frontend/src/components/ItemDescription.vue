@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { importNote, importTitle } from '../import-info';
 import { renderMailHtml, renderMarkdown } from '../markdown';
 import type { ItemDetail } from '../types';
 import AttachmentList from './AttachmentList.vue';
@@ -60,6 +61,8 @@ async function submit() {
         <span v-if="item.simulated" class="badge simulated" title="Im Testbetrieb simuliert, nicht wirklich per Mail eingegangen">
           simuliert
         </span>
+        <span v-if="item.importInfo" class="badge imported" :title="importTitle(item.importInfo)">importiert</span>
+        <span v-if="item.importInfo" class="faint import-note">{{ importNote(item.importInfo) }}</span>
       </template>
       <template #actions>
         <button v-if="!editing" class="link-btn small" type="button" @click="start">Bearbeiten</button>
@@ -90,6 +93,9 @@ async function submit() {
 </template>
 
 <style scoped>
+.import-note {
+  font-size: 12px;
+}
 .original {
   padding: 12px 14px;
   background: var(--original-bg);

@@ -333,6 +333,8 @@ export class ItemsService {
       channel: channel && { id: channel.id, label: channel.label, icon: channel.icon },
       suggestedType: item.suggestedType,
       simulated: item.simulated,
+      /** Aus einer importierten Mail: wer importiert hat, Sendedatum, ursprüngliche Empfänger */
+      importInfo: item.importInfo,
       discarded: item.discarded,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,

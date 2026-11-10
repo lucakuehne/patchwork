@@ -27,6 +27,8 @@ import { GraphMailService } from './mail/graph-mail.service';
 import { IncomingMailsController } from './mail/incoming-mails.controller';
 import { OutgoingMailsController } from './mail/outgoing-mails.controller';
 import { MailFetcherService } from './mail/mail-fetcher.service';
+import { MailImportController } from './mail/mail-import.controller';
+import { MailImportService } from './mail/mail-import.service';
 import { MailSimulationService } from './mail/mail-simulation.service';
 import { MailTemplatesController } from './mail/mail-templates.controller';
 import { MailTemplatesService } from './mail/mail-templates.service';
@@ -83,6 +85,7 @@ import { UsersService } from './users/users.service';
     MicrosoftCallbackController,
     OutgoingMailsController,
     IncomingMailsController,
+    MailImportController,
     MailTemplatesController,
     RulesController,
     RecurringTasksController,
@@ -123,6 +126,7 @@ import { UsersService } from './users/users.service';
     NotificationsService,
     WelcomeMailService,
     MailFetcherService,
+    MailImportService,
     MailSimulationService,
     RulesService,
     AutomationService,

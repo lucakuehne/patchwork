@@ -8,7 +8,8 @@ import { deliveryMark } from '../outgoing';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import { authorName, NOTE_EDIT_MINUTES } from '../timeline';
-import type { Entry } from '../types';
+import { importNote, importTitle } from '../import-info';
+import type { Entry, ImportInfo } from '../types';
 import AttachmentList from './AttachmentList.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
 import NoteTimeDialog from './NoteTimeDialog.vue';
@@ -26,6 +27,8 @@ const session = useSession();
 const toast = useToast();
 
 const meta = computed(() => (props.entry.meta ?? {}) as Record<string, unknown>);
+/** Aus einer importierten Mail (ging an eine andere Adresse) */
+const imported = computed(() => (meta.value.imported as ImportInfo | undefined) ?? null);
 const author = computed(() => authorName(props.entry) ?? 'System');
 const fromMail = computed(() => meta.value.source === 'mail');
 // Versand der Antwort, nur bei Abweichungen: Testbetrieb, Fehler, noch unterwegs
@@ -143,6 +146,8 @@ async function save() {
         <span v-if="meta.simulated" class="badge simulated" title="Im Testbetrieb simuliert, nicht wirklich per Mail eingegangen">
           simuliert
         </span>
+        <span v-if="imported" class="badge imported" :title="importTitle(imported)">importiert</span>
+        <span v-if="imported" class="faint import-note">{{ importNote(imported) }}</span>
         <span v-if="deliveryBadge" class="badge" :class="deliveryBadge.kind" :title="deliveryBadge.title">{{ deliveryBadge.text }}</span>
       </template>
       <template #actions>
@@ -197,6 +202,9 @@ async function save() {
 </template>
 
 <style scoped>
+.import-note {
+  font-size: 12px;
+}
 .message {
   background: var(--surface);
   border: 1px solid var(--border);

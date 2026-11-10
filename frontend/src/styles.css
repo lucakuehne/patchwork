@@ -471,6 +471,11 @@ h3 {
   background: var(--warning-soft);
   color: var(--warning);
 }
+/* Im Eingang importierte Mail (ging an eine andere Adresse) */
+.badge.imported {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
 /* Checklisten-Fortschritt und Typ-Vorschlag in Listen und auf dem Board */
 .progress-badge {

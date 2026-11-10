@@ -513,6 +513,40 @@ automatisch gesetzt.
 - Die Mail bleibt interne Notiz, ändert den Status nicht, und die Person wird nicht automatisch Beteiligte (Randfall 1
   bleibt); soll sie mitreden, fügt man sie als Beteiligte hinzu.
 
+## Mails importieren (bestätigt am 10.11.2026)
+
+- Anlass: Mails an eine falsche Adresse (z.B. eine persönliche oder it@) sollen in Patchwork landen können.
+- **Wo:** Knopf «Mail importieren» im Eingang (Dateiauswahl, mehrere .eml/.msg auf einmal) und Ablegen per Ziehen auf
+  die Seite des Eingangs, direkt aus Outlook (klassisches Outlook in Edge oder Chrome liefert eine .msg) oder als Datei.
+  Nur für IT und Admins mit Zugriff auf den Eingang.
+- **Vorschau vor dem Import:** je Mail Absender, Betreff, Sendedatum, Empfänger und ob ein neuer Vorgang entsteht oder
+  sie als Antwort in einen bestehenden kommt. Hinweise: schon in Patchwork (gleiche Message-ID, nicht wählbar), Absender
+  ist ein Postfach von Patchwork (wird nicht übernommen), automatische Mail (ohne Eingangsbestätigung), Datei nicht
+  lesbar bzw. keine Mail. Ist der Absender in der IT (vermutlich eine Weiterleitung statt der Originalmail), warnt
+  Patchwork, und die Mail ist zuerst nicht gewählt. Die früher vorgeschlagene Erkennung weitergeleiteter Mails entfällt.
+- **Behandlung wie eine eingehende Mail** über das Standard-Postfach: Absender wird Melder, CC werden Beteiligte,
+  Anhänge und Bilder kommen mit, die Regeln wirken. Mit `[PW-…]` im Betreff oder als erkannte Antwort kommt sie in den
+  bestehenden Vorgang. IT-Mitarbeitende unter den Empfängern (z.B. der ursprüngliche Empfänger) werden nicht
+  Beteiligte. Meldeweg «E-Mail» wie bei abgerufenen Mails.
+- **Eingangsbestätigung:** wie bei normalen Mails, mit Häkchen «Eingangsbestätigung senden» beim Import (vorgewählt),
+  dazu ein Hinweis auf die richtige Adresse. Eigene Vorlage «Hinweis bei importierten Mails» (Melder), die unter dem
+  Text der Eingangsbestätigung steht: «Deine E-Mail ging nicht an unsere Helpdesk-Adresse, wir haben sie für dich
+  übernommen. Bitte schreib uns künftig direkt an {{Postfach}}, dann kommt deine Meldung sofort bei uns an.»
+  (Wortlaut bestätigt am 10.11.2026).
+- **Zeitpunkt des Eingangs:** der Import; das Sendedatum steht in der Meldung («importiert von …, gesendet …»), ebenso
+  bei einer importierten Antwort im Verlauf. Im Protokoll der eingehenden Mails steht «importiert».
+- Wer die Mail importiert, erhält dazu keine Mail «Neue Antwort» bzw. «Neuer Eintrag».
+- **Vorgemerkt für später:**
+  - Auswertung: eigener fester Meldeweg «E-Mail an falsche Adresse» (automatisch gesetzt, nicht löschbar), Anzeige der
+    ursprünglichen Empfängeradresse in der Meldung und Spalte «Ursprünglich an» im CSV-Export. Die Angaben (wer
+    importiert hat, Sendedatum, ursprüngliche Empfänger) speichert Patchwork schon jetzt am Vorgang.
+  - Eine Mail in einen offenen Vorgang ziehen, um sie dort als Antwort anzuhängen; bis dahin «Zusammenführen».
+- Technisch: .msg-Dateien liest die Bibliothek `@kenjiuno/msgreader` (Apache-2.0, schon für die Vorschau von
+  .msg-Anhängen im Einsatz); Patchwork wandelt sie in eine gewöhnliche Mail (MIME) um. Bei empfangenen Mails haben die Kopfzeilen der Übermittlung Vorrang (Absender,
+  Empfänger, Datum, Message-ID), ohne sie gilt eine Message-ID aus der Prüfsumme der Datei. Gespeichert wird die
+  umgewandelte Mail («Originalmail» lädt sie als .eml herunter). Aus dem neuen Outlook und Outlook im Web lässt sich
+  eine Mail nicht direkt in den Browser ziehen: dort als .eml speichern.
+
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 
 - **Bereiche je Rolle:** Unter Verwaltung legt man für die Rolle IT fest, welche Bereiche (Eingang, Störungen, Aufgaben) sie sieht. Admins sehen immer alles. Standard-Benutzer nutzen wie bisher nur das Portal.

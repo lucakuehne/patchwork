@@ -178,6 +178,7 @@ const sender = (m: IncomingMail) => (m.fromName ? `${m.fromName} <${m.fromAddres
               <span v-if="m.simulated" class="badge simulated" :title="m.simulatedBy ? `Simuliert von ${m.simulatedBy}` : undefined">
                 simuliert
               </span>
+              <span v-if="m.importedBy" class="badge imported" :title="`Im Eingang importiert von ${m.importedBy}`">importiert</span>
             </td>
             <td>{{ sender(m) }}</td>
             <td>{{ m.subject }}</td>
@@ -199,6 +200,7 @@ const sender = (m: IncomingMail) => (m.fromName ? `${m.fromName} <${m.fromAddres
         <dd>
           <span class="badge" :class="kindOf(open.result)">{{ INCOMING_RESULTS[open.result].label }}</span>
           <span v-if="open.simulated" class="badge simulated">simuliert</span>
+          <span v-if="open.importedBy" class="badge imported">importiert von {{ open.importedBy }}</span>
           <template v-if="open.attempts > 1"> · {{ open.attempts }} Versuche</template>
         </dd>
         <template v-if="open.reason">

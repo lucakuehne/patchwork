@@ -53,6 +53,8 @@ interface ReporterMail {
   written?: string;
   /** Öffentliche Antwort: Name des Verfassers für die Kopfzeile */
   author?: string;
+  /** Eingangsbestätigung einer importierten Mail: Hinweis auf die richtige Adresse unter dem Text */
+  importHint?: boolean;
   entryId?: string;
   attachmentIds?: string[];
   automated: boolean;
@@ -90,7 +92,8 @@ export class NotificationsService {
     const [item = created] = await this.db.select().from(items).where(eq(items.id, created.id)).limit(1);
     const reporter = await this.eligible(item, item.reporterId, null);
     if (!reporter) return;
-    await this.sendToReporter(item, [reporter.email], [], { template: 'confirmation', automated: true });
+    // Importierte Mail (ging an eine andere Adresse): mit dem Hinweis auf die richtige Adresse (Entscheid vom 10.11.2026)
+    await this.sendToReporter(item, [reporter.email], [], { template: 'confirmation', automated: true, importHint: !!item.importInfo });
   }
 
   /**
@@ -179,8 +182,8 @@ export class NotificationsService {
    * öffentliche Antwort schreibt oder eine Mail als interne Notiz landet. Nicht an den Verfasser selbst und nicht, wenn
    * der Zuständige im Eintrag erwähnt ist (dann kommt «Erwähnt»).
    */
-  async newEntry(item: Item, author: User, kind: NewEntryKind, body: string): Promise<void> {
-    if (!item.assigneeId || mentionedIds(body).includes(item.assigneeId)) return;
+  async newEntry(item: Item, author: User, kind: NewEntryKind, body: string, exceptUserId?: string): Promise<void> {
+    if (!item.assigneeId || item.assigneeId === exceptUserId || mentionedIds(body).includes(item.assigneeId)) return;
     const assignee = await this.eligible(item, item.assigneeId, author.id);
     if (!assignee) return;
     // Bei Mails von Unbeteiligten mit Mail-Adresse, damit man weiss, von wem sie kommt
@@ -194,8 +197,9 @@ export class NotificationsService {
   }
 
   /** Mail an den Zuständigen, wenn Melder oder Beteiligte geantwortet haben. */
-  async inboundReply(item: Item, author: User, text: string): Promise<void> {
-    if (!item.assigneeId) return;
+  /** «exceptUserId»: keine Mail an diese Person, z.B. wer die Mail selbst importiert hat */
+  async inboundReply(item: Item, author: User, text: string, exceptUserId?: string): Promise<void> {
+    if (!item.assigneeId || item.assigneeId === exceptUserId) return;
     const assignee = await this.eligible(item, item.assigneeId, author.id);
     if (!assignee) return;
     await this.sendToStaff(item, assignee, 'inboundReply', {
@@ -339,13 +343,21 @@ export class NotificationsService {
     const lastInbound = previous.filter((m) => m.direction === 'in').at(-1)?.messageId ?? null;
 
     const portalUrl = `${appConfig.publicUrl}/portal/items/${itemRef(mail.portalItem ?? item)}`;
-    const values = { ...(await this.itemValues(item, portalUrl)), ...mail.values };
-    const [template, link, footer, reporter] = await Promise.all([
+    const values = {
+      ...(await this.itemValues(item, portalUrl)),
+      Postfach: mailbox.address,
+      'Ursprünglich an': item.importInfo?.to.join(', ') ?? '',
+      ...mail.values,
+    };
+    const [template, link, footer, reporter, hint] = await Promise.all([
       this.templates.get(mail.template),
       this.templates.get('reporterLink'),
       this.templates.get('reporterFooter'),
       this.user(item.reporterId),
+      mail.importHint ? this.templates.get('importHint') : undefined,
     ]);
+    // Hinweis bei importierten Mails als eigener Absatz unter dem Text der Vorlage
+    const templateBody = [template.body ?? '', hint?.body ?? ''].filter((part) => part.trim()).join('\n\n');
     // Link-Zeile zum Portal nur, wenn das Portal für den Melder freigeschaltet ist; übernommene Tickets aus HelpSpot
     // zeigt das Portal nicht
     const withLink = !!reporter && (mail.portalItem ?? item).prefix !== HELPSPOT_PREFIX && (await this.portalAccess.allowed(reporter));
@@ -353,7 +365,7 @@ export class NotificationsService {
       item,
       composeMail(
         {
-          body: mail.written ?? template.body ?? '',
+          body: mail.written ?? templateBody,
           link: withLink ? (link.body ?? '') : '',
           footer: footer.body ?? '',
           written: mail.written !== undefined,

@@ -464,6 +464,8 @@ export interface ItemDetail {
   suggestedType: ItemType | null;
   /** Im Testbetrieb aus einer simulierten Mail entstanden */
   simulated: boolean;
+  /** Aus einer importierten Mail entstanden (ging an eine andere Adresse), sonst null */
+  importInfo: ImportInfo | null;
   discarded: boolean;
   createdAt: string;
   updatedAt: string;
@@ -727,7 +729,53 @@ export interface IncomingMail {
   simulated: boolean;
   /** Name des Admins, der die Mail simuliert hat */
   simulatedBy: string | null;
+  /** Im Eingang importiert von (Name), sonst null */
+  importedBy: string | null;
   item: { prefix: string; number: number; title: string; type: ItemType | null } | null;
+}
+
+/** Angaben zu einer importierten Mail (Entscheid vom 10.11.2026), am Vorgang bzw. im Eintrag einer Antwort */
+export interface ImportInfo {
+  byId: string;
+  /** Wer importiert hat */
+  by: string;
+  /** Sendedatum laut Mail, null = unbekannt */
+  sentAt: string | null;
+  /** Ursprüngliche Empfänger (An) */
+  to: string[];
+}
+
+/** Vorgang zu einer importierten Mail; ohne Zugriff auf seinen Bereich ohne Kennung und Titel */
+export interface MailImportItem {
+  ref: string | null;
+  title: string | null;
+}
+
+/** Vorschau einer Datei vor dem Import */
+export interface MailImportPreview {
+  file: string;
+  /** Datei nicht lesbar, keine Mail oder ohne Absender */
+  error: string | null;
+  from: { address: string; name: string } | null;
+  to: string[];
+  subject: string;
+  date: string | null;
+  /** Absender ist in der IT: vermutlich eine Weiterleitung */
+  staffSender: boolean;
+  automated: boolean;
+  /** Absender ist ein Postfach von Patchwork (wird ignoriert) */
+  own: boolean;
+  /** Schon in Patchwork */
+  duplicate: MailImportItem | null;
+  /** Antwort auf diesen Vorgang, sonst neuer Vorgang im Eingang */
+  target: MailImportItem | null;
+}
+
+export interface MailImportRow {
+  file: string;
+  result: IncomingResult | 'duplicate';
+  reason?: string | null;
+  item: MailImportItem | null;
 }
 
 export interface IncomingMailDetail extends IncomingMail {

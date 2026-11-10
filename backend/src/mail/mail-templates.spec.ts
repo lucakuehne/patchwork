@@ -57,16 +57,18 @@ describe('Platzhalter', () => {
       expect(names, t.key).not.toContain('Melder');
       expect(names, t.key).not.toContain('Zuständig');
       expect([...used(t.subject), ...used(t.body)], t.key).not.toContain('App');
-      // Link-Zeile und Fusszeile stehen in jeder Mail, dort nur Nummer, Titel und Link; Mails ohne Vorgang
-      // (Willkommen) mit Vor- und Nachname der Person
+      // Link-Zeile und Fusszeile stehen in jeder Mail, dort nur Nummer, Titel und Link; der Hinweis bei importierten
+      // Mails nennt die Adressen; Mails ohne Vorgang (Willkommen) mit Vor- und Nachname der Person
       const expected =
-        t.subject === null
-          ? ['Nummer', 'Titel', 'Link']
-          : t.standalone
-            ? ['Vorname', 'Nachname', 'Link']
-            : ['Melder Vorname', 'Melder Nachname', 'Zuständig Vorname', 'Zuständig Nachname'];
+        t.key === 'importHint'
+          ? ['Nummer', 'Titel', 'Postfach', 'Ursprünglich an']
+          : t.subject === null
+            ? ['Nummer', 'Titel', 'Link']
+            : t.standalone
+              ? ['Vorname', 'Nachname', 'Link']
+              : ['Melder Vorname', 'Melder Nachname', 'Zuständig Vorname', 'Zuständig Nachname'];
       expect(names, t.key).toEqual(expect.arrayContaining(expected));
-      if (t.subject === null) expect(names, t.key).toHaveLength(3);
+      if (t.subject === null) expect(names, t.key).toHaveLength(expected.length);
     }
     const examples = exampleValues(templateByKey('assigned')!);
     expect([examples['Melder Vorname'], examples['Melder Nachname']]).toEqual(['Anna', 'Muster']);
@@ -407,6 +409,11 @@ describe('Vorlagen verwalten', () => {
     expect(confirmation.text).toContain(
       '-- \nAntworte einfach auf diese E-Mail, dann landet deine Antwort direkt bei der Meldung. Bitte lass die Nummer [PW-123] im Betreff stehen.',
     );
+
+    // Hinweis bei importierten Mails: in der Eingangsbestätigung unter deren Text, mit Beispieladressen
+    const hint = await templates.preview('importHint', { subject: null, body: 'Bitte an {{Postfach}} statt an {{Ursprünglich an}}.' });
+    expect(hint.subject).toBe('[PW-123] Drucker druckt nicht');
+    expect(hint.text).toMatch(/Wir melden uns so bald wie möglich\.[\s\S]*\n\nBitte an helpdesk@firma\.ch statt an ivan\.it@firma\.ch\./);
 
     const staff = await templates.preview('staffLink', { subject: null, body: '[Öffnen]({{Link}})' });
     expect(staff.text).toContain('Öffnen: https://patchwork.firma.local/items/123\n\n-- \nPatchwork · Benachrichtigung zu PW-123');

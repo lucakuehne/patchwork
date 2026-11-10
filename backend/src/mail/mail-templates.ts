@@ -13,6 +13,7 @@ export type TemplateKey =
   | 'waitingClosed'
   | 'reporterLink'
   | 'reporterFooter'
+  | 'importHint'
   | 'assigned'
   | 'inboundReply'
   | 'fixCompleted'
@@ -241,6 +242,24 @@ export const TEMPLATES: TemplateDefinition[] = [
     formerBodies: ['Patchwork · {{Nummer}}\nBitte lass bei Antworten die Nummer [{{Nummer}}] im Betreff stehen.'],
     plain: true,
     placeholders: FRAME(PORTAL_LINK),
+  },
+  {
+    key: 'importHint',
+    group: 'reporter',
+    label: 'Hinweis bei importierten Mails',
+    description:
+      'Steht in der Eingangsbestätigung unter dem Text, wenn jemand in der IT eine Mail importiert hat, die an eine ' +
+      'andere Adresse ging (Eingang → Mail importieren).',
+    subject: null,
+    body:
+      'Deine E-Mail ging nicht an unsere Helpdesk-Adresse, wir haben sie für dich übernommen. Bitte schreib uns ' +
+      'künftig direkt an {{Postfach}}, dann kommt deine Meldung sofort bei uns an.',
+    placeholders: [
+      NUMBER,
+      TITLE,
+      p('Postfach', 'Adresse, über die Patchwork antwortet', 'helpdesk@firma.ch'),
+      p('Ursprünglich an', 'Adresse(n), an die die Mail ursprünglich ging', 'ivan.it@firma.ch'),
+    ],
   },
   {
     key: 'assigned',

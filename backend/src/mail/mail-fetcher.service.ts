@@ -13,6 +13,8 @@ import {
   items,
   mailMessages,
   participants,
+  users as usersTable,
+  type ImportInfo,
   type IncomingMailRow,
   type IncomingResult,
   type Item,
@@ -69,6 +71,35 @@ interface Outcome {
 }
 
 const validDate = (d: Date | undefined) => (d && !Number.isNaN(d.getTime()) ? d : null);
+
+/** Herkunft einer Mail, die nicht abgerufen wurde: im Testbetrieb simuliert bzw. im Eingang importiert */
+interface Origin {
+  simulatedBy?: User | null;
+  /** Import (Entscheid vom 10.11.2026): wer importiert hat, Angaben für Vorgang bzw. Eintrag, mit Eingangsbestätigung? */
+  imported?: { by: User; info: ImportInfo; confirmation: boolean } | null;
+}
+
+/** Ergebnis eines Imports; «duplicate»: schon in Patchwork (gleiche Message-ID), mit dem Vorgang, falls bekannt */
+export interface ImportOutcome {
+  result: IncomingResult | 'duplicate';
+  reason?: string | null;
+  itemId?: string | null;
+}
+
+/** Eckdaten einer Mail vor dem Import (Vorschau) */
+export interface ImportDescription {
+  from: { address: string; name: string } | null;
+  to: string[];
+  subject: string;
+  date: Date | null;
+  /** Schon in Patchwork: Vorgang (null = ohne Vorgang, z.B. ignoriert); undefined = neu */
+  known: string | null | undefined;
+  /** Gehört zu diesem Vorgang (Antwort), sonst neuer Vorgang */
+  target: Item | null;
+  automated: boolean;
+  /** Absender ist ein Postfach von Patchwork */
+  own: boolean;
+}
 
 @Injectable()
 export class MailFetcherService implements OnModuleInit {
@@ -204,36 +235,96 @@ export class MailFetcherService implements OnModuleInit {
    */
   async ingest(mailbox: Mailbox, raw: Buffer, simulatedBy?: User): Promise<IngestResult> {
     const parsed = await simpleParser(raw, { skipImageLinks: true, skipTextToHtml: true });
-    const messageId =
-      normalizeMessageId(parsed.messageId) ?? `<sha256.${createHash('sha256').update(raw).digest('hex')}@patchwork>`;
-    // Erneut abgerufen (z.B. nach einem Neustart des Abrufs): steht schon im Protokoll
-    const [logged] = await this.db
-      .select({ id: incomingMails.id })
-      .from(incomingMails)
-      .where(eq(incomingMails.messageId, messageId))
-      .limit(1);
-    if (logged) return 'duplicate';
-    // Vor dem Protokoll verarbeitet: wird beim Nachtragen erfasst
-    const [known] = await this.db
-      .select({ direction: mailMessages.direction })
-      .from(mailMessages)
-      .where(eq(mailMessages.messageId, messageId))
-      .limit(1);
-    if (known?.direction === 'in') return 'duplicate';
+    const messageId = this.messageIdOf(parsed, raw);
+    // Erneut abgerufen (z.B. nach einem Neustart des Abrufs) oder vor dem Protokoll verarbeitet
+    if ((await this.knownItem(messageId)) !== undefined) return 'duplicate';
 
+    const origin: Origin = { simulatedBy: simulatedBy ?? null };
     const rawKey = await this.storage.save(raw, 'eml');
     let outcome: Outcome;
     try {
-      outcome = await this.process(mailbox, parsed, messageId, rawKey, simulatedBy ?? null);
+      outcome = await this.process(mailbox, parsed, messageId, rawKey, origin);
     } catch (err) {
-      await this.log(mailbox, parsed, messageId, rawKey, simulatedBy ?? null, { result: 'failed', reason: (err as Error).message }).catch(
+      await this.log(mailbox, parsed, messageId, rawKey, origin, { result: 'failed', reason: (err as Error).message }).catch(
         (logErr: Error) => this.logger.error(`Protokoll der Mail ${messageId} fehlgeschlagen: ${logErr.message}`),
       );
       throw err;
     }
-    await this.log(mailbox, parsed, messageId, rawKey, simulatedBy ?? null, outcome);
+    await this.log(mailbox, parsed, messageId, rawKey, origin, outcome);
     if (outcome.result === 'ignored') this.logger.log(`Mail ${messageId} in ${mailbox.address} ignoriert: ${outcome.reason}`);
     return outcome.result === 'created' ? 'created' : outcome.result === 'ignored' ? 'ignored' : 'appended';
+  }
+
+  /**
+   * Mail importieren (Entscheid vom 10.11.2026): eine Mail, die an eine andere Adresse ging (z.B. eine persönliche),
+   * wie eine abgerufene verarbeiten, über das Standard-Postfach, und im Protokoll festhalten. Schon vorhandene (gleiche
+   * Message-ID) nicht noch einmal. Ein Fehler steht im Protokoll und im Ergebnis, der Aufrufer macht mit der nächsten
+   * Mail weiter.
+   */
+  async importMail(by: User, raw: Buffer, confirmation: boolean): Promise<ImportOutcome> {
+    const mailbox = await this.mailboxes.getDefault();
+    if (!mailbox) throw new BadRequestException('Es ist kein Postfach eingerichtet');
+    const parsed = await simpleParser(raw, { skipImageLinks: true, skipTextToHtml: true });
+    const messageId = this.messageIdOf(parsed, raw);
+    const known = await this.knownItem(messageId);
+    if (known !== undefined) return { result: 'duplicate', itemId: known };
+
+    const info: ImportInfo = {
+      byId: by.id,
+      by: by.name,
+      sentAt: validDate(parsed.date)?.toISOString() ?? null,
+      to: addresses(parsed.to).map((a) => a.address),
+    };
+    const origin: Origin = { imported: { by, info, confirmation } };
+    const rawKey = await this.storage.save(raw, 'eml');
+    let outcome: Outcome;
+    try {
+      outcome = await this.process(mailbox, parsed, messageId, rawKey, origin);
+    } catch (err) {
+      outcome = { result: 'failed', reason: (err as Error).message };
+    }
+    await this.log(mailbox, parsed, messageId, rawKey, origin, outcome);
+    return outcome;
+  }
+
+  /** Eckdaten einer Mail vor dem Import: Absender, Betreff, schon vorhanden, neuer Vorgang oder Antwort. */
+  async describeImport(raw: Buffer): Promise<ImportDescription> {
+    const parsed = await simpleParser(raw, { skipImageLinks: true, skipTextToHtml: true });
+    const from = addresses(parsed.from)[0] ?? null;
+    return {
+      from,
+      to: addresses(parsed.to).map((a) => a.address),
+      subject: parsed.subject ?? '',
+      date: validDate(parsed.date),
+      known: await this.knownItem(this.messageIdOf(parsed, raw)),
+      target: await this.findItem(parsed),
+      automated: !!from && isAutoGenerated(parsed.headers, from.address),
+      own: !!from && (await this.mailboxes.ownAddresses()).has(from.address),
+    };
+  }
+
+  /** Message-ID der Mail; ohne eine aus dem Inhalt, damit dieselbe Mail sie wieder erhält. */
+  private messageIdOf(parsed: ParsedMail, raw: Buffer): string {
+    return normalizeMessageId(parsed.messageId) ?? `<sha256.${createHash('sha256').update(raw).digest('hex')}@patchwork>`;
+  }
+
+  /**
+   * Schon in Patchwork? Im Protokoll (erneut abgerufen) oder als eingegangene Mail (vor dem Protokoll verarbeitet).
+   * Liefert den Vorgang (null = ohne, z.B. ignoriert), undefined = unbekannt.
+   */
+  private async knownItem(messageId: string): Promise<string | null | undefined> {
+    const [logged] = await this.db
+      .select({ itemId: incomingMails.itemId })
+      .from(incomingMails)
+      .where(eq(incomingMails.messageId, messageId))
+      .limit(1);
+    if (logged) return logged.itemId;
+    const [known] = await this.db
+      .select({ itemId: mailMessages.itemId, direction: mailMessages.direction })
+      .from(mailMessages)
+      .where(eq(mailMessages.messageId, messageId))
+      .limit(1);
+    return known?.direction === 'in' ? known.itemId : undefined;
   }
 
   /** Fehlgeschlagene Mail aus dem Protokoll noch einmal verarbeiten; liefert den neuen Stand. */
@@ -245,10 +336,25 @@ export class MailFetcherService implements OnModuleInit {
       (await this.mailboxes.getDefault());
     if (!mailbox) throw new BadRequestException('Es ist kein Postfach eingerichtet');
     const simulatedBy = row.simulatedById ? await this.users.getById(row.simulatedById).catch(() => null) : null;
+    const importedBy = row.importedById ? await this.users.getById(row.importedById).catch(() => null) : null;
     const parsed = await simpleParser(await this.storage.read(row.storageKey), { skipImageLinks: true, skipTextToHtml: true });
+    // Ein fehlgeschlagener Import bleibt ein Import (mit Eingangsbestätigung wie beim Abruf)
+    const origin: Origin = {
+      simulatedBy,
+      imported: importedBy && {
+        by: importedBy,
+        info: {
+          byId: importedBy.id,
+          by: importedBy.name,
+          sentAt: validDate(parsed.date)?.toISOString() ?? null,
+          to: addresses(parsed.to).map((a) => a.address),
+        },
+        confirmation: true,
+      },
+    };
     let outcome: Outcome;
     try {
-      outcome = await this.process(mailbox, parsed, row.messageId, row.storageKey, simulatedBy);
+      outcome = await this.process(mailbox, parsed, row.messageId, row.storageKey, origin);
     } catch (err) {
       outcome = { result: 'failed', reason: (err as Error).message };
     }
@@ -268,13 +374,7 @@ export class MailFetcherService implements OnModuleInit {
   }
 
   /** Verarbeitung: ignorieren, an einen Vorgang anhängen oder einen neuen anlegen. */
-  private async process(
-    mailbox: Mailbox,
-    parsed: ParsedMail,
-    messageId: string,
-    rawKey: string,
-    simulatedBy: User | null,
-  ): Promise<Outcome> {
+  private async process(mailbox: Mailbox, parsed: ParsedMail, messageId: string, rawKey: string, origin: Origin): Promise<Outcome> {
     const from = addresses(parsed.from)[0];
     if (!from) return { result: 'ignored', reason: 'Mail ohne Absender' };
     const own = await this.mailboxes.ownAddresses();
@@ -288,10 +388,24 @@ export class MailFetcherService implements OnModuleInit {
 
     const automated = isAutoGenerated(parsed.headers, from.address);
     const bulk = isBulk(parsed.headers);
-    const ccAddresses = addresses(parsed.cc).filter((a) => !own.has(a.address) && a.address !== from.address);
+    let ccAddresses = addresses(parsed.cc).filter((a) => !own.has(a.address) && a.address !== from.address);
+    if (origin.imported) {
+      // Importiert: IT-Mitarbeitende unter den Empfängern (z.B. wer die Mail erhalten hat) werden nicht Beteiligte
+      const staff = await this.staffAddresses();
+      ccAddresses = ccAddresses.filter((a) => !staff.has(a.address));
+    }
     const item = await this.findItem(parsed);
-    if (item) return this.appendToItem(item, mailbox, parsed, from, ccAddresses, messageId, rawKey, automated, !!simulatedBy);
-    return this.createItem(mailbox, parsed, from, ccAddresses, messageId, rawKey, automated || bulk, !!simulatedBy);
+    if (item) return this.appendToItem(item, mailbox, parsed, from, ccAddresses, messageId, rawKey, automated, origin);
+    return this.createItem(mailbox, parsed, from, ccAddresses, messageId, rawKey, automated || bulk, origin);
+  }
+
+  /** Adressen der IT-Mitarbeitenden und Admins, klein geschrieben */
+  private async staffAddresses(): Promise<Set<string>> {
+    const rows = await this.db
+      .select({ email: usersTable.email })
+      .from(usersTable)
+      .where(inArray(usersTable.role, ['it', 'admin']));
+    return new Set(rows.map((r) => r.email.trim().toLowerCase()));
   }
 
   private async log(
@@ -299,7 +413,7 @@ export class MailFetcherService implements OnModuleInit {
     parsed: ParsedMail,
     messageId: string,
     rawKey: string,
-    simulatedBy: User | null,
+    origin: Origin,
     outcome: Outcome,
   ): Promise<void> {
     const from = addresses(parsed.from)[0];
@@ -318,8 +432,9 @@ export class MailFetcherService implements OnModuleInit {
         reason: outcome.reason ?? null,
         itemId: outcome.itemId ?? null,
         entryId: outcome.entryId ?? null,
-        simulated: !!simulatedBy,
-        simulatedById: simulatedBy?.id ?? null,
+        simulated: !!origin.simulatedBy,
+        simulatedById: origin.simulatedBy?.id ?? null,
+        importedById: origin.imported?.by.id ?? null,
         storageKey: rawKey,
         processedAt: new Date(),
       })
@@ -414,8 +529,9 @@ export class MailFetcherService implements OnModuleInit {
     messageId: string,
     rawKey: string,
     suppressConfirmation: boolean,
-    simulated: boolean,
+    origin: Origin,
   ): Promise<Outcome> {
+    const imported = origin.imported ?? null;
     // Regeln vorab prüfen: Abfragen im Verzeichnis (AD-Gruppen) nicht innerhalb der Transaktion
     const rules = await this.rules.prepare('mail_new', {
       sender: from.address,
@@ -437,7 +553,8 @@ export class MailFetcherService implements OnModuleInit {
           mailboxId: mailbox.id,
           source: 'mail',
           channelId: await this.channels.idByKey('mail', tx),
-          simulated,
+          simulated: !!origin.simulatedBy,
+          importInfo: imported?.info ?? null,
         })
         .returning();
       const { inlineUrls, saved } = await this.saveMailAttachments(tx, created!.id, null, parsed);
@@ -463,13 +580,17 @@ export class MailFetcherService implements OnModuleInit {
       return created!;
     });
     await rules.afterCommit();
-    if (!suppressConfirmation && !rules.suppressConfirmation && !rules.discarded) await this.notifications.confirmation(item);
+    // Beim Import entscheidet, wer importiert, über die Eingangsbestätigung
+    const withoutConfirmation = suppressConfirmation || (!!imported && !imported.confirmation);
+    if (!withoutConfirmation && !rules.suppressConfirmation && !rules.discarded) await this.notifications.confirmation(item);
     await rules.afterConfirmation();
     const reason = rules.discarded
       ? 'Durch eine Regel verworfen'
       : suppressConfirmation
         ? 'Automatische Mail oder Newsletter, ohne Eingangsbestätigung'
-        : null;
+        : withoutConfirmation
+          ? 'Importiert ohne Eingangsbestätigung'
+          : null;
     return { result: 'created', reason, itemId: item.id };
   }
 
@@ -482,8 +603,10 @@ export class MailFetcherService implements OnModuleInit {
     messageId: string,
     rawKey: string,
     automated: boolean,
-    simulated: boolean,
+    origin: Origin,
   ): Promise<Outcome> {
+    const simulated = !!origin.simulatedBy;
+    const imported = origin.imported ?? null;
     const text = stripQuotedText(parsed.text ?? '');
     /** Text des Eintrags, mit eingebetteten Bildern an ihrer Stelle */
     let body = text;
@@ -526,6 +649,7 @@ export class MailFetcherService implements OnModuleInit {
           automated,
           ...(involved ? {} : { external: true }),
           ...(simulated ? { simulated: true } : {}),
+          ...(imported ? { imported: imported.info } : {}),
         },
         { mailMessageId: messageId },
       );
@@ -576,10 +700,12 @@ export class MailFetcherService implements OnModuleInit {
     await rules?.afterCommit();
     await rules?.afterConfirmation();
 
-    if (notifyAuthor && notifyItem) await this.notifications.inboundReply(notifyItem, notifyAuthor, body);
+    // Wer die Mail selbst importiert hat, erhält dazu keine Mail
+    const importer = imported?.by.id;
+    if (notifyAuthor && notifyItem) await this.notifications.inboundReply(notifyItem, notifyAuthor, body, importer);
     if (noteAuthor && noteItem) {
       const staff = (noteAuthor as User).role === 'it' || (noteAuthor as User).role === 'admin';
-      await this.notifications.newEntry(noteItem, noteAuthor, staff ? 'mailStaff' : 'mailExternal', body);
+      await this.notifications.newEntry(noteItem, noteAuthor, staff ? 'mailStaff' : 'mailExternal', body, importer);
     }
     return outcome;
   }

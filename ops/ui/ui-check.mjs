@@ -695,6 +695,48 @@ await step('vorlagen', async () => {
   if (href !== '{{Link}}') throw new Error(`Link-Ziel im Editor: ${href}`);
 });
 
+await step('mail-import', async () => {
+  // Mails importieren (Entscheid vom 10.11.2026): Ablegen per Ziehen wie aus Outlook, Vorschau, Import, Ergebnis
+  await page.goto(`${BASE}/inbox`);
+  await page.getByRole('button', { name: 'Mail importieren' }).waitFor();
+  const subject = `Bildschirm flackert (UI-Import ${Date.now().toString(36)})`;
+  const eml = [
+    'From: Ina Import <ui-import@test.local>',
+    'To: ivan@test.local',
+    `Subject: ${subject}`,
+    'Date: Mon, 09 Nov 2026 18:42:00 +0100',
+    `Message-ID: <ui-import-${Date.now()}@test.local>`,
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    'Seit gestern flackert der Bildschirm.',
+  ].join('\r\n');
+  const drag = (type) =>
+    page.evaluate(
+      ([kind, text]) => {
+        const data = new DataTransfer();
+        data.items.add(new File([text], 'Bildschirm.eml', { type: 'message/rfc822' }));
+        document.querySelector('.inbox-page').dispatchEvent(new DragEvent(kind, { dataTransfer: data, bubbles: true, cancelable: true }));
+      },
+      [type, eml],
+    );
+  await drag('dragenter');
+  await drag('dragover');
+  await page.locator('.drop-hint').waitFor();
+  await shot('114-mail-import-ziehen');
+  await drag('drop');
+  const dialog = page.locator('.dialog', { hasText: 'Mails importieren' });
+  await dialog.getByText(subject).waitFor();
+  if (!(await dialog.getByText('Neuer Vorgang im Eingang').count())) throw new Error('Ziel «Neuer Vorgang im Eingang» fehlt');
+  await dialog.screenshot({ path: `${OUT}/115-mail-import-vorschau.png` });
+  console.log('Bild 115-mail-import-vorschau');
+  await dialog.getByRole('button', { name: '1 Mail importieren' }).click();
+  await dialog.getByText(/im Eingang angelegt/).waitFor();
+  await dialog.screenshot({ path: `${OUT}/116-mail-import-ergebnis.png` });
+  console.log('Bild 116-mail-import-ergebnis');
+  await dialog.locator('.foot').getByRole('button', { name: 'Schliessen' }).click();
+  await page.locator('table.table', { hasText: subject }).waitFor();
+});
+
 await step('textbaustein', async () => {
   await page.goto(`${BASE}/admin/snippets`);
   await page.getByRole('button', { name: '+ Textbaustein' }).click();

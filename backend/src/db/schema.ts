@@ -238,6 +238,8 @@ export const items = pgTable(
     suggestedType: itemType('suggested_type'),
     /** Aus einer im Testbetrieb simulierten Mail entstanden */
     simulated: boolean('simulated').notNull().default(false),
+    /** Aus einer importierten Mail entstanden (an eine andere Adresse gesendet, im Eingang importiert), sonst null */
+    importInfo: jsonb('import_info').$type<ImportInfo>(),
     discarded: boolean('discarded').notNull().default(false),
     /** Fälligkeitsdatum (nur Aufgaben, ohne Uhrzeit); bei Störungen gespeichert, aber ausgeblendet */
     dueDate: date('due_date', { mode: 'string' }),
@@ -478,6 +480,8 @@ export const incomingMails = pgTable(
     entryId: uuid('entry_id').references(() => entries.id, { onDelete: 'set null' }),
     simulated: boolean('simulated').notNull().default(false),
     simulatedById: uuid('simulated_by_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Im Eingang importiert (statt abgerufen) von dieser Person */
+    importedById: uuid('imported_by_id').references(() => users.id, { onDelete: 'set null' }),
     attempts: integer('attempts').notNull().default(1),
     storageKey: text('storage_key').notNull(),
     /** Abgerufen bzw. simuliert */
@@ -724,6 +728,17 @@ export const auditLog = pgTable(
 );
 
 export type Item = typeof items.$inferSelect;
+
+/** Angaben zu einer importierten Mail (Entscheid vom 10.11.2026), am Vorgang bzw. im Eintrag einer Antwort */
+export interface ImportInfo {
+  /** Wer importiert hat */
+  byId: string;
+  by: string;
+  /** Sendedatum laut Mail (ISO), null = unbekannt */
+  sentAt: string | null;
+  /** Ursprüngliche Empfänger (An) */
+  to: string[];
+}
 export type AuditArea = (typeof auditArea.enumValues)[number];
 export type Status = typeof statuses.$inferSelect;
 export type Channel = typeof channels.$inferSelect;
