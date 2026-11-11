@@ -14,7 +14,8 @@ import type { ItemSummary, ItemType } from '../types';
 import ChecklistProgress from './ChecklistProgress.vue';
 
 /**
- * Board eines Typs: je Status eine Spalte (ohne den Ablehnen-Status), abgeschlossene zeigen nur die letzten 7 Tage.
+ * Board eines Typs: je Status eine Spalte (ohne den Ablehnen-Status), abgeschlossene zeigen nur die letzten Tage
+ * (Verwaltung → Allgemein, Vorgabe 5).
  * Aufgaben: Reihenfolge von Hand (ziehen innerhalb und zwischen Spalten). Störungen: nach Priorität, dann Alter;
  * Ziehen wechselt nur den Status (Entscheid vom 27.10.2026). Der Status-Filter gilt hier nicht, die Spalten sind es.
  */
@@ -23,6 +24,11 @@ const props = defineProps<{ type: ItemType; mine: boolean; filters: ListFilterVa
 const emit = defineEmits<{ create: [statusId: string] }>();
 
 const session = useSession();
+/** Abgeschlossene Spalten: so viele Tage wie unter Verwaltung → Allgemein eingestellt */
+const closedHint = computed(() => {
+  const days = session.info?.boardClosedDays ?? 5;
+  return days === 1 ? 'letzter Tag' : `letzte ${days} Tage`;
+});
 const toast = useToast();
 const openItem = useOpenItem();
 const columns = ref<Record<string, ItemSummary[]>>({});
@@ -136,7 +142,7 @@ function open(item: ItemSummary, event: MouseEvent) {
       <header class="column-head">
         <span class="badge" :class="`st-${status.color}`">{{ status.label }}</span>
         <span class="faint">{{ columns[status.id]?.length ?? 0 }}</span>
-        <span v-if="status.closed" class="faint hint">letzte 7 Tage</span>
+        <span v-if="status.closed" class="faint hint">{{ closedHint }}</span>
         <button
           v-else
           class="btn btn-sm btn-ghost add"

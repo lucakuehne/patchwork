@@ -31,11 +31,27 @@ import { StorageService } from '../storage/storage.service';
 import { TlsService } from '../tls/tls.service';
 import type { User } from '../db/schema';
 import { AREAS, AreasService } from './areas';
-import { BLOCK_TRIGGERS, DELIVERY_BLOCKS, SettingsService, type DeliveryBlock, type LdapSettings } from './settings.service';
+import {
+  BLOCK_TRIGGERS,
+  BOARD_CLOSED_DAYS,
+  DELIVERY_BLOCKS,
+  SettingsService,
+  type DeliveryBlock,
+  type LdapSettings,
+} from './settings.service';
 
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
 
-const generalSchema = z.object({ appName: z.string().trim().min(1, 'Name fehlt').max(100) });
+const generalSchema = z.object({
+  appName: z.string().trim().min(1, 'Name fehlt').max(100),
+  // Ohne Angabe bleibt der gespeicherte Wert
+  boardClosedDays: z
+    .number()
+    .int('Bitte eine ganze Zahl von Tagen angeben')
+    .min(BOARD_CLOSED_DAYS.min, `Mindestens ${BOARD_CLOSED_DAYS.min} Tag`)
+    .max(BOARD_CLOSED_DAYS.max, `Höchstens ${BOARD_CLOSED_DAYS.max} Tage`)
+    .optional(),
+});
 const scope = z.enum(['none', 'selected', 'all']);
 const addressList = z
   .array(emailSchema)
@@ -155,6 +171,8 @@ export class SettingsController {
     ]);
     return {
       appName: general.appName,
+      // Für die Beschriftung der abgeschlossenen Spalten der Boards («letzte 5 Tage»)
+      boardClosedDays: general.boardClosedDays,
       hasLogo: !!logo,
       logoVersion: logo?.storageKey.slice(-8) ?? null,
       setupRequired,
@@ -193,8 +211,10 @@ export class SettingsController {
   @Audit('admin', 'Allgemeine Einstellungen geändert')
   @Put('settings/general')
   async updateGeneral(@Body(new ZodPipe(generalSchema)) body: z.infer<typeof generalSchema>) {
-    await this.settings.set('general', body);
-    return body;
+    const current = await this.settings.get('general');
+    const general = { ...current, appName: body.appName, boardClosedDays: body.boardClosedDays ?? current.boardClosedDays };
+    await this.settings.set('general', general);
+    return general;
   }
 
   @AdminOnly()

@@ -66,8 +66,6 @@ export const summaryColumns = {
   checklistDone: sql<number>`(select count(*)::int from ${checklistItems} ci join ${checklists} c on c.id = ci.checklist_id where c.item_id = ${items.id} and ci.done)`,
 };
 
-/** Abgeschlossene Spalten des Boards zeigen nur so viele Tage zurück (seit 02.11.2026 7 statt 14). */
-const BOARD_CLOSED_DAYS = 7;
 
 /** Status offen bzw. abgeschlossen (die Ansichten verbinden statuses mit dem Status des Vorgangs). */
 const OPEN = eq(statuses.closed, false);
@@ -113,12 +111,15 @@ export function searchCondition(query: string): SQL | undefined {
 }
 
 /** Filter und Sortierung je Ansicht. */
-/** Board eines Typs: alle Status ausser dem Ablehnen-Status, abgeschlossene nur mit den Vorgängen der letzten Tage */
-function boardCondition(type: 'incident' | 'task'): SQL | undefined {
+/**
+ * Board eines Typs: alle Status ausser dem Ablehnen-Status, abgeschlossene nur mit den Vorgängen der letzten
+ * «closedDays» Tage (Verwaltung → Allgemein, seit 11.11.2026; vorher fest 7, bis 02.11.2026 14).
+ */
+function boardCondition(type: 'incident' | 'task', closedDays: number): SQL | undefined {
   return and(
     eq(items.type, type),
     not(inTarget('reject')),
-    or(OPEN, and(CLOSED, gte(items.closedAt, sql`now() - ${sql.raw(`interval '${BOARD_CLOSED_DAYS} days'`)}`))),
+    or(OPEN, and(CLOSED, gte(items.closedAt, sql`now() - make_interval(days => ${closedDays})`))),
   );
 }
 
@@ -137,7 +138,8 @@ export function mineCondition(view: View, userId: string): SQL | undefined {
   return assigned;
 }
 
-export function viewQuery(view: View): { where: SQL | undefined; orderBy: SQL[] } {
+/** «boardClosedDays»: Tage der abgeschlossenen Spalten der Boards (Verwaltung → Allgemein) */
+export function viewQuery(view: View, boardClosedDays = 5): { where: SQL | undefined; orderBy: SQL[] } {
   switch (view) {
     case 'inbox':
       return {
@@ -158,13 +160,13 @@ export function viewQuery(view: View): { where: SQL | undefined; orderBy: SQL[] 
     case 'board':
       // Spalten sind die Status ausser dem Ablehnen-Status; abgeschlossene nur mit den letzten Tagen
       return {
-        where: boardCondition('task'),
+        where: boardCondition('task', boardClosedDays),
         orderBy: [asc(items.boardPosition), asc(items.createdAt)],
       };
     case 'incidents-board':
       // Wie das Board der Aufgaben, Karten aber «dringend zuerst» wie die Liste (keine Reihenfolge von Hand)
       return {
-        where: boardCondition('incident'),
+        where: boardCondition('incident', boardClosedDays),
         orderBy: [asc(items.priority), asc(items.createdAt)],
       };
     case 'tasks':

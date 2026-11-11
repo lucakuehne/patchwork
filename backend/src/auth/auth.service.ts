@@ -136,7 +136,10 @@ export class AuthService {
         .returning();
       return created!;
     });
-    await this.settings.set('general', { appName: input.appName.trim() || 'Patchwork' });
+    await this.settings.set('general', {
+      ...(await this.settings.get('general')),
+      appName: input.appName.trim() || 'Patchwork',
+    });
     return admin;
   }
 

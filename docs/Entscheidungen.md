@@ -52,7 +52,7 @@ Ergänzt das [Grundkonzept](../Grundkonzept.md). Stand: 15.10.2026, abgestimmt m
 
 - Tab Störungen: Unteransichten «Offen» und «Gelöst».
 - Tab Aufgaben: «Board», «Erledigt», «Abgelehnt». «Erledigt» zeigt abgeschlossene Aufgaben ausser dem Ablehnen-Status, «Abgelehnt» den Ablehnen-Status (ohne Ablehnen-Status entfällt die Ansicht, ein direkter Aufruf führt zu «Erledigt»; bestätigt am 20.10.2026).
-- Board: Der Ablehnen-Status ist keine Spalte. Abgeschlossene Spalten zeigen nur die letzten 7 Tage (seit 02.11.2026, gewünscht vom Benutzer; vorher 14 Tage), bei Aufgaben und Störungen.
+- Board: Der Ablehnen-Status ist keine Spalte. Abgeschlossene Spalten zeigen nur die letzten Tage, bei Aufgaben und Störungen gleich viele: einstellbar unter Verwaltung → Allgemein (1 bis 60, Vorgabe 5; seit 11.11.2026, vorher fest 7, bis 02.11.2026 14).
 - Ansichten für Abgeschlossenes sind Listen mit Suche und Filter «Nur meine».
 - Volltextsuche über alle Vorgänge.
 
@@ -547,6 +547,16 @@ automatisch gesetzt.
   umgewandelte Mail («Originalmail» lädt sie als .eml herunter). Aus dem neuen Outlook und Outlook im Web lässt sich
   eine Mail nicht direkt in den Browser ziehen: dort als .eml speichern.
 
+## Melder beim Erfassen, Tage der abgeschlossenen Spalten (bestätigt am 11.11.2026)
+
+- **Melder beim Erfassen:** Erfasst die IT einen Vorgang («+ Neu» im Eingang, «+ Störung», «+ Aufgabe», «+» in einer
+  Spalte des Boards), ist der Melder nicht mehr mit der erfassenden Person vorbelegt. Das Feld ist leer und Pflicht
+  («Bitte den Melder wählen.»), damit man bewusst die richtige Person einträgt. Für alle Typen. Neben der Bezeichnung
+  trägt «Ich» die eigene Person mit einem Klick ein. Über die API ohne Melder bleibt es die erfassende Person.
+- **Tage der abgeschlossenen Spalten:** «Erledigt» (Aufgaben) und «Gelöst» (Störungen) im Board zeigen die Vorgänge der
+  letzten 5 statt 7 Tage, einstellbar unter Verwaltung → Allgemein (1 bis 60 Tage, für beide Boards derselbe Wert). Die
+  Spalte zeigt «letzte 5 Tage» mit dem eingestellten Wert.
+
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 
 - **Bereiche je Rolle:** Unter Verwaltung legt man für die Rolle IT fest, welche Bereiche (Eingang, Störungen, Aufgaben) sie sieht. Admins sehen immer alles. Standard-Benutzer nutzen wie bisher nur das Portal.
@@ -899,7 +909,7 @@ abschalten.
   anzeigen, Umschalter in der Kopfzeile. Abgeschlossene (Gelöst, Erledigt, Abgelehnt) nur als Liste. Standard: Aufgaben als
   Board, Störungen als Liste. Die Wahl gilt pro Benutzer (auf dem Server gespeichert, in jedem Browser).
   - Board der Störungen wie das der Aufgaben: alle offenen Status, dazu die abgeschlossenen (ohne Ablehnen-Status) mit
-    den Störungen der letzten 7 Tage (bis 02.11.2026: 14 Tage). Karten nach Priorität, dann Alter («dringend zuerst»); Drag & Drop wechselt nur den
+    den Störungen der letzten Tage (einstellbar, Vorgabe 5; bis 11.11.2026 fest 7, bis 02.11.2026 14 Tage). Karten nach Priorität, dann Alter («dringend zuerst»); Drag & Drop wechselt nur den
     Status, die Reihenfolge in der Spalte ergibt sich von selbst.
   - Liste der offenen Aufgaben: nach Status (Reihenfolge der Spalten), innerhalb eines Status wie auf dem Board;
     per Spaltenkopf umsortierbar wie jede Liste.

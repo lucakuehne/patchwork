@@ -8,12 +8,16 @@ import { useToast } from '../../stores/toast';
 const session = useSession();
 const toast = useToast();
 const appName = ref('');
+/** Abgeschlossene Spalten der Boards: Vorgänge der letzten so vielen Tage (Entscheid vom 11.11.2026) */
+const boardClosedDays = ref(5);
 const saving = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 onMounted(async () => {
   try {
-    appName.value = (await api.get<{ appName: string }>('/settings/general')).appName;
+    const general = await api.get<{ appName: string; boardClosedDays: number }>('/settings/general');
+    appName.value = general.appName;
+    boardClosedDays.value = general.boardClosedDays;
   } catch (err) {
     toast.error(err);
   }
@@ -22,7 +26,7 @@ onMounted(async () => {
 async function save() {
   saving.value = true;
   try {
-    await api.put('/settings/general', { appName: appName.value });
+    await api.put('/settings/general', { appName: appName.value, boardClosedDays: Number(boardClosedDays.value) });
     await session.loadInfo();
     toast.success('Gespeichert');
   } catch (err) {
@@ -71,6 +75,14 @@ async function removeLogo() {
           und Anmeldeseite zeigen das Logo.
         </span>
       </div>
+      <div class="field">
+        <label for="board-days">Tage in den abgeschlossenen Spalten der Boards</label>
+        <input id="board-days" v-model.number="boardClosedDays" class="input days" type="number" min="1" max="60" step="1" />
+        <span class="hint">
+          «Erledigt» im Board der Aufgaben und «Gelöst» im Board der Störungen zeigen die Vorgänge, die in den letzten so
+          vielen Tagen abgeschlossen wurden (1 bis 60). Alle findet man unter «Erledigt» bzw. «Gelöst».
+        </span>
+      </div>
       <div><button class="btn btn-primary" type="button" :disabled="saving" @click="save">Speichern</button></div>
     </div>
     <div class="card card-body stack">
@@ -94,6 +106,9 @@ async function removeLogo() {
 </template>
 
 <style scoped>
+.days {
+  max-width: 120px;
+}
 .logo-preview {
   padding: 12px;
   border: 1px dashed var(--border-strong);

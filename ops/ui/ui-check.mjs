@@ -879,7 +879,7 @@ await step('aufgaben-neu', async () => {
   // «+» nur in offenen Spalten; öffnet «Neue Aufgabe» mit dem Status der Spalte und «Intern» vorbelegt
   const openColumn = page.locator('.column').filter({ has: page.locator('button.add') }).nth(1);
   const statusLabel = (await openColumn.locator('.column-head .badge').innerText()).trim();
-  if (await page.locator('.column').filter({ hasText: 'letzte 7 Tage' }).locator('button.add').count()) throw new Error('«+» in abgeschlossener Spalte');
+  if (await page.locator('.column').filter({ hasText: 'letzte 5 Tage' }).locator('button.add').count()) throw new Error('«+» in abgeschlossener Spalte');
   await openColumn.locator('button.add').click();
   await page.locator('#new-status').waitFor();
   const chosenStatus = await page.locator('#new-status').evaluate((s) => s.options[s.selectedIndex].text);
@@ -889,6 +889,14 @@ await step('aufgaben-neu', async () => {
   await page.fill('#new-title', 'Neue Aufgabe aus der Spalte');
   const yesterday = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Zurich' }).format(new Date(Date.now() - 86_400_000));
   await page.fill('#new-due', yesterday);
+  // Melder ohne Vorbelegung und Pflicht (Entscheid vom 11.11.2026): ohne Wahl ein Hinweis, «Ich» trägt Ada ein
+  const newDialog = page.locator('.dialog', { hasText: 'Neue Aufgabe' });
+  if (!(await newDialog.locator('.picker .current').innerText()).includes('Bitte wählen')) throw new Error('Melder vorbelegt');
+  await newDialog.getByRole('button', { name: 'Erfassen' }).click();
+  await newDialog.locator('.error-box', { hasText: 'Bitte den Melder wählen.' }).waitFor();
+  await newDialog.getByRole('button', { name: 'Ich', exact: true }).click();
+  if (!(await newDialog.locator('.picker .current').innerText()).includes('Ada Admin')) throw new Error('«Ich» trägt nicht Ada ein');
+  await newDialog.locator('.error-box').waitFor({ state: 'detached' });
   await page.locator('.dialog').screenshot({ path: `${OUT}/36-neue-aufgabe-spalte.png` });
   console.log('Bild 36-neue-aufgabe-spalte');
   // Nach dem Erstellen bleibt man auf dem Board; die Meldung bietet «Öffnen»
@@ -1013,7 +1021,7 @@ await step('liste-board', async () => {
   const toggle = page.getByRole('group', { name: 'Ansicht', exact: true });
   await toggle.getByRole('button', { name: 'Board' }).click();
   await page.locator('.column').first().waitFor();
-  await page.locator('.column', { hasText: 'letzte 7 Tage' }).first().waitFor();
+  await page.locator('.column', { hasText: 'letzte 5 Tage' }).first().waitFor();
   if (await page.locator('.list-filters select[aria-label="Status"]').count()) throw new Error('Status-Filter im Board der Störungen');
   await page.reload();
   await page.locator('.column').first().waitFor();

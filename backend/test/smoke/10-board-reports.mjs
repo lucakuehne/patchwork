@@ -53,10 +53,18 @@ import {
 
 let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
-await step('Board: abgeschlossene Spalten zeigen nur die letzten 7 Tage', async () => {
+await step('Board: abgeschlossene Spalten zeigen nur die letzten Tage (Vorgabe 5, Verwaltung → Allgemein)', async () => {
   const onBoard = async () => (await api('GET', '/items?view=board')).items.some((i) => i.number === t1);
   assert.equal((await detail(t1)).status.label, 'Erledigt');
   assert.ok(await onBoard());
+  const general = await api('GET', '/settings/general');
+  assert.equal(general.boardClosedDays, 5, 'Vorgabe 5 Tage');
+  assert.equal((await api('GET', '/public/info')).boardClosedDays, 5);
+  // Grenzen 1 bis 60, ganze Tage; ohne Angabe bleibt der Wert
+  await api('PUT', '/settings/general', { appName: general.appName, boardClosedDays: 0 }, { expect: [400] });
+  await api('PUT', '/settings/general', { appName: general.appName, boardClosedDays: 61 }, { expect: [400] });
+  await api('PUT', '/settings/general', { appName: general.appName });
+  assert.equal((await api('GET', '/settings/general')).boardClosedDays, 5);
   if (!process.env.SMOKE_DATABASE_URL) {
     process.stdout.write('(Zeitreise übersprungen, SMOKE_DATABASE_URL fehlt) ');
     return;
@@ -65,12 +73,17 @@ await step('Board: abgeschlossene Spalten zeigen nur die letzten 7 Tage', async 
   const db = new pg.Client({ connectionString: process.env.SMOKE_DATABASE_URL });
   await db.connect();
   try {
+    await db.query(`update items set closed_at = now() - interval '4 days' where prefix = 'PW' and number = $1`, [t1]);
+    assert.ok(await onBoard(), 'vor 4 Tagen abgeschlossen');
     await db.query(`update items set closed_at = now() - interval '6 days' where prefix = 'PW' and number = $1`, [t1]);
-    assert.ok(await onBoard(), 'vor 6 Tagen abgeschlossen');
-    await db.query(`update items set closed_at = now() - interval '8 days' where prefix = 'PW' and number = $1`, [t1]);
-    assert.ok(!(await onBoard()), 'vor mehr als 7 Tagen abgeschlossen');
+    assert.ok(!(await onBoard()), 'vor mehr als 5 Tagen abgeschlossen');
     assert.ok((await api('GET', '/items?view=tasks-done')).items.some((i) => i.number === t1), 'bleibt unter «Erledigt»');
+    // Mit 10 Tagen erscheint er wieder
+    await api('PUT', '/settings/general', { appName: general.appName, boardClosedDays: 10 });
+    assert.ok(await onBoard(), 'mit 10 Tagen: vor 6 Tagen abgeschlossen');
+    assert.equal((await api('GET', '/public/info')).boardClosedDays, 10);
   } finally {
+    await api('PUT', '/settings/general', { appName: general.appName, boardClosedDays: 5 });
     await db.end();
   }
 });

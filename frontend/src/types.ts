@@ -119,6 +119,8 @@ export type DeliveryScopes = Pick<DeliveryCircles, 'staff' | 'others'>;
 
 export interface PublicInfo {
   appName: string;
+  /** Abgeschlossene Spalten der Boards zeigen die letzten so vielen Tage */
+  boardClosedDays: number;
   hasLogo: boolean;
   logoVersion: string | null;
   setupRequired: boolean;

@@ -50,6 +50,7 @@ import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './st
 import { TITLE_MAX, TITLE_TOO_LONG } from './title';
 import type { RuleRun } from '../rules/rules.service';
 import { areaCondition, AreasService, type Area } from '../settings/areas';
+import { SettingsService } from '../settings/settings.service';
 import {
   assigneeUser,
   BOARD_VIEWS,
@@ -126,6 +127,7 @@ export class ItemsService {
     private readonly notifications: NotificationsService,
     private readonly storage: StorageService,
     private readonly areas: AreasService,
+    private readonly settings: SettingsService,
   ) {}
 
   // ---------------------------------------------------------------- Lesen
@@ -146,7 +148,9 @@ export class ItemsService {
       sort?: { field: SortField; dir: 'asc' | 'desc' };
     },
   ) {
-    const query = viewQuery(view);
+    // Boards: abgeschlossene Spalten mit den Tagen aus Verwaltung → Allgemein (Entscheid vom 11.11.2026)
+    const closedDays = BOARD_VIEWS.includes(view) ? (await this.settings.get('general')).boardClosedDays : undefined;
+    const query = viewQuery(view, closedDays);
     const orderBy = opts.sort && !BOARD_VIEWS.includes(view) ? sortOrder(opts.sort.field, opts.sort.dir) : query.orderBy;
     const search = searchCondition(opts.q);
     if (view === 'search' && !search) return { items: [], total: 0 };

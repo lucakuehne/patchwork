@@ -50,7 +50,7 @@ await step('Farbschema auch für Melder im Portal, die übrigen Routen bleiben g
   await loginAs('ada@test.local', 'geheim-geheim');
 });
 
-await step('Board der Störungen: offene und gelöste der letzten 7 Tage, nach Priorität und Alter', async () => {
+await step('Board der Störungen: offene und gelöste der letzten Tage (Vorgabe 5), nach Priorität und Alter', async () => {
   const low = await createItem({ type: 'incident', title: `Board-Störung tief ${RUN}`, priority: 'low' });
   const high = await createItem({ type: 'incident', title: `Board-Störung hoch ${RUN}`, priority: 'high' });
   const highLater = await createItem({ type: 'incident', title: `Board-Störung hoch später ${RUN}`, priority: 'high' });
@@ -60,7 +60,7 @@ await step('Board der Störungen: offene und gelöste der letzten 7 Tage, nach P
   const board = (await api('GET', '/items?view=incidents-board')).items;
   assert.ok(board.every((i) => i.type === 'incident'), 'nur Störungen');
   const numbers = board.map((i) => i.number);
-  assert.ok(numbers.includes(solved), 'gelöste der letzten 7 Tage');
+  assert.ok(numbers.includes(solved), 'gelöste der letzten Tage');
   assert.ok(!(await api('GET', '/items?view=incidents')).items.some((i) => i.number === solved), 'Liste nur offene');
   // In derselben Spalte: hoch vor tief, bei gleicher Priorität die ältere zuerst
   const column = board.filter((i) => i.status.id === status('incident', 'new').id).map((i) => i.number);
@@ -78,11 +78,11 @@ await step('Board der Störungen: offene und gelöste der letzten 7 Tage, nach P
   const db = new pg.Client({ connectionString: process.env.SMOKE_DATABASE_URL });
   await db.connect();
   try {
+    await db.query(`update items set closed_at = now() - interval '4 days' where prefix = 'PW' and number = $1`, [solved]);
+    assert.ok((await api('GET', '/items?view=incidents-board')).items.some((i) => i.number === solved), 'vor 4 Tagen gelöst');
     await db.query(`update items set closed_at = now() - interval '6 days' where prefix = 'PW' and number = $1`, [solved]);
-    assert.ok((await api('GET', '/items?view=incidents-board')).items.some((i) => i.number === solved), 'vor 6 Tagen gelöst');
-    await db.query(`update items set closed_at = now() - interval '8 days' where prefix = 'PW' and number = $1`, [solved]);
     const after = (await api('GET', '/items?view=incidents-board')).items;
-    assert.ok(!after.some((i) => i.number === solved), 'vor mehr als 7 Tagen gelöst');
+    assert.ok(!after.some((i) => i.number === solved), 'vor mehr als 5 Tagen gelöst');
   } finally {
     await db.end();
   }

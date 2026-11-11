@@ -7,7 +7,12 @@ import type { AreaSettings } from './areas';
 
 export interface GeneralSettings {
   appName: string;
+  /** Abgeschlossene Spalten der Boards zeigen die Vorgänge der letzten so vielen Tage (Entscheid vom 11.11.2026) */
+  boardClosedDays: number;
 }
+
+/** Vorgabe und Grenzen für die Tage der abgeschlossenen Spalten */
+export const BOARD_CLOSED_DAYS = { default: 5, min: 1, max: 60 } as const;
 
 export interface LogoSettings {
   storageKey: string;
@@ -195,7 +200,7 @@ interface SettingsMap {
 }
 
 const DEFAULTS: SettingsMap = {
-  general: { appName: 'Patchwork' },
+  general: { appName: 'Patchwork', boardClosedDays: BOARD_CLOSED_DAYS.default },
   // Nach der Einführung für beide Typen ohne Vorbelegung (Entscheid vom 21.10.2026)
   channelDefaults: { incident: null, task: null },
   logo: null,

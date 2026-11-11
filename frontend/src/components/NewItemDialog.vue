@@ -30,7 +30,9 @@ const dialogTitle = computed(() =>
 const title = ref('');
 const description = ref('');
 const priority = ref<Priority>('normal');
-const reporter = ref<User | null>(session.user);
+// Melder ohne Vorbelegung, Pflicht: die richtige Person bewusst wählen; «Ich» trägt sich selbst ein (Entscheid vom 11.11.2026)
+const REPORTER_MISSING = 'Bitte den Melder wählen.';
+const reporter = ref<User | null>(null);
 const assigneeId = ref('');
 const statusId = ref(props.initialStatusId ?? '');
 const dueDate = ref('');
@@ -64,11 +66,19 @@ watch(type, (t) => {
   statusId.value = '';
   if (!channelChosen) channelId.value = defaultChannel(t);
 });
+// Der Hinweis zum fehlenden Melder verschwindet, sobald einer gewählt ist
+watch(reporter, (person) => {
+  if (person && error.value === REPORTER_MISSING) error.value = '';
+});
 
 async function save() {
   error.value = '';
   if (!title.value.trim()) {
     error.value = 'Bitte einen Titel eingeben.';
+    return;
+  }
+  if (!reporter.value) {
+    error.value = REPORTER_MISSING;
     return;
   }
   if (!channelId.value) {
@@ -125,8 +135,19 @@ async function save() {
     </div>
     <div class="grid-2">
       <div class="field">
-        <span class="label">Melder</span>
-        <UserPicker v-model="reporter" />
+        <span class="label reporter-label">
+          Melder
+          <button
+            v-if="session.user && reporter?.id !== session.user.id"
+            class="link-btn"
+            type="button"
+            title="Dich selbst als Melder eintragen"
+            @click="reporter = session.user"
+          >
+            Ich
+          </button>
+        </span>
+        <UserPicker v-model="reporter" placeholder="Bitte wählen …" />
       </div>
       <div class="field">
         <label for="new-assignee">Zuständig</label>
@@ -172,3 +193,12 @@ async function save() {
     </template>
   </ModalDialog>
 </template>
+
+<style scoped>
+/* «Ich» rechts neben der Bezeichnung des Melders */
+.reporter-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+</style>

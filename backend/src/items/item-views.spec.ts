@@ -18,11 +18,13 @@ describe('viewQuery', () => {
     expect(where('incidents-closed')!.params).toEqual(['incident', true]);
   });
 
-  it('Board: ohne Ablehnen-Status, abgeschlossene nur der letzten 7 Tage', () => {
+  it('Board: ohne Ablehnen-Status, abgeschlossene nur der letzten Tage (Vorgabe 5, einstellbar)', () => {
     const board = where('board')!;
     expect(board.sql).toMatch(new RegExp(`not ${IN_REJECT.source}`));
-    expect(board.sql).toContain("interval '7 days'");
-    expect(board.params).toEqual(['task', 'reject', false, true]);
+    expect(board.sql).toMatch(/make_interval\(days => \$\d+\)/);
+    expect(board.params).toEqual(['task', 'reject', false, true, 5]);
+    const incidents = dialect.sqlToQuery(viewQuery('incidents-board', 12).where!);
+    expect(incidents.params).toEqual(['incident', 'reject', false, true, 12]);
   });
 
   it('Aufgaben erledigt ohne, abgelehnt nur mit dem Ablehnen-Status', () => {
