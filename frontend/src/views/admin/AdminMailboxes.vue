@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, errorMessage } from '../../api';
 import { copyText } from '../../clipboard';
+import MailboxPollLog from '../../components/MailboxPollLog.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import { formatDateTime, toLocalInput } from '../../format';
 import { useSession } from '../../stores/session';
@@ -639,6 +640,7 @@ function openMicrosoft() {
         {{ m.authType === 'microsoft' ? 'Abruf' : 'IMAP' }}: {{ testResult[m.id]!.imap }}<br />
         {{ m.authType === 'microsoft' ? 'Versand' : 'SMTP' }}: {{ testResult[m.id]!.smtp }}
       </div>
+      <MailboxPollLog :mailbox-id="m.id" :last-poll-at="m.lastPollAt" />
     </div>
 
     <ModalDialog v-if="draft" :title="draft.id ? 'Postfach bearbeiten' : 'Neues Postfach'" wide @close="draft = null">

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { api } from '../../api';
+import { api, ApiError } from '../../api';
 import ItemLink from '../../components/ItemLink.vue';
 import MailAttachmentList from '../../components/MailAttachmentList.vue';
+import MailAttempts from '../../components/MailAttempts.vue';
 import MailKindHelp from '../../components/MailKindHelp.vue';
+import MailRetrySettings from '../../components/MailRetrySettings.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import SimulateMailDialog from '../../components/SimulateMailDialog.vue';
 import TestModeSettings from '../../components/TestModeSettings.vue';
@@ -42,7 +44,7 @@ function simulated(mail: IncomingMail) {
 const FILTERS = [
   { key: 'all', label: 'Alle', statuses: '' },
   { key: 'withheld', label: 'Nicht oder teilweise versendet', statuses: 'held,partial' },
-  { key: 'failed', label: 'Fehler und unterwegs', statuses: 'failed,queued' },
+  { key: 'failed', label: 'Fehler und unterwegs', statuses: 'failed,queued,waiting' },
   { key: 'sent', label: 'Versendet', statuses: 'sent' },
 ] as const;
 
@@ -55,6 +57,8 @@ async function load() {
   const statuses = FILTERS.find((f) => f.key === filter.value)?.statuses ?? '';
   try {
     mails.value = await api.get<OutgoingMail[]>(`/admin/outgoing-mails${statuses ? `?status=${statuses}` : ''}`);
+    // Auswahl nur mit Mails, die noch in der Liste stehen
+    selected.value = new Set([...selected.value].filter((id) => mails.value.some((m) => m.id === id)));
   } catch (err) {
     toast.error(err);
   } finally {
@@ -63,9 +67,91 @@ async function load() {
 }
 onMounted(load);
 watch(filter, () => {
+  selected.value = new Set();
   void router.replace({ query: filter.value === 'all' ? {} : { status: filter.value } });
   void load();
 });
+
+/*
+ * Massenaktionen (Entscheid vom 13.11.2026): Häkchen je Zeile, im Kopf für alle Mails der Liste (alle Treffer des
+ * Filters, höchstens 500). «Erneut senden» und «Als erledigt markieren» nur bei fehlgeschlagenen, die übrigen werden
+ * übersprungen; «Als .eml herunterladen» eine Mail als .eml, mehrere als ZIP.
+ */
+const selected = ref(new Set<string>());
+const bulkBusy = ref(false);
+const allSelected = computed(() => mails.value.length > 0 && mails.value.every((m) => selected.value.has(m.id)));
+const someSelected = computed(() => selected.value.size > 0 && !allSelected.value);
+
+function toggle(id: string) {
+  const next = new Set(selected.value);
+  if (!next.delete(id)) next.add(id);
+  selected.value = next;
+}
+function toggleAll() {
+  selected.value = allSelected.value ? new Set() : new Set(mails.value.map((m) => m.id));
+}
+
+const skippedText = (skipped: number, reason: string) => (skipped ? `, ${skipped} übersprungen (${reason})` : '');
+
+async function bulkResend() {
+  bulkBusy.value = true;
+  try {
+    const r = await api.post<{ done: number; skipped: number }>('/admin/outgoing-mails/bulk/resend', { ids: [...selected.value] });
+    toast.success(`${r.done === 1 ? '1 Mail' : `${r.done} Mails`} wieder in der Versand-Queue${skippedText(r.skipped, 'nicht fehlgeschlagen')}`);
+    selected.value = new Set();
+    await load();
+  } catch (err) {
+    toast.error(err);
+  } finally {
+    bulkBusy.value = false;
+  }
+}
+
+async function bulkDismiss() {
+  bulkBusy.value = true;
+  try {
+    const r = await api.post<{ done: number; skipped: number }>('/admin/outgoing-mails/bulk/dismiss', { ids: [...selected.value] });
+    toast.success(
+      `${r.done === 1 ? '1 Mail' : `${r.done} Mails`} als erledigt markiert${skippedText(r.skipped, 'nicht fehlgeschlagen oder schon erledigt')}`,
+    );
+    selected.value = new Set();
+    await load();
+  } catch (err) {
+    toast.error(err);
+  } finally {
+    bulkBusy.value = false;
+  }
+}
+
+/** Eine Mail als .eml, mehrere als ZIP («Ausgehende Mails 2026-11-13.zip») */
+async function bulkDownload() {
+  const ids = [...selected.value];
+  if (ids.length === 1) {
+    window.location.href = `/api/admin/outgoing-mails/${ids[0]}/eml`;
+    return;
+  }
+  bulkBusy.value = true;
+  try {
+    const res = await fetch('/api/admin/outgoing-mails/bulk/eml', {
+      method: 'POST',
+      headers: { 'X-Patchwork': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+      credentials: 'same-origin',
+    });
+    if (!res.ok) throw new ApiError(res.status, `Herunterladen fehlgeschlagen (Fehler ${res.status})`);
+    const name = /filename\*=UTF-8''([^;]+)/i.exec(res.headers.get('Content-Disposition') ?? '')?.[1];
+    const url = URL.createObjectURL(await res.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name ? decodeURIComponent(name) : 'Ausgehende Mails.zip';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  } catch (err) {
+    toast.error(err);
+  } finally {
+    bulkBusy.value = false;
+  }
+}
 
 async function show(m: OutgoingMail) {
   try {
@@ -126,15 +212,33 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
       versendet wird.
     </p>
     <TestModeSettings :kinds="kinds" @saved="load" />
+    <MailRetrySettings />
     <div class="segmented filters">
       <button v-for="f in FILTERS" :key="f.key" type="button" :class="{ active: filter === f.key }" @click="filter = f.key">
         {{ f.label }}
       </button>
     </div>
+    <div v-if="selected.size" class="bulk-bar card">
+      <span class="bulk-count">{{ selected.size === 1 ? '1 Mail ausgewählt' : `${selected.size} Mails ausgewählt` }}</span>
+      <button class="btn btn-sm" type="button" :disabled="bulkBusy" @click="bulkResend">Erneut senden</button>
+      <button class="btn btn-sm" type="button" :disabled="bulkBusy" @click="bulkDownload">Als .eml herunterladen</button>
+      <button class="btn btn-sm" type="button" :disabled="bulkBusy" @click="bulkDismiss">Als erledigt markieren</button>
+      <button class="btn btn-sm btn-ghost" type="button" @click="selected = new Set()">Auswahl aufheben</button>
+    </div>
     <div class="card table-wrap">
       <table class="table">
         <thead>
           <tr>
+            <th class="pick">
+              <input
+                type="checkbox"
+                :checked="allSelected"
+                :indeterminate="someSelected"
+                :disabled="!mails.length"
+                aria-label="Alle Mails der Liste auswählen"
+                @change="toggleAll"
+              />
+            </th>
             <th>Zeit</th>
             <th>Status</th>
             <th>An</th>
@@ -144,7 +248,10 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
           </tr>
         </thead>
         <tbody>
-          <tr v-for="m in mails" :key="m.id" class="clickable" @click="show(m)">
+          <tr v-for="m in mails" :key="m.id" class="clickable" :class="{ picked: selected.has(m.id) }" @click="show(m)">
+            <td class="pick" @click.stop="toggle(m.id)">
+              <input type="checkbox" :checked="selected.has(m.id)" :aria-label="`${m.subject} auswählen`" @click.stop @change="toggle(m.id)" />
+            </td>
             <td class="nowrap muted">{{ formatDateTime(m.createdAt) }}</td>
             <td class="nowrap">
               <span class="badge" :class="STATUS[m.status].kind" :title="m.error ?? undefined">{{ STATUS[m.status].label }}</span>
@@ -176,12 +283,18 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
         <dd>
           <span class="badge" :class="STATUS[open.status].kind">{{ STATUS[open.status].label }}</span>
           <template v-if="open.sentAt"> · {{ formatDateTime(open.sentAt) }}</template>
-          <template v-if="open.attempts > 1"> · {{ open.attempts }} Versuche</template>
         </dd>
         <template v-if="open.error">
           <dt>Fehler</dt>
           <dd class="error-text">{{ open.error }}</dd>
         </template>
+        <MailAttempts
+          :attempt-log="open.attemptLog"
+          :attempts="open.attempts"
+          :next-attempt-at="open.nextAttemptAt"
+          :status="open.status"
+          :waiting-for="open.waitingFor"
+        />
         <template v-if="open.status === 'partial' || open.status === 'held'">
           <dt>Erhalten</dt>
           <dd>{{ open.deliveredTo.length ? `${open.deliveredTo.join(', ')} (nur diese im Kopf)` : 'niemand' }}</dd>
@@ -227,6 +340,28 @@ const recipients = (m: OutgoingMail) => [...m.to, ...m.cc.map((c) => `CC ${c}`)]
 <style scoped>
 .filters {
   align-self: flex-start;
+}
+/* Massenaktionen: Leiste über der Liste, solange etwas ausgewählt ist */
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  position: sticky;
+  top: var(--sticky-top, 0);
+  z-index: 5;
+}
+.bulk-count {
+  font-weight: 600;
+  margin-right: 8px;
+}
+.pick {
+  width: 32px;
+  cursor: default;
+}
+tr.picked {
+  background: var(--accent-soft);
 }
 .kind {
   display: inline-flex;

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
 import { mailMessages, type Attachment, type GraphSync, type Mailbox } from '../db/schema';
 import { StorageService } from '../storage/storage.service';
+import { errorText } from './mail-errors';
 import { sortFolders, type MailFolder } from './mail-folders';
 import { MailboxesService } from './mailboxes.service';
 import { MailTransportService } from './mail-transport.service';
@@ -122,9 +123,10 @@ export class GraphMailService {
   /**
    * Holt neue Mails über die Delta-Abfrage des Ordners und übergibt sie einzeln als MIME. Graph meldet jede Mail, die
    * neu im Ordner liegt, auch wenn sie erst später hineinverschoben wurde. Der erste Durchgang liefert alle Mails ab
-   * «Mails abholen ab»; bekannte Message-IDs werden übersprungen.
+   * «Mails abholen ab»; bekannte Message-IDs werden übersprungen. Gibt den am Postfach vermerkten Fehler zurück
+   * (null = ok).
    */
-  async poll(mailbox: Mailbox, ingest: (raw: Buffer) => Promise<unknown>): Promise<void> {
+  async poll(mailbox: Mailbox, ingest: (raw: Buffer) => Promise<unknown>): Promise<string | null> {
     const key = graphSyncKey(mailbox);
     // Ein Stand zu anderen Einstellungen (z.B. von einem Abruf, der beim Speichern noch lief) gilt nicht
     const stored = mailbox.graphSync?.key === key ? mailbox.graphSync : null;
@@ -177,10 +179,11 @@ export class GraphMailService {
         url = next;
       }
     } catch (err) {
-      error = (err as Error).message;
+      error = errorText(err);
       this.logger.warn(`Abruf von ${mailbox.address} fehlgeschlagen: ${error}`);
     }
     await this.mailboxes.recordGraphPoll(mailbox.id, { sync, error });
+    return error;
   }
 
   /** Mail-Ordner des Postfachs zur Auswahl, ohne versteckte Ordner. */
@@ -284,7 +287,7 @@ export class GraphMailService {
         : `OK – Versand über Microsoft Graph; für Mails über 3 MB fehlt noch die Berechtigung ${write}`;
       return { ok: true, incoming, outgoing };
     } catch (err) {
-      return { ok: false, incoming: `Fehler: ${(err as Error).message}`, outgoing: '–' };
+      return { ok: false, incoming: `Fehler: ${errorText(err)}`, outgoing: '–' };
     }
   }
 

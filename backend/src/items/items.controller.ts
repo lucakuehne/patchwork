@@ -28,6 +28,7 @@ import { appConfig } from '../config';
 import { emailSchema, nullableUuid, ZodPipe } from '../common/zod.pipe';
 import { InjectDb, type Db } from '../db/db.module';
 import { attachments, entries, mailMessages, outgoingMails, type User } from '../db/schema';
+import { MailSenderService } from '../mail/mail-sender.service';
 import { templateByKey } from '../mail/mail-templates';
 import { AreasService } from '../settings/areas';
 import { disposition, mailAttachmentPreview, mailView, sendMailAttachment } from '../mail/mail-view';
@@ -156,6 +157,7 @@ export class ItemsController {
     private readonly checklists: ChecklistsService,
     private readonly storage: StorageService,
     private readonly areas: AreasService,
+    private readonly sender: MailSenderService,
   ) {}
 
   // Routen mit «:ref» prüft der AuthGuard auf die Bereiche des Benutzers (Bereiche je Rolle), die übrigen hier
@@ -406,6 +408,12 @@ export class ItemsController {
       deliveredTo: mail.deliveredTo,
       subject: mail.subject,
       error: mail.error,
+      attempts: mail.attempts,
+      /** Zustellversuche, ältester zuerst (seit 13.11.2026), und der nächste automatische Versuch */
+      attemptLog: mail.attemptLog,
+      nextAttemptAt: mail.nextAttemptAt,
+      /** Wartet auf diese ältere Mail des Postfachs (Reihenfolge, Entscheid vom 13.11.2026) */
+      waitingFor: mail.status === 'waiting' ? await this.sender.waitingFor({ id: mail.id }) : null,
       text: view.text,
       html: view.html,
       attachments: view.attachments,

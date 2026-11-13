@@ -38,7 +38,9 @@ import {
   sanitizeMailHtml,
   stripQuotedText,
 } from './mail-content';
-import { explainMailError } from './mail-errors';
+import { errorText, explainMailError } from './mail-errors';
+import { emptyPollCounts } from './mailbox-polls';
+import { MailboxPollsService } from './mailbox-polls.service';
 import { MailboxesService } from './mailboxes.service';
 import { MailTransportService } from './mail-transport.service';
 import { NotificationsService } from './notifications.service';
@@ -118,6 +120,7 @@ export class MailFetcherService implements OnModuleInit {
     private readonly rules: RulesService,
     private readonly graph: GraphMailService,
     private readonly channels: ChannelsService,
+    private readonly polls: MailboxPollsService,
   ) {}
 
   async onModuleInit() {
@@ -139,22 +142,45 @@ export class MailFetcherService implements OnModuleInit {
     }
   }
 
-  /** Ruft neue Mails eines Postfachs ab. Fehler werden am Postfach vermerkt. */
-  async poll(mailbox: Mailbox): Promise<void> {
+  /**
+   * Ruft neue Mails eines Postfachs ab. Fehler werden am Postfach vermerkt, jeder Abruf steht im Abrufprotokoll
+   * («triggeredBy»: «Jetzt abrufen» von …, sonst automatisch).
+   */
+  async poll(mailbox: Mailbox, triggeredBy: string | null = null): Promise<void> {
     // Patchwork läuft als ein Prozess: ein Abruf pro Postfach gleichzeitig
     if (this.running.has(mailbox.id)) return;
     this.running.add(mailbox.id);
+    const startedAt = new Date();
+    const mails = emptyPollCounts();
+    // Mails des Abrufs nach Ergebnis zählen
+    const ingest = async (raw: Buffer) => {
+      try {
+        mails[await this.ingest(mailbox, raw)]++;
+      } catch (err) {
+        mails.failed++;
+        throw err;
+      }
+    };
+    let error: string | null = null;
     try {
       // Mit angemeldetem Microsoft-Konto über Microsoft Graph, sonst über IMAP
-      if (mailbox.authType === 'microsoft') await this.graph.poll(mailbox, (raw) => this.ingest(mailbox, raw));
-      else await this.pollUnlocked(mailbox);
+      error = mailbox.authType === 'microsoft' ? await this.graph.poll(mailbox, ingest) : await this.pollUnlocked(mailbox, ingest);
+    } catch (err) {
+      error = errorText(err);
+      throw err;
     } finally {
       this.running.delete(mailbox.id);
+      await this.polls
+        .record(mailbox.id, { startedAt, endedAt: new Date(), mails, error, triggeredBy })
+        .catch((err: Error) => this.logger.warn(`Abrufprotokoll von ${mailbox.address} nicht gespeichert: ${err.message}`));
     }
   }
 
-  private async pollUnlocked(mailbox: Mailbox): Promise<void> {
+  /** Abruf über IMAP; gibt den am Postfach vermerkten Fehler zurück (null = ok) */
+  private async pollUnlocked(mailbox: Mailbox, ingest: (raw: Buffer) => Promise<void>): Promise<string | null> {
     let client;
+    // Fehler bei einer Mail; der Abruf läuft mit der nächsten weiter
+    let error: string | null = null;
     try {
       client = await this.transport.imapClient(mailbox);
       await client.connect();
@@ -177,12 +203,11 @@ export class MailFetcherService implements OnModuleInit {
         const uids = pendingUids.slice(0, BATCH_SIZE);
 
         let lastUid = doneUid;
-        let error: string | null = null;
         for (const uid of uids) {
           const message = await client.fetchOne(String(uid), { source: true }, { uid: true });
           if (message && message.source) {
             try {
-              await this.ingest(mailbox, message.source);
+              await ingest(message.source);
             } catch (err) {
               error = `Mail UID ${uid}: ${(err as Error).message}`;
               this.logger.error(`Verarbeitung von UID ${uid} in ${mailbox.address} fehlgeschlagen`, (err as Error).stack);
@@ -204,11 +229,13 @@ export class MailFetcherService implements OnModuleInit {
         lock.release();
       }
       await client.logout();
+      return error;
     } catch (err) {
-      const message = explainMailError((err as Error & { responseText?: string }).responseText ?? (err as Error).message, mailbox);
+      const message = explainMailError((err as Error & { responseText?: string }).responseText ?? errorText(err), mailbox);
       this.logger.warn(`Abruf von ${mailbox.address} fehlgeschlagen: ${message}`);
       await this.mailboxes.recordPoll(mailbox.id, { error: message });
       client?.close();
+      return message;
     }
   }
 

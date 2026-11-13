@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { explainMailError } from './mail-errors';
+import { errorText, explainMailError } from './mail-errors';
 
 const mailbox = { address: 'helpdesk@firma.ch', oauthAccount: 'admin@firma.onmicrosoft.com' };
 
@@ -24,5 +24,16 @@ describe('explainMailError', () => {
 
   it('lässt andere Meldungen unverändert', () => {
     expect(explainMailError('Connection timed out', mailbox)).toBe('Connection timed out');
+  });
+});
+
+describe('Fehlermeldung', () => {
+  it('nie leer: Sammelfehler von IPv4 und IPv6 mit den einzelnen Meldungen', () => {
+    const refused = (address: string) => Object.assign(new Error(`connect ECONNREFUSED ${address}:1`), { code: 'ECONNREFUSED' });
+    const aggregate = Object.assign(new AggregateError([refused('::1'), refused('127.0.0.1')], ''), { code: 'ECONNREFUSED' });
+    expect(errorText(aggregate)).toBe('connect ECONNREFUSED ::1:1; connect ECONNREFUSED 127.0.0.1:1');
+    expect(errorText(Object.assign(new Error(''), { code: 'ETIMEDOUT' }))).toBe('ETIMEDOUT');
+    expect(errorText(new Error('Anmeldung fehlgeschlagen'))).toBe('Anmeldung fehlgeschlagen');
+    expect(errorText(undefined)).toBe('Unbekannter Fehler');
   });
 });

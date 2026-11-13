@@ -34,7 +34,7 @@ await step('Titel: aus dem Mail-Betreff länger, beim Bearbeiten wieder höchste
   const n = await inboxNumber(subject);
   assert.equal((await detail(n)).title, subject, 'Titel aus der Mail vollständig');
   // Andere Felder ändern geht, auch derselbe lange Titel
-  await api('PATCH', `/items/${n}`, { priority: 'high', title: subject });
+  await api('PATCH', `/items/${n}`, { description: 'Anders beschrieben', title: subject });
   // Geändert: höchstens 90 Zeichen
   assert.equal((await api('PATCH', `/items/${n}`, { title: subject.slice(0, 95) }, { expect: [400] })).message, TOO_LONG);
   await api('PATCH', `/items/${n}`, { title: subject.slice(0, 90) });

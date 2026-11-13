@@ -3,6 +3,8 @@ import PgBoss from 'pg-boss';
 import { appConfig } from '../config';
 
 export const QUEUE_MAIL_SEND = 'mail-send';
+/** Fällige Wiederholungen fehlgeschlagener Mails, jede Minute (Entscheid vom 13.11.2026) */
+export const QUEUE_MAIL_RETRY = 'mail-retry';
 export const QUEUE_MAIL_POLL = 'mail-poll';
 export const QUEUE_MAINTENANCE = 'maintenance';
 export const QUEUE_AUTOMATION = 'automation';
@@ -37,12 +39,10 @@ export class BossService implements OnModuleInit, OnApplicationShutdown {
     this.instance.on('error', (err) => this.logger.error(`pg-boss: ${err.message}`));
     await this.instance.start();
     this.started = true;
-    await this.ensureQueue(QUEUE_MAIL_SEND, {
-      retryLimit: 10,
-      retryDelay: 30,
-      retryBackoff: true,
-      expireInSeconds: 120,
-    });
+    // Wiederholungen nach einem Fehler plant Patchwork selbst nach den Einstellungen (Verwaltung → Ausgehende Mails),
+    // pg-boss wiederholt nur Versuche, die abgebrochen wurden (z.B. Neustart während des Versands)
+    await this.ensureQueue(QUEUE_MAIL_SEND, { retryLimit: 1, retryDelay: 60, expireInSeconds: 120 });
+    await this.ensureQueue(QUEUE_MAIL_RETRY, { policy: 'stately', retryLimit: 0, expireInSeconds: 300 });
     // stately: höchstens ein wartender und ein laufender Abruf
     await this.ensureQueue(QUEUE_MAIL_POLL, { policy: 'stately', retryLimit: 0, expireInSeconds: 600 });
     await this.ensureQueue(QUEUE_MAINTENANCE, { policy: 'stately', retryLimit: 0 });

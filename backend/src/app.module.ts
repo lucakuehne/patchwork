@@ -27,6 +27,7 @@ import { GraphMailService } from './mail/graph-mail.service';
 import { IncomingMailsController } from './mail/incoming-mails.controller';
 import { OutgoingMailsController } from './mail/outgoing-mails.controller';
 import { MailFetcherService } from './mail/mail-fetcher.service';
+import { MailboxPollsService } from './mail/mailbox-polls.service';
 import { MailImportController } from './mail/mail-import.controller';
 import { MailImportService } from './mail/mail-import.service';
 import { MailSimulationService } from './mail/mail-simulation.service';
@@ -126,6 +127,7 @@ import { UsersService } from './users/users.service';
     NotificationsService,
     WelcomeMailService,
     MailFetcherService,
+    MailboxPollsService,
     MailImportService,
     MailSimulationService,
     RulesService,

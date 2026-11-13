@@ -346,12 +346,14 @@ function onRejected() {
           <select
             id="item-priority"
             class="select"
-            :value="item.priority"
-            :disabled="busy"
+            :value="item.type ? item.priority : ''"
+            :disabled="busy || !item.type"
             @change="patch({ priority: ($event.target as HTMLSelectElement).value as Priority })"
           >
+            <option v-if="!item.type" value="">–</option>
             <option v-for="(label, key) in PRIORITY_LABELS" :key="key" :value="key">{{ label }}</option>
           </select>
+          <span v-if="!item.type" class="hint">Erst einen Typ wählen</span>
         </div>
 
         <div v-if="item.type === 'task'" class="field">
@@ -400,7 +402,7 @@ function onRejected() {
               v-if="item.assignee?.id !== session.user?.id"
               class="link-btn"
               type="button"
-              :disabled="busy"
+              :disabled="busy || !item.type"
               @click="patch({ assigneeId: session.user!.id })"
             >
               Mir zuweisen
@@ -410,7 +412,7 @@ function onRejected() {
             id="item-assignee"
             class="select"
             :value="item.assignee?.id ?? ''"
-            :disabled="busy"
+            :disabled="busy || !item.type"
             :title="assigneeLocked ? `Im Status «${item.status?.label}» ist «Zuständig» Pflicht` : undefined"
             @change="patch({ assigneeId: ($event.target as HTMLSelectElement).value || null })"
           >
@@ -420,6 +422,7 @@ function onRejected() {
             </option>
             <option v-for="u in session.staff" :key="u.id" :value="u.id">{{ u.name }}</option>
           </select>
+          <span v-if="!item.type" class="hint">Erst einen Typ wählen</span>
         </div>
 
         <div class="field">

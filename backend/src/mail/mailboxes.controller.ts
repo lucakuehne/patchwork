@@ -22,15 +22,23 @@ import { AdminOnly, CurrentUser, Public } from '../auth/auth.decorators';
 import { emailSchema, ZodPipe } from '../common/zod.pipe';
 import type { User } from '../db/schema';
 import { GraphMailService } from './graph-mail.service';
-import { explainMailError } from './mail-errors';
+import { errorText, explainMailError } from './mail-errors';
 import { MailFetcherService } from './mail-fetcher.service';
 import { imapFolders, type MailFolder } from './mail-folders';
 import { MailTransportService } from './mail-transport.service';
+import { MailboxPollsService } from './mailbox-polls.service';
 import { MailboxesService, toPublicMailbox } from './mailboxes.service';
 import { MicrosoftAuthService, type CallbackQuery } from './microsoft-auth.service';
 
 const port = z.coerce.number().int().min(1).max(65535);
 const optionalText = z.string().trim().max(1000).nullable().optional();
+
+/** Abrufprotokoll: neueste zuerst, «before» setzt fort, «errors=1» nur Abrufe mit Fehler */
+const pollsSchema = z.object({
+  errors: z.enum(['0', '1']).default('0'),
+  before: z.preprocess((v) => (v === '' ? undefined : v), z.iso.datetime({ offset: true }).optional()),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+});
 
 const mailboxSchema = z.object({
   name: z.string().trim().min(1, 'Name fehlt').max(100),
@@ -116,6 +124,7 @@ export class MailboxesController {
     private readonly fetcher: MailFetcherService,
     private readonly microsoft: MicrosoftAuthService,
     private readonly graph: GraphMailService,
+    private readonly polls: MailboxPollsService,
   ) {}
 
   @Get()
@@ -165,7 +174,7 @@ export class MailboxesController {
       result.imap = `OK – Ordner «${mailbox.imapFolder}»: ${status.messages ?? 0} Mails, ${status.unseen ?? 0} ungelesen`;
     } catch (err) {
       result.ok = false;
-      const message = (err as Error & { responseText?: string }).responseText ?? (err as Error).message;
+      const message = (err as Error & { responseText?: string }).responseText ?? errorText(err);
       result.imap = `Fehler: ${explainMailError(message, mailbox)}`;
     }
     try {
@@ -175,12 +184,23 @@ export class MailboxesController {
       result.smtp = 'OK';
     } catch (err) {
       result.ok = false;
-      result.smtp = `Fehler: ${explainMailError((err as Error).message, mailbox)}`;
+      result.smtp = `Fehler: ${explainMailError(errorText(err), mailbox)}`;
     }
     return result;
   }
 
   /** Ordner des gespeicherten Postfachs zur Auswahl für den Abruf. */
+  /** Abrufprotokoll des Postfachs (Entscheid vom 13.11.2026) */
+  @Get(':id/polls')
+  async pollLog(@Param('id', ParseUUIDPipe) id: string, @Query(new ZodPipe(pollsSchema)) query: z.infer<typeof pollsSchema>) {
+    await this.mailboxes.get(id);
+    return this.polls.list(id, {
+      errorsOnly: query.errors === '1',
+      before: query.before ? new Date(query.before) : undefined,
+      limit: query.limit,
+    });
+  }
+
   @Get(':id/folders')
   async folders(@Param('id', ParseUUIDPipe) id: string): Promise<MailFolder[]> {
     const mailbox = await this.mailboxes.get(id);
@@ -188,7 +208,7 @@ export class MailboxesController {
       try {
         return await this.graph.folders(mailbox);
       } catch (err) {
-        throw new BadRequestException(`Ordner konnten nicht geladen werden: ${(err as Error).message}`);
+        throw new BadRequestException(`Ordner konnten nicht geladen werden: ${errorText(err)}`);
       }
     }
     let client;
@@ -200,7 +220,7 @@ export class MailboxesController {
       return folders;
     } catch (err) {
       client?.close();
-      const message = (err as Error & { responseText?: string }).responseText ?? (err as Error).message;
+      const message = (err as Error & { responseText?: string }).responseText ?? errorText(err);
       throw new BadRequestException(`Ordner konnten nicht geladen werden: ${explainMailError(message, mailbox)}`);
     }
   }
@@ -209,10 +229,10 @@ export class MailboxesController {
   @Audit('admin', 'Postfach abgerufen', { target: 'mailbox' })
   @Post(':id/poll')
   @HttpCode(200)
-  async poll(@Param('id', ParseUUIDPipe) id: string) {
+  async poll(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     const mailbox = await this.mailboxes.get(id);
     if (!mailbox.fetchEnabled) throw new ConflictException('Der Mail-Abruf dieses Postfachs ist ausgeschaltet');
-    await this.fetcher.poll(mailbox);
+    await this.fetcher.poll(mailbox, user.name);
     return toPublicMailbox(await this.mailboxes.get(id));
   }
 

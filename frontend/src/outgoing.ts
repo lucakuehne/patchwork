@@ -7,6 +7,8 @@ export const OUTGOING_STATUS: Record<OutgoingStatus, { label: string; kind: stri
   partial: { label: 'teilweise versendet', kind: 'held' },
   held: { label: 'nicht versendet', kind: 'held' },
   failed: { label: 'Fehler', kind: 'failed' },
+  // Reihenfolge je Postfach: wartet, bis die älteren Mails versendet oder aufgegeben sind
+  waiting: { label: 'wartet', kind: 'queued' },
 };
 
 export interface DeliveryMark {
@@ -36,5 +38,7 @@ export function deliveryMark(d: { status: OutgoingStatus; deliveredTo: string[];
       return { text: 'Versand fehlgeschlagen', title: d.error ?? '', kind: 'failed' };
     case 'queued':
       return { text: 'wird versendet', title: 'Die Mail ist in der Versand-Queue', kind: 'queued' };
+    case 'waiting':
+      return { text: 'wartet', title: 'Die Mail wartet, bis die älteren Mails des Postfachs versendet sind', kind: 'queued' };
   }
 }

@@ -557,6 +557,105 @@ automatisch gesetzt.
   letzten 5 statt 7 Tage, einstellbar unter Verwaltung → Allgemein (1 bis 60 Tage, für beide Boards derselbe Wert). Die
   Spalte zeigt «letzte 5 Tage» mit dem eingestellten Wert.
 
+## Eingang ohne Priorität und Zuständig (bestätigt am 13.11.2026)
+
+- Solange ein Vorgang keinen Typ hat (Eingang), gibt es weder Priorität noch Zuständig.
+- **Im Vorgang** stehen beide Felder gesperrt da, mit dem Hinweis «Erst einen Typ wählen»; «Mir zuweisen» ist ebenfalls
+  gesperrt. Mit dem Typ werden sie wählbar: Priorität «Normal», Zuständig leer (verlangt der Start-Status einen
+  Zuständigen, fragt Patchwork wie bisher).
+- **Bestehende Vorgänge im Eingang** mit Zuständigem oder anderer Priorität als «Normal» werden beim Update
+  zurückgesetzt, ohne Eintrag im Verlauf und ohne Mail.
+- **Regeln:** Priorität und Zuständig wirken nur, wenn der Vorgang am Ende einen Typ hat (aus derselben oder einer
+  anderen passenden Regel). Bleibt er im Eingang, setzt die Regel beides nicht. Der Regel-Editor weist darauf hin, wenn
+  eine Regel Priorität oder Zuständig ohne Typ setzt.
+- **Listen und Auswertungen:** In der Liste «Eingang» fallen die Spalten und Filter Priorität und Zuständig weg. In der
+  Suche stehen Vorgänge im Eingang mit «–». Die Auswertungen «Nach Priorität» und «Nach Zuständigem» zählen den Eingang
+  nicht mehr (die Spalte «Eingang» bei der Priorität entfällt), im CSV-Export sind beide Spalten für Vorgänge im Eingang
+  leer.
+- Details (bestätigt am 13.11.2026):
+  - Gesperrt zeigt Priorität «–» und Zuständig «– niemand –», der Hinweis steht unter beiden Feldern.
+  - Bewirkt eine Regel im Eingang nichts mehr (z.B. nur Priorität), steht sie auch nicht im Verlauf.
+- Technisch: Die API lehnt Priorität und Zuständig bei Vorgängen ohne Typ ab (400), unverändert mitgeschickte Werte
+  («Normal», niemand) gehen durch. Filter nach Priorität und Zuständig gelten im Eingang nicht.
+
+## Ausgehende Mails: Zustellversuche, Wiederholungen, Massenaktionen (bestätigt am 13.11.2026)
+
+- **Zustellversuche:** kein eigener Abschnitt, sondern eine Zeile «Zustellversuche» in den Angaben der Mail (Verwaltung →
+  Ausgehende Mails und «Mail ansehen» beim Vorgang). Je Versuch, neuester zuerst: Zeit, Ergebnis (versendet, teilweise
+  versendet, zurückgehalten, Fehler), «automatisch» oder «erneut gesendet von …», das Postfach und bei einem Fehler die
+  Meldung. Darüber «Nächster Versuch …», solange eine Wiederholung geplant ist. Mails von vorher haben nur die Anzahl
+  («N frühere Versuche ohne Einzelheiten»).
+- **Wiederholungen** einstellbar in einer Karte «Wiederholungen» unter Verwaltung → Ausgehende Mails (nur Admins):
+  Anzahl Wiederholungen (0 bis 20), erster Abstand in Minuten, «Abstand jedes Mal verdoppeln, höchstens bis … Minuten».
+  Darunter der Ablauf als Satz, z.B. «Wiederholungen nach 1, 2, 4, 8, 16 und 32 Minuten, danach 4-mal alle 60 Minuten.
+  Die letzte kommt etwa 5 Stunden nach dem ersten Versuch.» Vorgabe: 10 Wiederholungen, 1 Minute, verdoppeln bis
+  60 Minuten. Eine Änderung gilt sofort, auch für Mails, die auf ihren nächsten Versuch warten; eine Mail ohne weitere
+  Wiederholung wartet danach nicht mehr.
+  - Nach dem ersten Fehlversuch steht die Mail auf «Fehler» (Vermerk im Verlauf, Hinweis an die Admins) und bleibt
+    dort bis zum nächsten Versuch. «Erneut senden» beginnt eine neue Reihe (wieder ab dem ersten Abstand), «Als erledigt
+    markieren» beendet die Wiederholungen.
+- **Massenaktionen:** ein Kästchen je Zeile, das Kästchen im Kopf wählt alle Mails der Liste (höchstens 500, also alle
+  Treffer des Filters). Mit Auswahl erscheint eine Leiste «N Mails ausgewählt» mit «Erneut senden», «Als .eml
+  herunterladen» (eine Mail als .eml, mehrere als ZIP mit «PW-123 Betreff.eml» je Mail), «Als erledigt markieren» und
+  «Auswahl aufheben». «Erneut senden» und «Als erledigt markieren» wirken nur bei fehlgeschlagenen Mails, die übrigen
+  werden übersprungen und in der Meldung gezählt. Im Aktionsprotokoll ein Eintrag je Massenaktion.
+- Technisch: Die Versuche stehen als Liste (`attempt_log`, jsonb) bei der Mail, der nächste Versuch in
+  `next_attempt_at`. Ein Job von pg-boss prüft jede Minute, welche Mails fällig sind; pg-boss selbst wiederholt nur
+  Versuche, die abgebrochen wurden (z.B. Neustart während des Versands). Das ZIP schreibt Patchwork ohne zusätzliche
+  Bibliothek (Deflate aus Node, Namen in UTF-8); gleiche Namen erhalten «(2)» usw.
+
+## Reihenfolge beim Versand (bestätigt am 13.11.2026)
+
+- Anlass: Mit den verdoppelten Abständen konnte eine neuere Mail (z.B. «Abgeschlossen») vor einer älteren
+  (Eingangsbestätigung) hinausgehen, wenn der Mailserver zwischendurch kurz erreichbar war.
+- **Je Postfach:** Mails eines Postfachs gehen in der Reihenfolge hinaus, in der sie entstanden sind. Ist eine ältere
+  Mail noch offen (in der Versand-Queue, wartend oder nach einem vorübergehenden Fehler mit geplantem nächstem Versuch),
+  wartet die neuere.
+- **Dauerhafte und vorübergehende Fehler werden unterschieden:** Lehnt der Server genau diese Mail ab (z.B. Empfänger
+  unbekannt, Mail zu gross), ist der Fehler dauerhaft. Die Mail hält die übrigen nicht auf. Alles andere (Server nicht
+  erreichbar, Zeitüberschreitung, Anmeldung, Absender nicht erlaubt, vorübergehende Ablehnung) betrifft das ganze
+  Postfach: Patchwork wiederholt nach den Einstellungen, die neueren warten.
+- **Status «wartet»** mit dem Hinweis «Wartet auf die Mail «…» vom …» unter Verwaltung → Ausgehende Mails (Filter
+  «Fehler und unterwegs»), in «Mail ansehen» und als Vermerk «wartet» im Verlauf. Zählt nicht als Fehler (kein
+  zusätzlicher Hinweis an die Admins). «Erneut senden» und «Als erledigt markieren» gibt es dafür nicht, sie geht
+  automatisch direkt nach der älteren.
+- **Wird die ältere aufgegeben** (als erledigt markiert, Wiederholungen aufgebraucht, dauerhafter Fehler), gehen die
+  wartenden sofort in ihrer Reihenfolge hinaus.
+- Details (bestätigt am 13.11.2026):
+  - Ein dauerhafter Fehler wird nicht automatisch wiederholt; bei den Zustellversuchen steht «Fehler (dauerhaft, keine
+    Wiederholung)». «Erneut senden» von Hand bleibt möglich.
+  - Wird eine neuere fehlgeschlagene Mail von Hand erneut gesendet, solange eine ältere offen ist, wartet auch sie.
+  - Mails, die beim Update schon über eine Stunde bei «wird versendet» hingen (z.B. Neustart während des Versands),
+    werden nicht mehr versendet, sondern als erledigter Fehler festgehalten («Versand unterbrochen»), damit sie die
+    Reihenfolge nicht aufhalten. Ist eine davon noch wichtig: «Erneut senden» von Hand.
+- Technisch: Als dauerhaft gelten SMTP-Antworten 5xx auf RCPT TO oder DATA und bei Microsoft Graph die Fehler 400
+  und 413; alles andere ist vorübergehend. Hängt eine Mail länger als 10 Minuten bei «wird versendet» (z.B. Job
+  verloren), reiht der Versand sie neu ein. Jede Minute prüft der Versand, ob wartende Mails frei sind. Ausserdem
+  behoben: Ist ein Server über IPv4 und IPv6 nicht erreichbar, meldet Node einen Sammelfehler ohne Text; «Letzter
+  Fehler» beim Postfach und der Hinweis an die Admins blieben dann leer. Jetzt steht die Meldung der einzelnen
+  Verbindungen da.
+
+## Abrufprotokoll der Postfächer (bestätigt am 13.11.2026)
+
+- **Wo:** aufklappbar «Abrufprotokoll» direkt in der Karte jedes Postfachs unter Verwaltung → Postfächer, neueste
+  zuerst.
+- **Je Zeile:** Zeit, Mails nach Ergebnis (z.B. «3 Mails: 1 neuer Vorgang, 2 ignoriert»; ausserdem «in bestehenden
+  Vorgang», «schon vorhanden», «fehlgeschlagen»), Dauer, «automatisch» oder «Jetzt abrufen von …» und bei einem Fehler
+  die Meldung (wie «Letzter Fehler»).
+- **Abrufe ohne neue Mails** (automatisch, ohne Fehler) hintereinander werden eine Zeile, z.B. «13.11.2026, 08:00 –
+  08:45 · 46 Abrufe ohne neue Mails». Ebenso gleiche Fehler hintereinander, z.B. «08:00 – 09:00 · 61 Abrufe mit
+  Fehler» mit der Meldung darunter. Abrufe mit Mails stehen einzeln.
+- **Filter** «Nur Fehler».
+- **Aufbewahrung:** 14 Tage, ältere Zeilen löscht die nächtliche Wartung.
+- Details (bestätigt am 13.11.2026):
+  - Das Protokoll ist beim Öffnen der Seite zugeklappt; aufgeklappt zeigt es die letzten 10 Zeilen, «Weitere anzeigen»
+    lädt je 20 weitere. Nach «Jetzt abrufen» lädt es neu.
+  - «Jetzt abrufen» steht immer als eigene Zeile (mit dem Namen), auch ohne neue Mails.
+  - Nach einer Lücke von mehr als 5 Minuten (Abruf ausgeschaltet, Patchwork gestoppt) beginnt eine neue Zeile, damit
+    der Unterbruch sichtbar bleibt.
+- Technisch: Tabelle `mailbox_polls` (eine Zeile je Abruf bzw. je Reihe zusammengefasster Abrufe), beim Löschen des
+  Postfachs mit gelöscht. Mails aus «Mail importieren» und simulierte Mails sind keine Abrufe und stehen nicht darin.
+
 ## Bereiche je Rolle, Status beim Typ «Aufgabe» (bestätigt am 23.10.2026)
 
 - **Bereiche je Rolle:** Unter Verwaltung legt man für die Rolle IT fest, welche Bereiche (Eingang, Störungen, Aufgaben) sie sieht. Admins sehen immer alles. Standard-Benutzer nutzen wie bisher nur das Portal.
@@ -1069,7 +1168,7 @@ Bestätigt am 19.10.2026:
 15. Bestätigt am 20.10.2026: **Alle ausgehenden Mails werden protokolliert**, nicht nur die im Testbetrieb zurückgehaltenen:
     - Seite Verwaltung → «Ausgehende Mails» (ersetzt «Nicht versendete Mails», nur Admin) mit Status «versendet», «teilweise versendet», «nicht versendet», «Fehler» oder «wird versendet», Filter nach Status und vollständiger Ansicht (Text, Anhänge, .eml).
     - Jede Mail wird vollständig gespeichert, ohne automatische Löschung.
-    - Versandfehler: Status «Fehler» mit Meldung, Patchwork versucht es wie bisher bis zu 10-mal; «Erneut senden» bei fehlgeschlagenen Mails. Eine Mail geht nie doppelt hinaus. Wiederholungen und «Erneut senden» stellen die Mail mit den aktuellen Daten des Postfachs neu zusammen (z.B. nach einer Korrektur der Absenderadresse); das Protokoll zeigt die zuletzt versendete Fassung.
+    - Versandfehler: Status «Fehler» mit Meldung, Patchwork versucht es wie bisher bis zu 10-mal (seit 13.11.2026 einstellbar, siehe «Ausgehende Mails: Zustellversuche, Wiederholungen, Massenaktionen»); «Erneut senden» bei fehlgeschlagenen Mails. Eine Mail geht nie doppelt hinaus. Wiederholungen und «Erneut senden» stellen die Mail mit den aktuellen Daten des Postfachs neu zusammen (z.B. nach einer Korrektur der Absenderadresse); das Protokoll zeigt die zuletzt versendete Fassung.
     - In der Timeline nur bei Abweichungen ein Vermerk (nicht oder teilweise versendet, Fehler, wird versendet).
 16. Bestätigt am 20.10.2026: **E-Mail-Vorlagen bearbeiten** (Verwaltung → E-Mail-Vorlagen, nur Admin):
     - Bearbeitbar sind Betreff und Text aller Mails an Melder (Eingangsbestätigung, Erledigt, Abgelehnt, Duplikat in zwei Varianten, Erinnerung, automatisch geschlossen) und an IT (Zugewiesen, neue Antwort, behebender Vorgang erledigt), dazu Link-Zeile und Fusszeile je für Melder und IT. Bei der öffentlichen Antwort nur Betreff und Rahmen, den Text schreibt der Bearbeiter.

@@ -21,3 +21,18 @@ export function explainMailError(message: string, mailbox: Pick<Mailbox, 'addres
   }
   return message;
 }
+
+/**
+ * Fehlermeldung für Protokoll und Anzeige, nie leer: Schlägt die Verbindung über IPv4 und IPv6 fehl (z.B. «localhost»
+ * oder ein Name mit beiden Adressen), meldet Node einen Sammelfehler (AggregateError) ohne eigenen Text.
+ */
+export function errorText(err: unknown): string {
+  const e = err as { message?: unknown; code?: unknown; errors?: unknown } | null | undefined;
+  if (typeof e?.message === 'string' && e.message.trim()) return e.message;
+  if (Array.isArray(e?.errors)) {
+    const inner = [...new Set(e.errors.map((x: unknown) => errorText(x)))].filter((t) => t !== 'Unbekannter Fehler');
+    if (inner.length) return inner.join('; ');
+  }
+  if (typeof e?.code === 'string' && e.code) return e.code;
+  return 'Unbekannter Fehler';
+}

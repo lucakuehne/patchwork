@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Mailbox } from '../db/schema';
+import type { PollEntry } from './mailbox-polls';
 import { MailFetcherService } from './mail-fetcher.service';
 
 const START = new Date('2026-10-20T08:00:00Z');
@@ -50,6 +51,9 @@ function setup(serverUidValidity = 7) {
     },
   };
   const transport = { imapClient: async () => folder.client };
+  // Abrufprotokoll
+  const logged: PollEntry[] = [];
+  const polls = { record: async (_id: string, entry: PollEntry) => void logged.push(entry) };
   const unused = undefined as never;
   const fetcher = new MailFetcherService(
     unused,
@@ -63,14 +67,16 @@ function setup(serverUidValidity = 7) {
     unused,
     unused,
     unused,
+    polls as never,
   );
   const ingested: number[] = [];
   vi.spyOn(fetcher, 'ingest').mockImplementation(async (_mailbox, raw) => {
     ingested.push(Number(raw.toString()));
     return 'created';
   });
-  const poll = () =>
-    fetcher.poll({
+  const poll = (triggeredBy: string | null = null) =>
+    fetcher.poll(
+      {
       id: 'm1',
       address: 'it@firma.ch',
       imapFolder: 'INBOX',
@@ -78,8 +84,10 @@ function setup(serverUidValidity = 7) {
       fetchFrom: START,
       uidValidity: state.uidValidity,
       lastUid: state.lastUid,
-    } as unknown as Mailbox);
-  return { folder, state, ingested, poll };
+      } as unknown as Mailbox,
+      triggeredBy,
+    );
+  return { folder, state, ingested, poll, logged, fetcher, transport };
 }
 
 describe('Mail-Abruf', () => {
@@ -129,5 +137,37 @@ describe('Mail-Abruf', () => {
     await t.poll();
     expect(t.ingested).toEqual([2]);
     expect(t.state).toEqual({ uidValidity: 8, lastUid: 2, lastError: null });
+  });
+
+  it('hält jeden Abruf im Abrufprotokoll fest: Mails nach Ergebnis, Fehler, Auslöser', async () => {
+    const t = setup();
+    t.folder.mails.push({ uid: 1, received: hours(1), seen: false }, { uid: 2, received: hours(2), seen: false }, { uid: 3, received: hours(3), seen: false });
+    vi.spyOn(t.fetcher, 'ingest').mockImplementation(async (_mailbox, raw) => {
+      const uid = Number(raw.toString());
+      if (uid === 2) throw new Error('kaputt');
+      return uid === 1 ? 'created' : 'ignored';
+    });
+    await t.poll('Ada Admin');
+    expect(t.logged).toHaveLength(1);
+    const [entry] = t.logged;
+    expect(entry!.mails).toEqual({ created: 1, appended: 0, ignored: 1, duplicate: 0, failed: 1 });
+    expect(entry!.error).toBe('Mail UID 2: kaputt');
+    expect(entry!.triggeredBy).toBe('Ada Admin');
+    expect(entry!.endedAt.getTime()).toBeGreaterThanOrEqual(entry!.startedAt.getTime());
+
+    // Ohne neue Mails, automatisch
+    await t.poll();
+    expect(t.logged[1]).toMatchObject({ mails: { created: 0, appended: 0, ignored: 0, duplicate: 0, failed: 0 }, error: null, triggeredBy: null });
+  });
+
+  it('hält einen Fehler der Verbindung im Abrufprotokoll fest', async () => {
+    const t = setup();
+    t.transport.imapClient = async () => {
+      throw new Error('connect ECONNREFUSED 127.0.0.1:993');
+    };
+    await t.poll();
+    expect(t.logged).toHaveLength(1);
+    expect(t.logged[0]!.error).toMatch(/ECONNREFUSED|nicht erreichbar|Verbindung/);
+    expect(t.state.lastError).toBe(t.logged[0]!.error);
   });
 });

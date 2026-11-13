@@ -42,6 +42,8 @@ function onCreated(created: ItemKey, type: ItemType) {
 // (seit 03.11.2026), im Eingang ist kaum etwas zugewiesen
 const filters = useListFilters('inbox');
 const sort = useListSort('inbox');
+// Ohne Spalten Priorität und Zuständig: eine früher gewählte Sortierung danach fällt weg
+if (sort.value && ['priority', 'assignee'].includes(sort.value.field)) sort.value = null;
 
 async function load() {
   try {
@@ -166,8 +168,8 @@ async function discard(item: ItemSummary) {
       <button class="btn" type="button" @click="newOpen = true">+ Neu</button>
     </div>
     <div v-if="dragging" class="drop-hint" aria-hidden="true">Mails hier ablegen, um sie zu importieren (.eml oder .msg)</div>
-    <ListFilters v-model="filters" />
-    <ItemTable v-if="!loading" v-model:sort="sort" :items="items" empty-text="Der Eingang ist leer.">
+    <ListFilters v-model="filters" inbox />
+    <ItemTable v-if="!loading" v-model:sort="sort" :items="items" inbox empty-text="Der Eingang ist leer.">
       <template #actions="{ item }">
         <div class="row">
           <!-- Der Vorschlag des Melders aus dem Portal ist hervorgehoben -->

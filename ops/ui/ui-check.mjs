@@ -390,7 +390,10 @@ await step('filter', async () => {
   // Board und abgeschlossene Aufgaben haben die Filterleiste ebenso
   for (const path of ['/tasks', '/tasks/done', '/inbox', '/incidents/resolved']) {
     await page.goto(`${BASE}${path}`);
-    await page.locator('.list-filters select[aria-label="Zuständig"]').waitFor();
+    await page.locator('.list-filters select[aria-label="Meldeweg"]').waitFor();
+    // Im Eingang gibt es weder Zuständig noch Priorität (seit 13.11.2026)
+    const hasAssignee = (await page.locator('.list-filters select[aria-label="Zuständig"]').count()) > 0;
+    if (hasAssignee === (path === '/inbox')) throw new Error(`Filter «Zuständig» unter ${path} ${hasAssignee ? 'vorhanden' : 'fehlt'}`);
     // Im Eingang gibt es «Nur meine» nicht (seit 03.11.2026)
     const hasMine = (await page.locator('label.mine').count()) > 0;
     if (hasMine === (path === '/inbox')) throw new Error(`«Nur meine» unter ${path} ${hasMine ? 'vorhanden' : 'fehlt'}`);
@@ -1167,7 +1170,7 @@ await step('testbetrieb-je-typ', async () => {
   console.log('Bild 87-testbetrieb-je-typ');
   // Ändern über die Oberfläche: Generell an alle IT-Mitarbeitenden
   await page.locator('#tm-general-staff').selectOption('all');
-  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await page.locator('.card', { has: page.locator('section.block') }).getByRole('button', { name: 'Speichern', exact: true }).click();
   await page.locator('.toast', { hasText: 'Testbetrieb gespeichert' }).waitFor();
   if ((await api('GET', '/settings/mail')).data.general.staff !== 'all') throw new Error('Generell nicht gespeichert');
   // Antwortfeld: Vermerk nach dem Block des Vorgangs (Störung ja, Aufgabe nein)
@@ -1223,7 +1226,7 @@ await step('testbetrieb-je-ausloeser', async () => {
   await block('incident').locator('.choices', { hasText: 'Ausgewählte für Auslöser' }).first().waitFor();
   await block('incident').screenshot({ path: `${OUT}/92-testbetrieb-je-ausloeser.png` });
   console.log('Bild 92-testbetrieb-je-ausloeser');
-  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await page.locator('.card', { has: page.locator('section.block') }).getByRole('button', { name: 'Speichern', exact: true }).click();
   await page.locator('.toast', { hasText: 'Testbetrieb gespeichert' }).waitFor();
   const saved = (await api('GET', '/settings/mail')).data.incident.triggers;
   if (JSON.stringify(saved) !== JSON.stringify({ reply: 'all', assigned: 'selected' })) throw new Error(`Gespeichert: ${JSON.stringify(saved)}`);
@@ -1272,6 +1275,192 @@ await step('tooltips-mails', async () => {
   await shot('101-tooltip-liste');
   await row.locator('.kind .help-icon').click();
   if (await page.locator('[role="dialog"]').count()) throw new Error('Klick auf «?» öffnet die Mail');
+});
+
+await step('ausgehende-mails-massenaktionen', async () => {
+  // Entscheid vom 13.11.2026: Wiederholungen einstellbar, Zustellversuche in der Mail, Massenaktionen mit Auswahl
+  const defaults = { retries: 10, firstDelayMinutes: 1, doubling: true, maxDelayMinutes: 60 };
+  await api('PUT', '/admin/outgoing-mails/retry-settings', defaults);
+  await page.goto(`${BASE}/admin/outgoing-mails`);
+  const card = page.locator('.retry-settings');
+  const plan = card.locator('.plan');
+  await plan.waitFor();
+  const expectedPlan =
+    'Wiederholungen nach 1, 2, 4, 8, 16 und 32 Minuten, danach 4-mal alle 60 Minuten. Die letzte kommt etwa 5 Stunden nach dem ersten Versuch.';
+  if ((await plan.innerText()).trim() !== expectedPlan) throw new Error(`Ablauf: ${await plan.innerText()}`);
+  await card.screenshot({ path: `${OUT}/117-wiederholungen.png` });
+  console.log('Bild 117-wiederholungen');
+  // Ändern: der Satz folgt sofort, ohne Verdoppeln ist die Obergrenze gesperrt
+  await page.locator('#retry-count').fill('3');
+  await page.locator('#retry-first').fill('5');
+  await card.getByLabel('Abstand jedes Mal verdoppeln').uncheck();
+  if (!(await card.getByLabel('Höchster Abstand in Minuten').isDisabled())) throw new Error('Obergrenze ohne Verdoppeln nicht gesperrt');
+  const fixedPlan = '3 Wiederholungen alle 5 Minuten. Die letzte kommt 15 Minuten nach dem ersten Versuch.';
+  if ((await plan.innerText()).trim() !== fixedPlan) throw new Error(`Ablauf nach Änderung: ${await plan.innerText()}`);
+  await card.getByRole('button', { name: 'Speichern' }).click();
+  await page.locator('.toast', { hasText: 'Gespeichert' }).waitFor();
+  const saved = (await api('GET', '/admin/outgoing-mails/retry-settings')).data;
+  if (JSON.stringify(saved) !== JSON.stringify({ retries: 3, firstDelayMinutes: 5, doubling: false, maxDelayMinutes: 60 })) {
+    throw new Error(`Gespeichert: ${JSON.stringify(saved)}`);
+  }
+  await api('PUT', '/admin/outgoing-mails/retry-settings', defaults);
+
+  // Auswahl: Klick auf das Kästchen öffnet die Mail nicht, die Leiste erscheint
+  await page.getByRole('button', { name: 'Versendet', exact: true }).click();
+  const rows = page.locator('tbody tr.clickable');
+  await rows.nth(1).waitFor();
+  await rows.nth(0).locator('td.pick input').check();
+  await rows.nth(1).locator('td.pick input').check();
+  if (await page.locator('[role="dialog"]').count()) throw new Error('Kästchen öffnet die Mail');
+  const bar = page.locator('.bulk-bar');
+  if ((await bar.locator('.bulk-count').innerText()).trim() !== '2 Mails ausgewählt') throw new Error('Leiste: nicht 2 ausgewählt');
+  await shot('118-ausgehende-mails-auswahl');
+  // Zwei Mails als ZIP
+  const [download] = await Promise.all([page.waitForEvent('download'), bar.getByRole('button', { name: 'Als .eml herunterladen' }).click()]);
+  if (!/^Ausgehende Mails \d{4}-\d{2}-\d{2}\.zip$/.test(download.suggestedFilename())) throw new Error(`ZIP: ${download.suggestedFilename()}`);
+  // «Erneut senden» überspringt versendete Mails
+  await bar.getByRole('button', { name: 'Erneut senden' }).click();
+  await page.locator('.toast', { hasText: '0 Mails wieder in der Versand-Queue, 2 übersprungen (nicht fehlgeschlagen)' }).waitFor();
+  if (await bar.count()) throw new Error('Leiste bleibt nach der Aktion');
+  // Alle der Liste auswählen und wieder aufheben
+  await page.getByLabel('Alle Mails der Liste auswählen').check();
+  const all = await rows.count();
+  if ((await bar.locator('.bulk-count').innerText()).trim() !== `${all} Mails ausgewählt`) throw new Error('Alle auswählen: Anzahl falsch');
+  await bar.getByRole('button', { name: 'Auswahl aufheben' }).click();
+  if (await bar.count()) throw new Error('Auswahl nicht aufgehoben');
+
+  // Zustellversuche in der Mail: fehlgeschlagene Mail aus dem Smoke-Test mit mehreren Versuchen
+  await page.getByRole('button', { name: 'Fehler und unterwegs', exact: true }).click();
+  const failed = (await api('GET', '/admin/outgoing-mails?status=failed')).data.find((m) => m.attemptLog.length > 1);
+  if (!failed) throw new Error('Keine fehlgeschlagene Mail mit mehreren Versuchen');
+  await rows.filter({ hasText: failed.subject }).first().locator('td').nth(4).click();
+  const dialog = page.locator('.dialog');
+  const attempts = dialog.locator('dt', { hasText: 'Zustellversuche' });
+  await attempts.waitFor();
+  const lines = dialog.locator('ol.attempts > li');
+  if ((await lines.count()) < failed.attemptLog.length) throw new Error('Nicht alle Versuche in der Mail');
+  const text = await dialog.locator('ol.attempts').innerText();
+  if (!text.includes('Fehler') || !/automatisch|erneut gesendet von/.test(text)) throw new Error(`Versuche: ${text}`);
+  // Gleich formatiert wie die übrigen Angaben (Farbe der Bezeichnung, Einzug)
+  const statusLabel = dialog.locator('dt', { hasText: 'Status' }).first();
+  const color = (l) => l.evaluate((el) => getComputedStyle(el).color);
+  if ((await color(attempts)) !== (await color(statusLabel))) throw new Error('«Zustellversuche» anders gefärbt als «Status»');
+  const left = async (l) => (await l.boundingBox()).x;
+  const statusValue = statusLabel.locator('xpath=following-sibling::dd[1]');
+  const attemptsValue = attempts.locator('xpath=following-sibling::dd[1]');
+  if (Math.abs((await left(attemptsValue)) - (await left(statusValue))) > 1) throw new Error('Zustellversuche eingerückt');
+  await dialog.screenshot({ path: `${OUT}/119-zustellversuche.png` });
+  console.log('Bild 119-zustellversuche');
+  await page.keyboard.press('Escape');
+});
+
+await step('ausgehende-mails-reihenfolge', async () => {
+  // Entscheid vom 13.11.2026: Mails eines Postfachs gehen in der Reihenfolge hinaus; die neuere wartet auf die ältere
+  const address = `ui-reihenfolge-${Date.now()}@test.local`;
+  const created = await api('POST', '/admin/mailboxes', {
+    name: 'UI Reihenfolge',
+    address,
+    active: true,
+    isDefault: false,
+    imapHost: 'localhost',
+    imapPort: 13143,
+    imapSecure: false,
+    imapFolder: 'INBOX',
+    smtpHost: 'localhost',
+    smtpPort: 1,
+    smtpSecurity: 'none',
+    authType: 'password',
+    username: address,
+    password: 'x',
+  });
+  if (created.status !== 201) throw new Error(`Postfach: HTTP ${created.status}`);
+  const box = created.data;
+  const incident = (await api('GET', '/items?view=incidents')).data.items[0];
+  const ref = `${incident.prefix}-${incident.number}`;
+  const original = (await api('GET', `/items/${ref}`)).data.mailbox?.id ?? null;
+  await api('PATCH', `/items/${ref}`, { mailboxId: box.id });
+  const reply = (text) =>
+    page.evaluate(
+      async ([r, t]) => {
+        const form = new FormData();
+        form.append('kind', 'reply');
+        form.append('body', t);
+        return (await fetch(`/api/items/${r}/entries`, { method: 'POST', headers: { 'x-patchwork': '1' }, body: form })).status;
+      },
+      [ref, text],
+    );
+  const ofBox = async () => (await api('GET', '/admin/outgoing-mails')).data.filter((m) => m.fromAddress === address);
+  const waitFor = async (check, what) => {
+    for (let i = 0; i < 30; i++) {
+      const found = check(await ofBox());
+      if (found) return found;
+      await page.waitForTimeout(1000);
+    }
+    throw new Error(what);
+  };
+  try {
+    await reply('Erste Antwort, der Server ist nicht erreichbar');
+    const first = await waitFor((mails) => mails.find((m) => m.status === 'failed'), 'Erste Mail nicht fehlgeschlagen');
+    await reply('Zweite Antwort, sie wartet auf die erste');
+    const second = await waitFor((mails) => mails.find((m) => m.status === 'waiting'), 'Zweite Mail wartet nicht');
+    await page.goto(`${BASE}/admin/outgoing-mails`);
+    await page.getByRole('button', { name: 'Fehler und unterwegs', exact: true }).click();
+    const row = page.locator('tbody tr.clickable', { has: page.locator('.badge', { hasText: 'wartet' }) }).first();
+    await row.waitFor();
+    await shot('121-ausgehende-mails-wartet');
+    await row.locator('td').nth(4).click();
+    const dialog = page.locator('.dialog');
+    const line = dialog.locator('ol.attempts li.next').first();
+    await line.waitFor();
+    const text = (await line.innerText()).trim();
+    // Auf die älteste offene Mail des Postfachs (je nach Vorgang auch eine Benachrichtigung an die Zuständige)
+    if (!text.startsWith('Wartet auf die Mail «') || !first.subject) throw new Error(`Hinweis: ${text}`);
+    if (await dialog.getByRole('button', { name: 'Erneut senden' }).count()) throw new Error('«Erneut senden» bei einer wartenden Mail');
+    await dialog.screenshot({ path: `${OUT}/122-mail-wartet.png` });
+    console.log('Bild 122-mail-wartet');
+    await page.keyboard.press('Escape');
+    // Im Verlauf des Vorgangs: Vermerk «wartet» bei der Antwort
+    await page.goto(`${BASE}/items/${ref}`);
+    await page.locator('.timeline', { hasText: 'wartet' }).first().waitFor();
+    if (!second.id) throw new Error('Zweite Mail ohne ID');
+  } finally {
+    // Aufräumen: aufgeben, bis keine Mail des Postfachs mehr offen ist
+    for (let i = 0; i < 30; i++) {
+      const mails = await ofBox();
+      const failed = mails.filter((m) => m.status === 'failed' && !m.dismissedAt);
+      if (failed.length) await api('POST', '/admin/outgoing-mails/bulk/dismiss', { ids: failed.map((m) => m.id) });
+      if (mails.every((m) => m.status !== 'queued' && m.status !== 'waiting') && !failed.length) break;
+      await page.waitForTimeout(1000);
+    }
+    await api('PATCH', `/items/${ref}`, { mailboxId: original });
+    await api('DELETE', `/admin/mailboxes/${box.id}`);
+  }
+});
+
+await step('eingang-ohne-prioritaet', async () => {
+  // Entscheid vom 13.11.2026: Im Eingang (ohne Typ) gibt es weder Priorität noch Zuständig
+  await page.goto(`${BASE}/inbox`);
+  const head = page.locator('table.table thead');
+  await head.waitFor();
+  const columns = (await head.locator('th').allInnerTexts()).map((t) => t.trim());
+  if (columns.some((c) => c.startsWith('Priorität') || c.startsWith('Zuständig'))) throw new Error(`Spalten im Eingang: ${columns.join(', ')}`);
+  const filters = page.locator('.list-filters');
+  if ((await filters.getByLabel('Priorität').count()) || (await filters.getByLabel('Zuständig').count())) {
+    throw new Error('Filter Priorität oder Zuständig im Eingang');
+  }
+  await shot('123-eingang-ohne-prioritaet');
+  const item = (await api('GET', '/items?view=inbox')).data.items[0];
+  if (!item) throw new Error('Kein Vorgang im Eingang');
+  await page.goto(`${BASE}/items/${item.prefix}-${item.number}`);
+  const priority = page.locator('#item-priority');
+  await priority.waitFor();
+  if (!(await priority.isDisabled()) || !(await page.locator('#item-assignee').isDisabled())) throw new Error('Priorität oder Zuständig wählbar');
+  if (!(await page.getByRole('button', { name: 'Mir zuweisen' }).isDisabled())) throw new Error('«Mir zuweisen» wählbar');
+  if ((await priority.locator('option:checked').innerText()).trim() !== '–') throw new Error('Priorität im Eingang nicht leer');
+  const hints = page.locator('.field .hint', { hasText: 'Erst einen Typ wählen' });
+  if ((await hints.count()) !== 2) throw new Error(`Hinweis «Erst einen Typ wählen»: ${await hints.count()}-mal`);
+  await page.locator('aside.side').screenshot({ path: `${OUT}/124-vorgang-ohne-typ.png` });
+  console.log('Bild 124-vorgang-ohne-typ');
 });
 
 await step('simulieren', async () => {
@@ -1461,6 +1650,39 @@ await step('mail-abruf', async () => {
   await page.locator('.dialog').waitFor({ state: 'detached' });
   await page.locator('.mailbox').first().getByRole('button', { name: 'Abruf einschalten' }).click();
   await page.locator('.mailbox').first().getByRole('button', { name: 'Abruf ausschalten' }).waitFor();
+});
+
+await step('abrufprotokoll', async () => {
+  // Entscheid vom 13.11.2026: aufklappbar in der Karte, neueste zuerst, Filter «Nur Fehler»
+  await page.goto(`${BASE}/admin/mailboxes`);
+  const card = page.locator('.mailbox').first();
+  await card.getByRole('button', { name: 'Jetzt abrufen' }).click();
+  await page.locator('.toast', { hasText: 'Abruf ausgeführt' }).waitFor();
+  const log = card.locator('details.poll-log');
+  if (await log.evaluate((d) => d.open)) throw new Error('Abrufprotokoll ist von Anfang an aufgeklappt');
+  await log.locator('summary').click();
+  const lines = log.locator('ol.polls > li');
+  await lines.first().waitFor();
+  const newest = (await lines.first().innerText()).trim();
+  if (!newest.includes('Jetzt abrufen von Ada Admin')) throw new Error(`Neuester Abruf: ${newest}`);
+  if ((await lines.count()) > 10) throw new Error('Mehr als 10 Zeilen ohne «Weitere anzeigen»');
+  await card.screenshot({ path: `${OUT}/120-abrufprotokoll.png` });
+  console.log('Bild 120-abrufprotokoll');
+  // Weitere anzeigen (der Smoke-Test hat viele Abrufe hinterlassen)
+  const moreButton = log.getByRole('button', { name: 'Weitere anzeigen' });
+  if (await moreButton.count()) {
+    const before = await lines.count();
+    await moreButton.click();
+    await page.waitForFunction(([sel, n]) => document.querySelectorAll(sel).length > n, ['.mailbox details.poll-log ol.polls > li', before]);
+  }
+  // Nur Fehler: entweder keine oder nur Zeilen mit Fehlermeldung
+  await log.getByLabel('Nur Fehler').check();
+  await page.waitForTimeout(500);
+  await log.locator('.empty, ol.polls > li').first().waitFor();
+  const shown = await lines.count();
+  if (shown && (await log.locator('ol.polls > li .error-detail').count()) !== shown) throw new Error('«Nur Fehler» zeigt Abrufe ohne Fehler');
+  await log.getByLabel('Nur Fehler').uncheck();
+  await lines.first().waitFor();
 });
 
 await step('auswertung', async () => {

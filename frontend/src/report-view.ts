@@ -211,14 +211,9 @@ export function priorityTable(r: Report, scope: ReportScope): SimpleTable {
     r.open.byPriority.filter((x) => x.priority === p && (type === undefined || x.type === type)).reduce((sum, x) => sum + x.count, 0);
   if (scope !== 'all') return { head: ['Priorität', 'Anzahl'], rows: PRIORITIES.map((p) => [PRIORITY_LABELS[p], String(count(p))]) };
   return {
-    head: ['Priorität', 'Störungen', 'Aufgaben', 'Eingang', 'Total'],
-    rows: PRIORITIES.map((p) => [
-      PRIORITY_LABELS[p],
-      String(count(p, 'incident')),
-      String(count(p, 'task')),
-      String(count(p, null)),
-      String(count(p)),
-    ]),
+    // Im Eingang gibt es keine Priorität (Entscheid vom 13.11.2026)
+    head: ['Priorität', 'Störungen', 'Aufgaben', 'Total'],
+    rows: PRIORITIES.map((p) => [PRIORITY_LABELS[p], String(count(p, 'incident')), String(count(p, 'task')), String(count(p))]),
   };
 }
 

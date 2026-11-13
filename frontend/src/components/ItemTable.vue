@@ -17,6 +17,8 @@ const props = defineProps<{
   showType?: boolean;
   showStatus?: boolean;
   showClosed?: boolean;
+  /** Eingang: ohne Spalten Priorität und Zuständig (gibt es erst mit einem Typ) */
+  inbox?: boolean;
   emptyText?: string;
   /** Sortierung per Spaltenkopf (v-model:sort); ohne die Prop sind die Köpfe nicht klickbar */
   sort?: ListSort | null;
@@ -55,10 +57,10 @@ const channelProps = (item: ItemSummary) => {
           <th class="sort" :aria-sort="ariaSort('title')" @click="sortBy('title')">Titel {{ arrow('title') }}</th>
           <th v-if="showType">Typ</th>
           <th v-if="showStatus" class="sort" :aria-sort="ariaSort('status')" @click="sortBy('status')">Status {{ arrow('status') }}</th>
-          <th class="sort" :aria-sort="ariaSort('priority')" @click="sortBy('priority')">Priorität {{ arrow('priority') }}</th>
+          <th v-if="!inbox" class="sort" :aria-sort="ariaSort('priority')" @click="sortBy('priority')">Priorität {{ arrow('priority') }}</th>
           <th class="channel-head sort" :aria-sort="ariaSort('channel')" @click="sortBy('channel')">Meldeweg {{ arrow('channel') }}</th>
           <th class="sort" :aria-sort="ariaSort('reporter')" @click="sortBy('reporter')">Melder {{ arrow('reporter') }}</th>
-          <th class="sort" :aria-sort="ariaSort('assignee')" @click="sortBy('assignee')">Zuständig {{ arrow('assignee') }}</th>
+          <th v-if="!inbox" class="sort" :aria-sort="ariaSort('assignee')" @click="sortBy('assignee')">Zuständig {{ arrow('assignee') }}</th>
           <th v-if="showClosed" class="sort" :aria-sort="ariaSort('closed')" @click="sortBy('closed')">Abgeschlossen {{ arrow('closed') }}</th>
           <th v-else class="sort" :aria-sort="ariaSort('age')" @click="sortBy('age')">Alter {{ arrow('age') }}</th>
           <th v-if="$slots.actions" />
@@ -79,14 +81,17 @@ const channelProps = (item: ItemSummary) => {
             <span v-else class="badge">{{ item.discarded ? 'Verworfen' : 'Eingang' }}</span>
           </td>
           <td v-if="showStatus"><StatusBadge :status="item.status" /></td>
-          <td><PriorityLabel :priority="item.priority" /></td>
+          <td v-if="!inbox">
+            <PriorityLabel v-if="item.type" :priority="item.priority" />
+            <span v-else class="faint" title="Im Eingang gibt es noch keine Priorität">–</span>
+          </td>
           <td class="channel-cell">
             <ChannelIcon v-if="session.channelById(item.channelId)" v-bind="channelProps(item)" />
             <span v-else class="faint" title="Meldeweg ohne Angabe">–</span>
           </td>
           <td class="nowrap" :title="item.reporter.email">{{ item.reporter.name }}</td>
-          <td class="nowrap">
-            <span v-if="item.assignee">{{ item.assignee.name }}</span>
+          <td v-if="!inbox" class="nowrap">
+            <span v-if="item.assignee && item.type">{{ item.assignee.name }}</span>
             <span v-else class="faint">–</span>
           </td>
           <td v-if="showClosed" class="nowrap muted">{{ formatDate(item.closedAt) }}</td>

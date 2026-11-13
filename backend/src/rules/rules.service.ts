@@ -368,6 +368,8 @@ export class RulesService {
     let closedStatus: string | null = null;
     const templates: { rule: Rule; templateId: string }[] = [];
     const log: { rule: Rule; parts: string[] }[] = [];
+    /** Priorität und Zuständig: nur, wenn der Vorgang am Ende einen Typ hat (Entscheid vom 13.11.2026) */
+    const typedParts = new Set<string>();
 
     for (const rule of matched) {
       const a = rule.actions;
@@ -385,14 +387,18 @@ export class RulesService {
       }
       if (a.priority) {
         changes.priority = a.priority;
-        parts.push(`die Priorität ${q(PRIORITY_LABELS[a.priority])} gesetzt`);
+        const part = `die Priorität ${q(PRIORITY_LABELS[a.priority])} gesetzt`;
+        typedParts.add(part);
+        parts.push(part);
       }
       if (a.assigneeId) {
         const user = staff.get(a.assigneeId);
         if (user) {
           changes.assigneeId = user.id;
           assignedBy = rule;
-          parts.push(`${q(user.name)} als zuständig gesetzt`);
+          const part = `${q(user.name)} als zuständig gesetzt`;
+          typedParts.add(part);
+          parts.push(part);
         } else {
           this.logger.warn(`Regel «${rule.name}»: Zuständiger ist kein aktiver Admin- oder IT-Benutzer`);
         }
@@ -405,6 +411,13 @@ export class RulesService {
       log.push({ rule, parts });
     }
 
+    // Bleibt der Vorgang im Eingang, gibt es weder Priorität noch Zuständig
+    if (!type) {
+      delete changes.priority;
+      delete changes.assigneeId;
+      assignedBy = null;
+      for (const entry of log) entry.parts = entry.parts.filter((p) => !typedParts.has(p));
+    }
     if (changes.statusId) changes.boardPosition = await this.items.endOfColumn(tx, changes.statusId);
     if (Object.keys(changes).length > 0) {
       await tx

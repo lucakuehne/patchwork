@@ -116,6 +116,9 @@ const assigneeRequired = (status: Status) =>
     message: `Im Status «${status.label}» braucht der Vorgang einen Zuständigen.`,
   });
 
+/** Im Eingang (ohne Typ) gibt es weder Priorität noch Zuständig (Entscheid vom 13.11.2026) */
+export const TYPE_FIRST = 'Priorität und Zuständig gibt es erst, wenn der Vorgang einen Typ hat (Störung oder Aufgabe)';
+
 @Injectable()
 export class ItemsService {
   constructor(
@@ -159,7 +162,8 @@ export class ItemsService {
       search,
       opts.mine ? mineCondition(view, opts.userId) : undefined,
       opts.areas ? areaCondition(opts.areas) : undefined,
-      opts.filters ? filterCondition(opts.filters) : undefined,
+      // Im Eingang gibt es weder Priorität noch Zuständig (Entscheid vom 13.11.2026)
+      opts.filters ? filterCondition(view === 'inbox' ? { ...opts.filters, priority: undefined, assignee: undefined } : opts.filters) : undefined,
     );
 
 
@@ -549,6 +553,7 @@ export class ItemsService {
         log.push({ field: 'description' });
       }
       if (patch.priority !== undefined && patch.priority !== item.priority) {
+        if (!item.type) throw new BadRequestException(TYPE_FIRST);
         changes.priority = patch.priority;
         log.push({ field: 'priority', from: PRIORITY_LABELS[item.priority], to: PRIORITY_LABELS[patch.priority] });
       }
@@ -559,6 +564,7 @@ export class ItemsService {
         log.push({ field: 'channel', from: before?.label ?? null, to: after.label });
       }
       if (patch.assigneeId !== undefined && patch.assigneeId !== item.assigneeId) {
+        if (!item.type) throw new BadRequestException(TYPE_FIRST);
         if (!patch.assigneeId && item.statusId) {
           const current = await this.statuses.get(item.statusId, tx);
           if (current.assigneeRequired) throw assigneeRequired(current);

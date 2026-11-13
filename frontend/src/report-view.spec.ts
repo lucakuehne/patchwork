@@ -17,14 +17,15 @@ function report(overrides: Partial<Report> = {}): Report {
         { type: 'incident', label: 'Neu', closed: false, count: 3 },
         { type: 'task', label: 'Backlog', closed: false, count: 4 },
       ],
+      // Im Eingang gibt es weder Priorität noch Zuständig: der Server liefert dafür keine Zeilen
       byPriority: [
         { priority: 'high', type: 'incident', count: 2 },
-        { priority: 'high', type: null, count: 1 },
+        { priority: 'high', type: 'task', count: 1 },
         { priority: 'normal', type: 'task', count: 5 },
       ],
       byAssignee: [
         { id: null, name: null, type: 'incident', count: 2 },
-        { id: null, name: null, type: null, count: 1 },
+        { id: null, name: null, type: 'task', count: 1 },
         { id: 'u1', name: 'Ivan IT', type: 'task', count: 3 },
       ],
     },
@@ -108,8 +109,7 @@ describe('Diagramme je Ansicht', () => {
     expect(all.labels).toEqual(['niemand', 'Ivan IT']);
     expect(all.datasets.map((d) => [d.label, d.data])).toEqual([
       ['Störung', [2, 0]],
-      ['Aufgabe', [0, 3]],
-      ['Eingang', [1, 0]],
+      ['Aufgabe', [1, 3]],
     ]);
     const tasks = assigneeSpec(report(), 'task');
     expect(tasks.title).toBe('Offene Aufgaben nach Zuständigem (ohne «Backlog»)');
@@ -129,7 +129,8 @@ describe('Diagramme je Ansicht', () => {
 
 describe('Tabellen', () => {
   it('Priorität: bei «Alle» je Typ und gesamt', () => {
-    expect(priorityTable(report(), 'all').rows[0]).toEqual(['Hoch', '2', '0', '1', '3']);
+    expect(priorityTable(report(), 'all').head).toEqual(['Priorität', 'Störungen', 'Aufgaben', 'Total']);
+    expect(priorityTable(report(), 'all').rows[0]).toEqual(['Hoch', '2', '1', '3']);
     expect(priorityTable(report(), 'task').rows).toEqual([
       ['Hoch', '3'],
       ['Normal', '5'],

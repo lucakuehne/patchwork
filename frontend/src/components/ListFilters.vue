@@ -8,9 +8,10 @@ import type { Priority } from '../types';
 /**
  * Filterleiste einer Liste bzw. des Boards: Priorität, Zuständig, Meldeweg und, wo es mehrere gibt, Status.
  * «mine»: Mit «Nur meine» ist Zuständig schon festgelegt («mineTitle»: Hinweis dazu, falls es mehr als die eigenen zeigt).
+ * «inbox»: Im Eingang (ohne Typ) gibt es weder Priorität noch Zuständig (Entscheid vom 13.11.2026), die Filter fallen weg.
  * Gespeicherte Werte, die es nicht mehr gibt, fallen weg.
  */
-const props = defineProps<{ statuses?: { id: string; label: string }[]; mine?: boolean; mineTitle?: string }>();
+const props = defineProps<{ statuses?: { id: string; label: string }[]; mine?: boolean; mineTitle?: string; inbox?: boolean }>();
 const filters = defineModel<ListFilterValues>({ required: true });
 const session = useSession();
 
@@ -22,7 +23,8 @@ watch(
   () => [session.staff, session.channels, props.statuses] as const,
   () => {
     if (!session.staff.length || !session.channels.length) return;
-    const valid = validFilters(filters.value, {
+    const current: ListFilterValues = props.inbox ? { ...filters.value, priority: '', assignee: '' } : filters.value;
+    const valid = validFilters(current, {
       assignee: session.staff.map((u) => u.id),
       status: showStatus.value ? props.statuses!.map((s) => s.id) : [],
       channel: session.channels.map((c) => c.id),
@@ -39,6 +41,7 @@ const set = (key: keyof ListFilterValues, value: string) => (filters.value = { .
 <template>
   <div class="list-filters" role="group" aria-label="Filter">
     <select
+      v-if="!inbox"
       class="select"
       :class="{ chosen: filters.priority }"
       aria-label="Priorität"
@@ -49,6 +52,7 @@ const set = (key: keyof ListFilterValues, value: string) => (filters.value = { .
       <option v-for="[key, label] in priorities" :key="key" :value="key">Priorität: {{ label }}</option>
     </select>
     <select
+      v-if="!inbox"
       class="select"
       :class="{ chosen: filters.assignee && !mine }"
       aria-label="Zuständig"

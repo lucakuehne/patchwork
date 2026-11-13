@@ -154,6 +154,10 @@ await step('Versandfehler: Vermerk im Verlauf, «Erneut senden» mit den korrigi
   assert.ok(failed.delivery.error, 'mit Fehlermeldung');
   const before = await api('GET', `/items/${itemNo}/mails/${failed.mailId}`);
   assert.deepEqual([before.status, before.fromAddress], ['failed', BROKEN]);
+  // Zustellversuch im Protokoll der Mail, nächster Versuch nach den Wiederholungen (Vorgabe: nach 1 Minute)
+  assert.deepEqual(before.attemptLog.map((x) => [x.result, x.by, x.mailbox]), [['failed', null, BROKEN]]);
+  assert.equal(before.attemptLog[0].error, before.error);
+  assert.ok(before.nextAttemptAt, 'nächster Versuch geplant');
 
   // Hinweis für Admins (Balken oben), bis die Mail erneut gesendet oder als erledigt markiert ist; nur für Admins
   const alerts = await api('GET', '/admin/alerts');
@@ -184,6 +188,8 @@ await step('Versandfehler: Vermerk im Verlauf, «Erneut senden» mit den korrigi
   assert.equal(after.status, 'sent');
   assert.equal(after.fromAddress, FIXED);
   assert.equal(after.attempts, 2);
+  assert.deepEqual(after.attemptLog.map((x) => [x.result, x.by, x.mailbox]), [['failed', null, BROKEN], ['sent', 'Ada Admin', FIXED]]);
+  assert.equal(after.nextAttemptAt, null);
   assert.equal(after.dismissedAt, null, '«Erneut senden» hebt «erledigt» auf');
   await api('POST', `/admin/outgoing-mails/${failed.mailId}/dismiss`, undefined, { expect: [400] });
   const eml = await fetch(`${BASE}/items/${itemNo}/mails/${failed.mailId}/eml`, { headers: { cookie } });

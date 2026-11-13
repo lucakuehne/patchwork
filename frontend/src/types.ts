@@ -442,9 +442,72 @@ export interface SentMail {
   deliveredTo: string[];
   subject: string;
   error: string | null;
+  attempts: number;
+  /** Zustellversuche, ältester zuerst (seit 13.11.2026) */
+  attemptLog: MailAttempt[];
+  /** Nächster automatischer Versuch nach einem Fehler */
+  nextAttemptAt: string | null;
+  /** Status «wartet»: die ältere Mail des Postfachs, auf die sie wartet */
+  waitingFor: WaitingFor | null;
   text: string;
   html: string | null;
   attachments: { index: number; filename: string; contentType: string; size: number }[];
+}
+
+/** Ältere Mail desselben Postfachs, auf die eine wartende Mail wartet (Reihenfolge beim Versand) */
+export interface WaitingFor {
+  id: string;
+  subject: string;
+  createdAt: string;
+}
+
+/** Mails eines Abrufs nach Ergebnis der Verarbeitung */
+export interface PollMailCounts {
+  created: number;
+  appended: number;
+  ignored: number;
+  duplicate: number;
+  failed: number;
+}
+
+/** Zeile im Abrufprotokoll eines Postfachs; «polls» > 1: zusammengefasste Abrufe ohne neue Mails */
+export interface MailboxPoll {
+  id: string;
+  startedAt: string;
+  endedAt: string;
+  polls: number;
+  durationMs: number;
+  mails: PollMailCounts;
+  error: string | null;
+  /** «Jetzt abrufen» von …; null = automatisch */
+  triggeredBy: string | null;
+}
+
+export interface MailboxPollPage {
+  entries: MailboxPoll[];
+  more: boolean;
+}
+
+/** Ein Zustellversuch einer ausgehenden Mail */
+export interface MailAttempt {
+  at: string;
+  result: 'sent' | 'partial' | 'held' | 'failed';
+  error: string | null;
+  deliveredTo: string[];
+  /** Absenderadresse (Postfach) */
+  mailbox: string;
+  /** «Erneut senden» von dieser Person; null = automatisch */
+  by: string | null;
+  /** Fehler: dauerhaft (Server lehnt genau diese Mail ab), keine Wiederholung */
+  permanent?: boolean;
+}
+
+/** Wiederholungen beim Versand (Verwaltung → Ausgehende Mails) */
+export interface MailRetrySettings {
+  retries: number;
+  firstDelayMinutes: number;
+  doubling: boolean;
+  maxDelayMinutes: number;
 }
 
 export interface ItemDetail {
@@ -610,7 +673,7 @@ export interface MailFolder {
  * Status einer ausgehenden Mail: queued = wird versendet, sent = an alle, partial = im Testbetrieb nur an einen Teil,
  * held = im Testbetrieb an niemanden, failed = Versand fehlgeschlagen
  */
-export type OutgoingStatus = 'queued' | 'sent' | 'partial' | 'held' | 'failed';
+export type OutgoingStatus = 'queued' | 'sent' | 'partial' | 'held' | 'failed' | 'waiting';
 
 /** Ausgehende Mail im Protokoll */
 export interface OutgoingMail {
@@ -627,6 +690,10 @@ export interface OutgoingMail {
   automated: boolean;
   error: string | null;
   attempts: number;
+  /** Zustellversuche, ältester zuerst (seit 13.11.2026) */
+  attemptLog: MailAttempt[];
+  /** Nächster automatischer Versuch nach einem Fehler */
+  nextAttemptAt: string | null;
   /** Öffentliche Antwort aus der Timeline (sonst Bestätigung oder Benachrichtigung) */
   reply: boolean;
   /** Vorlage der Mail, z.B. «welcome»; null bei älteren Mails */
@@ -671,6 +738,8 @@ export interface MailKind {
 }
 
 export interface OutgoingMailDetail extends OutgoingMail {
+  /** Status «wartet»: die ältere Mail des Postfachs, auf die sie wartet */
+  waitingFor: WaitingFor | null;
   text: string;
   html: string | null;
   attachments: { index: number; filename: string; contentType: string; size: number }[];

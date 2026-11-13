@@ -491,6 +491,10 @@ async function runPreview() {
           Bei Antworten wirken nur Priorität und Zuständig. Den Typ setzt die Regel nur, solange der Vorgang noch im Eingang liegt.
           Checkliste, Eingangsbestätigung und Verwerfen gelten nur für neue Vorgänge.
         </span>
+        <span v-if="!timed && !draft.discard && !draft.type && (draft.priority || draft.assigneeId)" class="hint">
+          Priorität und Zuständig wirken nur bei Vorgängen mit Typ. Diese Regel setzt keinen Typ: Bleibt der Vorgang im Eingang,
+          setzt sie beides nicht.
+        </span>
         <span v-if="!timed && draft.checklistTemplateId && draft.type !== 'task'" class="hint">
           Die Checkliste wird nur eingefügt, wenn der Vorgang eine Aufgabe ist.
         </span>

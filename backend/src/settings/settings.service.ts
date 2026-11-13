@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/db.module';
 import { settings, type ItemType } from '../db/schema';
+import { DEFAULT_MAIL_RETRY, type MailRetrySettings } from '../mail/mail-retry';
 import type { TemplateKey } from '../mail/mail-templates';
 import type { AreaSettings } from './areas';
 
@@ -186,6 +187,7 @@ export interface HelpSpotSettings {
 
 interface SettingsMap {
   general: GeneralSettings;
+  mailRetry: MailRetrySettings;
   channelDefaults: ChannelDefaults;
   logo: LogoSettings | null;
   ldap: LdapSettings;
@@ -201,6 +203,8 @@ interface SettingsMap {
 
 const DEFAULTS: SettingsMap = {
   general: { appName: 'Patchwork', boardClosedDays: BOARD_CLOSED_DAYS.default },
+  // Wiederholungen beim Versand (Entscheid vom 13.11.2026)
+  mailRetry: DEFAULT_MAIL_RETRY,
   // Nach der Einführung für beide Typen ohne Vorbelegung (Entscheid vom 21.10.2026)
   channelDefaults: { incident: null, task: null },
   logo: null,

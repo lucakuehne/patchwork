@@ -163,9 +163,10 @@ await step('Regeln: Verwerfen ohne Bestätigung, Bestätigung unterdrücken, Rei
   const inboxItems = (await api('GET', '/items?view=inbox')).items;
   assert.ok(!inboxItems.some((i) => i.title === 'Gewinnspiel'), 'verworfen');
   const quiet = inboxItems.find((i) => i.title === 'Ohne Antwort bitte');
-  assert.equal(quiet.priority, 'low');
+  // Im Eingang gibt es keine Priorität (Entscheid vom 13.11.2026): Die Regeln setzen keinen Typ, also auch keine Priorität
+  assert.equal(quiet.priority, 'normal');
   const rulesApplied = (await detail(quiet.number)).entries.filter((e) => e.meta?.field === 'rule').map((e) => e.meta.ruleName);
-  assert.deepEqual(rulesApplied, ['Ohne Bestätigung', 'Später: Priorität tief']);
+  assert.deepEqual(rulesApplied, ['Ohne Bestätigung'], 'nur die Regel mit einer Wirkung im Verlauf');
   await sleep(3000);
   assert.equal((await inbox(PRIZE)).length, 0, 'keine Bestätigung für Verworfenes');
   assert.equal((await inbox(MUTED)).length, 0, 'Bestätigung unterdrückt');
@@ -199,7 +200,8 @@ await step('Regeln: neue Portal-Meldung, Verwaltung nur für Admin', async () =>
     name: 'Portal Anna',
     triggers: ['portal_new'],
     conditions: group('and', cond('sender', 'is', ANNA)),
-    actions: { assigneeId: ivan.id },
+    // Zuständig erst mit Typ (Entscheid vom 13.11.2026)
+    actions: { type: 'incident', assigneeId: ivan.id },
   });
   await api('POST', '/admin/rules', { name: 'Leer', triggers: [], conditions: group('and'), actions: { priority: 'low' } }, { expect: [400] });
   await api('POST', '/admin/rules', { name: 'Ohne Aktion', triggers: ['mail_new'], conditions: group('and'), actions: {} }, { expect: [400] });

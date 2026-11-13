@@ -344,6 +344,34 @@
       "when": 1794307542214,
       "tag": "0048_mail_import",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1794551257232,
+      "tag": "0049_outgoing_mail_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794554302098,
+      "tag": "0050_mailbox_polls",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794555891502,
+      "tag": "0051_outgoing_mail_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794559473297,
+      "tag": "0052_inbox_without_priority_assignee",
+      "breakpoints": true
     }
   ]
 }

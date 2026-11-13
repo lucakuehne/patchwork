@@ -410,7 +410,8 @@ export const mailMessages = pgTable(
  * queued = wird versendet, sent = an alle, partial = im Testbetrieb nur an «deliveredTo» (nur diese im Kopf),
  * held = im Testbetrieb an niemanden, failed = Versand fehlgeschlagen (wird bis zum letzten Versuch wiederholt).
  */
-export const outgoingStatus = pgEnum('outgoing_status', ['queued', 'sent', 'partial', 'held', 'failed']);
+/** waiting: wartet, bis die älteren Mails desselben Postfachs versendet sind (Reihenfolge, Entscheid vom 13.11.2026) */
+export const outgoingStatus = pgEnum('outgoing_status', ['queued', 'sent', 'partial', 'held', 'failed', 'waiting']);
 
 export const outgoingMails = pgTable(
   'outgoing_mails',
@@ -439,6 +440,12 @@ export const outgoingMails = pgTable(
     /** Fehlgeschlagene Mail von einem Admin als erledigt markiert (kein Hinweis mehr); «Erneut senden» hebt das auf */
     dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
     attempts: integer('attempts').notNull().default(0),
+    /** Zustellversuche, ältester zuerst (seit 13.11.2026; ältere Mails haben nur «attempts» und «error») */
+    attemptLog: jsonb('attempt_log').$type<MailAttempt[]>().notNull().default([]),
+    /** Nächster automatischer Versuch nach einem Fehler (Wiederholungen laut Verwaltung), null = keiner */
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    /** Seit wann die Mail in der Versand-Queue steht (Status «wird versendet»); hängt sie zu lange, reiht der Versand sie neu ein */
+    queuedAt: timestamp('queued_at', { withTimezone: true }),
     /** Angaben zur Mail für «Erneut senden» */
     payload: jsonb('payload').$type<Record<string, unknown>>(),
     storageKey: text('storage_key').notNull(),
@@ -744,7 +751,66 @@ export type Status = typeof statuses.$inferSelect;
 export type Channel = typeof channels.$inferSelect;
 export type Entry = typeof entries.$inferSelect;
 export type Mailbox = typeof mailboxes.$inferSelect;
+
+/** Mails eines Abrufs nach Ergebnis der Verarbeitung */
+export interface PollMailCounts {
+  /** neuer Vorgang */
+  created: number;
+  /** in einen bestehenden Vorgang (Antwort, Notiz, automatische Antwort) */
+  appended: number;
+  ignored: number;
+  /** schon in Patchwork (gleiche Message-ID) */
+  duplicate: number;
+  /** Verarbeitung fehlgeschlagen */
+  failed: number;
+}
+
+/**
+ * Abrufprotokoll je Postfach (Entscheid vom 13.11.2026), 14 Tage aufbewahrt. Aufeinanderfolgende automatische Abrufe
+ * ohne Mails stehen zusammengefasst in einer Zeile («polls» > 1), wenn sie ohne Fehler waren oder denselben hatten.
+ */
+export const mailboxPolls = pgTable(
+  'mailbox_polls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mailboxId: uuid('mailbox_id')
+      .notNull()
+      .references(() => mailboxes.id, { onDelete: 'cascade' }),
+    /** Beginn des (ersten) Abrufs */
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    /** Ende des (letzten) Abrufs */
+    endedAt: timestamp('ended_at', { withTimezone: true }).notNull(),
+    /** Anzahl zusammengefasster Abrufe, 1 = einzeln */
+    polls: integer('polls').notNull().default(1),
+    /** Dauer in Millisekunden, bei zusammengefassten die längste */
+    durationMs: integer('duration_ms').notNull(),
+    mails: jsonb('mails').$type<PollMailCounts>().notNull(),
+    /** Fehler beim Abruf oder bei einer Mail; null = ok */
+    error: text('error'),
+    /** «Jetzt abrufen» von …; null = automatisch */
+    triggeredBy: text('triggered_by'),
+  },
+  (t) => [index('mailbox_polls_mailbox_idx').on(t.mailboxId, t.startedAt), index('mailbox_polls_ended_idx').on(t.endedAt)],
+);
+export type MailboxPollRow = typeof mailboxPolls.$inferSelect;
 export type OutgoingMailRow = typeof outgoingMails.$inferSelect;
+
+/** Ein Zustellversuch einer ausgehenden Mail (Entscheid vom 13.11.2026) */
+export interface MailAttempt {
+  /** Zeitpunkt (ISO) */
+  at: string;
+  /** Versendet, teilweise (Testbetrieb), zurückgehalten (Testbetrieb) oder Fehler */
+  result: 'sent' | 'partial' | 'held' | 'failed';
+  error: string | null;
+  /** An diese Empfänger ging die Mail bei diesem Versuch */
+  deliveredTo: string[];
+  /** Absenderadresse (Postfach) bei diesem Versuch */
+  mailbox: string;
+  /** Fehler: dauerhaft (Server lehnt genau diese Mail ab, keine Wiederholung); fehlt bei vorübergehenden und älteren */
+  permanent?: boolean;
+  /** «Erneut senden» von dieser Person; null = automatisch (erster Versuch oder Wiederholung) */
+  by: string | null;
+}
 export type IncomingMailRow = typeof incomingMails.$inferSelect;
 export type IncomingResult = (typeof incomingResult.enumValues)[number];
 export type Attachment = typeof attachments.$inferSelect;

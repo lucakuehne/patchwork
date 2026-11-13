@@ -175,12 +175,12 @@ export class ReportsService {
       this.rows<{ priority: Priority; type: ItemType | null; count: number }>(sql`
         select i.priority::text as priority, i.type::text as type, count(*)::int as count
         from items i left join statuses s on s.id = i.status_id
-        where ${OPEN} and ${inScope}
+        where ${OPEN} and ${inScope} and i.type is not null
         group by 1, 2`),
       this.rows<{ id: string | null; name: string | null; type: ItemType | null; count: number }>(sql`
         select u.id, u.name, i.type::text as type, count(*)::int as count
         from items i left join statuses s on s.id = i.status_id left join users u on u.id = i.assignee_id
-        where ${OPEN} and ${inScope} and ${active}
+        where ${OPEN} and ${inScope} and ${active} and i.type is not null
         group by u.id, u.name, i.type`),
       this.rows<{ prefix: string; number: number; title: string; type: ItemType | null; status: string | null; assignee: string | null; createdAt: Date }>(sql`
         select i.prefix, i.number, i.title, i.type::text as type, s.label as status, u.name as assignee, i.created_at as "createdAt"
@@ -342,10 +342,11 @@ export class ReportsService {
       r.type ? TYPE_LABELS[r.type] : 'Eingang',
       r.title,
       r.status ?? '',
-      PRIORITY_LABELS[r.priority],
+      // Im Eingang gibt es weder Priorität noch Zuständig
+      r.type ? PRIORITY_LABELS[r.priority] : '',
       r.reporter,
       r.reporterEmail,
-      r.assignee ?? '',
+      r.type ? (r.assignee ?? '') : '',
       r.channel ?? '',
       dateTime.format(new Date(r.createdAt)),
       r.closedAt ? dateTime.format(new Date(r.closedAt)) : '',

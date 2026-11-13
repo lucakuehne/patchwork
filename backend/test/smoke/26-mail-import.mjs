@@ -84,6 +84,8 @@ await step('Mail importieren: schon vorhanden, Antwort in den Vorgang, ohne Eing
   assert.equal(preview[0].duplicate.ref, ref);
 
   // Antwort der Melderin mit Nummer im Betreff: in den Vorgang; Ada importiert und ist zuständig, also keine Mail an sie
+  // (Zuständig gibt es erst mit einem Typ)
+  await api('POST', `/items/${n}/type`, { type: 'incident' });
   await api('PATCH', `/items/${n}`, { assigneeId: (await api('GET', '/users/staff')).find((u) => u.email === ADA).id });
   const answer = await build({ from: SENDER, to: IVAN, subject: `AW: [${ref}] ${subject}`, text: 'Es flackert immer noch.', messageId: `<import-2-${RUN}@test.local>` });
   assert.equal((await api('POST', '/mail-import/preview', form([['Antwort.eml', answer]])))[0].target.ref, ref);

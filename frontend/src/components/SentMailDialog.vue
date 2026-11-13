@@ -7,6 +7,7 @@ import { renderOwnMailHtml } from '../markdown';
 import { OUTGOING_STATUS } from '../outgoing';
 import type { OutgoingStatus, SentMail } from '../types';
 import MailAttachmentList from './MailAttachmentList.vue';
+import MailAttempts from './MailAttempts.vue';
 import ModalDialog from './ModalDialog.vue';
 
 /**
@@ -57,6 +58,13 @@ watch(
           <dt>Fehler</dt>
           <dd class="error-text">{{ mail.error }}</dd>
         </template>
+        <MailAttempts
+          :attempt-log="mail.attemptLog"
+          :attempts="mail.attempts"
+          :next-attempt-at="mail.nextAttemptAt"
+          :status="mail.status"
+          :waiting-for="mail.waitingFor"
+        />
         <template v-if="mail.status === 'partial' || mail.status === 'held'">
           <dt>Erhalten</dt>
           <dd>{{ mail.deliveredTo.length ? mail.deliveredTo.join(', ') : 'niemand (Testbetrieb)' }}</dd>
