@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { TYPE_HINTS, TYPE_LABELS } from '../format';
+import { TYPE_LABELS } from '../format';
+import { useSession } from '../stores/session';
+import { typeGuideTitle } from '../type-guide';
 import type { ItemType } from '../types';
 
 /** Auswahl des Typs beim Erfassen: Karten mit Leitfrage. «types»: nur diese Typen (Bereiche je Rolle). */
 const props = withDefaults(defineProps<{ types?: ItemType[] }>(), { types: () => ['incident', 'task'] });
 const model = defineModel<ItemType>({ required: true });
 
-const options = computed(() => props.types.map((value) => ({ value, label: TYPE_LABELS[value], hint: TYPE_HINTS[value] })));
+const session = useSession();
+const options = computed(() =>
+  props.types.map((value) => ({
+    value,
+    label: TYPE_LABELS[value],
+    hint: session.typeGuide[value].hint,
+    title: typeGuideTitle(session.typeGuide, value),
+  })),
+);
 </script>
 
 <template>
@@ -20,6 +30,7 @@ const options = computed(() => props.types.map((value) => ({ value, label: TYPE_
       class="option"
       :class="[`type-${o.value}`, { active: model === o.value }]"
       :aria-checked="model === o.value"
+      :title="o.title"
       @click="model = o.value"
     >
       <span class="label">{{ o.label }}</span>

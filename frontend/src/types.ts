@@ -1004,7 +1004,31 @@ export interface Report {
   topReporters: { name: string; email: string; count: number }[];
   /** Neue Vorgänge im Zeitraum nach Meldeweg; label null = ohne Angabe, type null = Eingang */
   byChannel: { label: string | null; icon: ChannelIcon | null; type: ItemType | null; count: number }[];
+  /** Typ korrigiert (nur bei «Alle») */
+  typeCorrections: TypeCorrections | null;
 }
+
+/** Auswertung «Typ korrigiert»: Zuweisungen im Zeitraum, die später zwischen Störung und Aufgabe wechselten */
+export interface TypeCorrections {
+  assigned: number;
+  corrected: number;
+  byPerson: { name: string; assigned: number; corrected: number }[];
+  cases: {
+    prefix: string;
+    number: number;
+    title: string;
+    from: ItemType;
+    to: ItemType;
+    assignedBy: string;
+    assignedAt: string;
+    correctedBy: string;
+    correctedAt: string;
+  }[];
+  casesTotal: number;
+}
+
+/** Hilfe zur Typwahl (Verwaltung → Allgemein): Leitfrage im Knopf, Beispiele beim Darüberfahren */
+export type TypeGuide = Record<ItemType, { hint: string; examples: string[] }>;
 
 /** Übersicht über die Werte in HelpSpot (Verwaltung → HelpSpot-Import) */
 export interface HelpSpotAnalysis {

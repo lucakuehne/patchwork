@@ -4,6 +4,7 @@ import { InjectDb, type Db } from '../db/db.module';
 import type { ItemType, Priority } from '../db/schema';
 import { itemRef } from '../items/item-ref';
 import { PRIORITY_LABELS, TYPE_LABELS } from '../items/items.service';
+import { typeCorrections, typeFromLabel, typeFromRuleChanges, type TypeCorrections, type TypeEvent } from './type-corrections';
 
 export type Bucket = 'day' | 'week' | 'month';
 /** Ansicht der Auswertungen: nur Störungen, nur Aufgaben oder alle Vorgänge (mit Eingang) */
@@ -69,6 +70,8 @@ export interface Report {
   topReporters: { name: string; email: string; count: number }[];
   /** Neue Vorgänge im Zeitraum nach Meldeweg; label null = ohne Angabe, type null = Eingang */
   byChannel: { label: string | null; icon: string | null; type: ItemType | null; count: number }[];
+  /** Typ korrigiert (Entscheid vom 16.11.2026), nur bei «Alle» */
+  typeCorrections: TypeCorrections | null;
 }
 
 /** Offen = im Eingang (ohne Status) oder in einem Status, der nicht abgeschlossen ist */
@@ -270,6 +273,7 @@ export class ReportsService {
         order by c.position nulls last`),
     ]);
 
+    const corrections = p.scope === 'all' ? await this.typeCorrections(p) : null;
     const total = openCount[0]?.total ?? 0;
     const backlog = openCount[0]?.backlog ?? 0;
     const closedRows = closed.reduce((sum, r) => sum + r.n, 0);
@@ -297,7 +301,44 @@ export class ReportsService {
       triage: toStats(triage[0]),
       topReporters,
       byChannel,
+      typeCorrections: corrections,
     };
+  }
+
+  /**
+   * Typ korrigiert: Zuweisungen beim Erfassen (durch die IT, ohne wiederkehrende Aufgaben), durch Regeln und als
+   * Typwechsel ab Beginn des Zeitraums; Korrekturen auch nach dessen Ende.
+   */
+  private async typeCorrections(p: ReportPeriod): Promise<TypeCorrections> {
+    const from = p.from.toISOString();
+    type Row = { itemId: string; at: Date | string; prefix: string; number: number; title: string };
+    const [created, rules, changes] = await Promise.all([
+      this.rows<Row & { type: ItemType | null; firstFrom: string | null; name: string | null }>(sql`
+        select i.id as "itemId", i.created_at as at, i.prefix, i.number, i.title, i.type::text as type, u.name,
+          (select e.meta->>'from' from entries e where e.item_id = i.id and e.kind = 'type' order by e.created_at limit 1) as "firstFrom"
+        from items i left join users u on u.id = i.creator_id
+        where i.source = 'internal' and i.recurring_task_id is null and i.prefix <> 'HS' and i.created_at >= ${from}`),
+      this.rows<Row & { meta: { ruleName?: string; changes?: unknown } }>(sql`
+        select e.item_id as "itemId", e.created_at as at, i.prefix, i.number, i.title, e.meta
+        from entries e join items i on i.id = e.item_id
+        where e.kind = 'change' and e.meta->>'field' = 'rule' and i.prefix <> 'HS' and e.created_at >= ${from}`),
+      this.rows<Row & { meta: { from?: unknown; to?: unknown }; name: string | null }>(sql`
+        select e.item_id as "itemId", e.created_at as at, i.prefix, i.number, i.title, e.meta, u.name
+        from entries e join items i on i.id = e.item_id left join users u on u.id = e.author_id
+        where e.kind = 'type' and i.prefix <> 'HS' and e.created_at >= ${from} and coalesce(e.meta->>'merged', '') <> 'true'`),
+    ]);
+    const events: TypeEvent[] = [];
+    const items = new Map<string, { prefix: string; number: number; title: string }>();
+    const add = (r: Row, by: string, to: ItemType | null, previous: ItemType | null) => {
+      if (!to) return;
+      items.set(r.itemId, { prefix: r.prefix, number: r.number, title: r.title });
+      events.push({ itemId: r.itemId, at: new Date(r.at), by, to, from: previous });
+    };
+    // Beim Erfassen: der erste Typ (vor einem späteren Wechsel)
+    for (const r of created) add(r, r.name ?? 'Unbekannt', r.firstFrom ? typeFromLabel(r.firstFrom, TYPE_LABELS) : r.type, null);
+    for (const r of rules) add(r, `Regel «${r.meta.ruleName ?? '?'}»`, typeFromRuleChanges(r.meta.changes, TYPE_LABELS), null);
+    for (const r of changes) add(r, r.name ?? 'Unbekannt', typeFromLabel(r.meta.to, TYPE_LABELS), typeFromLabel(r.meta.from, TYPE_LABELS));
+    return typeCorrections(events, items, { from: p.from, to: p.to });
   }
 
   /** CSV für Excel: alle im Zeitraum erfassten Vorgänge der Ansicht, Semikolon getrennt, mit BOM. */

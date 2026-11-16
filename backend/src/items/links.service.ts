@@ -193,6 +193,8 @@ export class LinksService {
           to: TYPE_LABELS[type],
           fromStatus: null,
           toStatus: target.label,
+          // Typ des Originals, keine eigene Zuweisung (zählt nicht in der Auswertung «Typ korrigiert»)
+          merged: true,
         });
       }
       await tx

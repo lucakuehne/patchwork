@@ -42,6 +42,7 @@ const AREAS = [
   '28-mailbox-polls',
   '29-outgoing-order',
   '30-inbox-without-priority',
+  '31-type-guide',
 ];
 
 for (const area of AREAS) await import(`./smoke/${area}.mjs`);

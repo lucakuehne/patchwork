@@ -557,6 +557,29 @@ automatisch gesetzt.
   letzten 5 statt 7 Tage, einstellbar unter Verwaltung → Allgemein (1 bis 60 Tage, für beide Boards derselbe Wert). Die
   Spalte zeigt «letzte 5 Tage» mit dem eingestellten Wert.
 
+## Typ wählen und Typ korrigiert (bestätigt am 16.11.2026)
+
+- Anlass: Der Typ wird beim Einordnen im Eingang immer wieder falsch zugewiesen, in beide Richtungen. Umgesetzt werden
+  die Leitfrage im Knopf und eine Auswertung; Abfrage bei Abweichung vom Vorschlag des Melders, Vorschläge aus früheren
+  Vorgängen und eine Triage-Rolle sind nicht gewünscht.
+- **Leitfrage im Knopf:** Jeder Knopf «Störung» bzw. «Aufgabe» zeigt unter dem Namen die Leitfrage, in jeder Zeile der
+  Eingangsliste, im Vorgang und bei «+ Neu». Vorgabe: Störung «Ging bisher, geht nicht mehr», Aufgabe «Etwas Neues oder
+  Anderes». Beim Darüberfahren erscheinen Beispiele, Vorgabe: Störung «Drucker druckt nicht mehr», «Kein Zugriff aufs
+  Netzlaufwerk», «Outlook startet nicht»; Aufgabe «Zugang für eine neue Mitarbeiterin», «Software installieren», «Neues
+  Gerät bestellen».
+- **Pflegbar** unter Verwaltung → Allgemein, Karte «Typ wählen»: je Typ die Leitfrage (höchstens 40 Zeichen) und die
+  Beispiele (eines pro Zeile, höchstens 10).
+- **Auswertung «Typ korrigiert»** unter Auswertungen: Zuweisungen eines Typs und wie viele davon danach zwischen
+  Störung und Aufgabe wechselten, mit Anteil, je Person (bzw. Regel) und als Liste der Fälle mit Richtung, «zugewiesen
+  von», «korrigiert von» und der Zeit bis zur Korrektur. Jeder Wechsel zählt, auch ein später.
+- Noch zu bestätigen (von Claude festgelegt):
+  - Der Abschnitt steht nur bei «Alle». Massgebend sind die Zuweisungen im gewählten Zeitraum; die Korrektur darf auch
+    danach liegen. Die Liste zeigt die neuesten 50 Fälle.
+  - Als Zuweisung zählen: Erfassen mit Typ durch die IT, Einordnen aus dem Eingang, eine Regel und jeder Wechsel (wer
+    wechselt, hat selbst zugewiesen). Wiederkehrende Aufgaben und der Typ eines zusammengeführten Duplikats zählen nicht.
+  - Im Vorgang zeigt das «?» beim Typ Leitfrage und Beispiele beider Typen. Ist der Knopf zu schmal (z.B. in der
+    Seitenleiste des Vorgangs), bricht die Leitfrage um, statt gekürzt zu werden.
+
 ## Eingang ohne Priorität und Zuständig (bestätigt am 13.11.2026)
 
 - Solange ein Vorgang keinen Typ hat (Eingang), gibt es weder Priorität noch Zuständig.

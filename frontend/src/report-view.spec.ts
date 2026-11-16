@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assigneeSpec, channelSpec, daysSince, duration, facts, flowSpec, priorityTable, resolutionTable, statusSpec } from './report-view';
+import { assigneeSpec, channelSpec, correctedAfter, correctionShare, daysSince, duration, facts, flowSpec, priorityTable, resolutionTable, statusSpec } from './report-view';
 import type { Report } from './types';
 
 const none = { count: 0, medianHours: null, averageHours: null };
@@ -41,6 +41,7 @@ function report(overrides: Partial<Report> = {}): Report {
       { label: 'E-Mail', icon: 'mail', type: 'task', count: 1 },
       { label: null, icon: null, type: null, count: 1 },
     ],
+    typeCorrections: null,
     ...overrides,
   };
 }
@@ -158,5 +159,14 @@ describe('Hilfsfunktionen', () => {
   it('Tage seit einem Datum, auch über die Zeitumstellung', () => {
     expect(daysSince('2026-10-20', new Date(2026, 9, 27, 8))).toBe(7);
     expect(daysSince('2026-10-24', new Date(2026, 9, 26, 0, 30))).toBe(2);
+  });
+});
+
+describe('Typ korrigiert', () => {
+  it('Anteil und Zeit bis zur Korrektur', () => {
+    expect(correctionShare(1, 8)).toBe('13 %');
+    expect(correctionShare(0, 0)).toBe('–');
+    expect(correctedAfter('2026-11-16T08:00:00Z', '2026-11-16T10:00:00Z')).toBe('2 Std.');
+    expect(correctedAfter('2026-11-16T08:00:00Z', '2026-11-16T08:05:00Z')).toBe('5 Min.');
   });
 });

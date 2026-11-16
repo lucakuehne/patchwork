@@ -8,6 +8,7 @@ import { useListFilters, useListSort, useReloadAfterItemModal } from '../composa
 import type { ItemKey } from '../item-ref';
 import { listParams } from '../list-filters';
 import { itemRef } from '../format';
+import { typeGuideTitle } from '../type-guide';
 import { itemHref, useOpenItem } from '../open-item';
 import { sendStatusChange } from '../status-move';
 import { useSession } from '../stores/session';
@@ -174,25 +175,30 @@ async function discard(item: ItemSummary) {
         <div class="row">
           <!-- Der Vorschlag des Melders aus dem Portal ist hervorgehoben -->
           <!-- Nur Typen, deren Bereich man sieht (Bereiche je Rolle) -->
+          <!-- Mit Leitfrage im Knopf, Beispiele beim Darüberfahren (Entscheid vom 16.11.2026) -->
           <button
             v-if="session.canSee('incident')"
-            class="btn btn-sm"
+            class="btn btn-sm type-btn"
             :class="{ 'btn-primary': item.suggestedType === 'incident' }"
             type="button"
+            :title="typeGuideTitle(session.typeGuide, 'incident')"
             :disabled="busy === item.id"
             @click="assign(item, 'incident')"
           >
-            Störung
+            <span>Störung</span>
+            <span class="type-hint">{{ session.typeGuide.incident.hint }}</span>
           </button>
           <button
             v-if="session.canSee('task')"
-            class="btn btn-sm"
+            class="btn btn-sm type-btn"
             :class="{ 'btn-primary': item.suggestedType === 'task' }"
             type="button"
+            :title="typeGuideTitle(session.typeGuide, 'task')"
             :disabled="busy === item.id"
             @click="assign(item, 'task')"
           >
-            Aufgabe
+            <span>Aufgabe</span>
+            <span class="type-hint">{{ session.typeGuide.task.hint }}</span>
           </button>
           <button
             class="btn btn-sm btn-ghost btn-danger"
@@ -222,6 +228,24 @@ async function discard(item: ItemSummary) {
 </template>
 
 <style scoped>
+.type-btn {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  height: auto;
+  min-height: 26px;
+  padding: 3px 8px;
+  line-height: 1.2;
+  max-width: 190px;
+  text-align: left;
+}
+/* Die Leitfrage bricht bei Bedarf um, damit sie ganz lesbar bleibt */
+.type-hint {
+  font-size: 11px;
+  font-weight: normal;
+  opacity: 0.75;
+  max-width: 100%;
+}
 .inbox-page {
   position: relative;
   min-height: calc(100vh - 140px);

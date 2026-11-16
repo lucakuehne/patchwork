@@ -16,8 +16,10 @@ import type {
   StatusFlow,
   StatusTarget,
   StatusTargetsByType,
+  TypeGuide,
   User,
 } from '../types';
+import { DEFAULT_TYPE_GUIDE } from '../type-guide';
 
 /** Startseite je Bereich */
 export const AREA_ROUTES: Record<Area, string> = { inbox: 'inbox', incident: 'incidents', task: 'tasks' };
@@ -37,6 +39,8 @@ export const useSession = defineStore('session', () => {
   const channelDefaults = ref<ChannelDefaults>({ incident: null, task: null });
   const staff = ref<User[]>([]);
   const mailboxes = ref<MailboxOption[]>([]);
+  /** Hilfe zur Typwahl (Verwaltung → Allgemein) */
+  const typeGuide = ref<TypeGuide>(DEFAULT_TYPE_GUIDE);
   /** Bereiche des Benutzers (Admins alle, IT laut Verwaltung → Benutzer) */
   const areas = ref<Area[]>(['inbox', 'incident', 'task']);
   /** Einstellungen des Benutzers (auf dem Server gespeichert): Board oder Liste, Vorgang als Seite oder Fenster, Farbschema */
@@ -143,7 +147,16 @@ export const useSession = defineStore('session', () => {
 
   /** Stammdaten nach dem Login. */
   async function loadAppData() {
-    await Promise.all([refreshCounts(), loadStatuses(), loadChannels(), loadStaff(), loadMailboxes(), loadAreas(), loadPreferences()]);
+    await Promise.all([
+      refreshCounts(),
+      loadStatuses(),
+      loadChannels(),
+      loadStaff(),
+      loadMailboxes(),
+      loadAreas(),
+      loadPreferences(),
+      loadTypeGuide(),
+    ]);
   }
 
   async function loadAreas() {
@@ -229,6 +242,10 @@ export const useSession = defineStore('session', () => {
     mailboxes.value = await api.get<MailboxOption[]>('/mailboxes');
   }
 
+  async function loadTypeGuide() {
+    typeGuide.value = await api.get<TypeGuide>('/settings/type-guide');
+  }
+
   /** Status eines Typs in der eingestellten Reihenfolge (= Spalten des Boards) */
   const statusesOf = (type: ItemType) =>
     statuses.value.filter((s) => s.type === type).sort((a, b) => a.position - b.position);
@@ -250,6 +267,8 @@ export const useSession = defineStore('session', () => {
     channelDefaults,
     staff,
     mailboxes,
+    typeGuide,
+    loadTypeGuide,
     areas,
     canSee,
     homeRoute,

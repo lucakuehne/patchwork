@@ -18,7 +18,8 @@ import TimelineMessage from '../components/TimelineMessage.vue';
 import TitleCount from '../components/TitleCount.vue';
 import TypeChangeDialog from '../components/TypeChangeDialog.vue';
 import UserPicker from '../components/UserPicker.vue';
-import { dueState, formatDateTime, itemRef, PRIORITY_LABELS, TITLE_MAX, TYPE_HINTS, TYPE_LABELS } from '../format';
+import { dueState, formatDateTime, itemRef, PRIORITY_LABELS, TITLE_MAX, TYPE_LABELS } from '../format';
+import { typeGuideTitle } from '../type-guide';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import { groupTimeline, type TimelineBlock } from '../timeline';
@@ -283,8 +284,11 @@ function onRejected() {
           <span class="label type-label">
             Typ
             <HelpTip label="Was ist eine Störung, was eine Aufgabe?">
-              <strong>Störung:</strong> {{ TYPE_HINTS.incident }}.<br />
-              <strong>Aufgabe:</strong> {{ TYPE_HINTS.task }}.
+              <template v-for="t in (['incident', 'task'] as const)" :key="t">
+                <strong>{{ TYPE_LABELS[t] }}:</strong> {{ session.typeGuide[t].hint }}<template v-if="session.typeGuide[t].examples.length">
+                  (z.B. {{ session.typeGuide[t].examples.join(', ') }})</template
+                >.<br />
+              </template>
             </HelpTip>
           </span>
           <div class="segmented type-switch">
@@ -293,19 +297,21 @@ function onRejected() {
               type="button"
               :class="{ active: item.type === 'incident', suggested: !item.type && item.suggestedType === 'incident' }"
               :disabled="busy || item.type === 'incident' || !session.canSee('incident')"
-              :title="session.canSee('incident') ? undefined : 'Kein Zugriff auf den Bereich «Störungen»'"
+              :title="session.canSee('incident') ? typeGuideTitle(session.typeGuide, 'incident') : 'Kein Zugriff auf den Bereich «Störungen»'"
               @click="setType('incident')"
             >
-              Störung
+              <span class="type-name">Störung</span>
+              <span class="type-hint">{{ session.typeGuide.incident.hint }}</span>
             </button>
             <button
               type="button"
               :class="{ active: item.type === 'task', suggested: !item.type && item.suggestedType === 'task' }"
               :disabled="busy || item.type === 'task' || !session.canSee('task')"
-              :title="session.canSee('task') ? undefined : 'Kein Zugriff auf den Bereich «Aufgaben»'"
+              :title="session.canSee('task') ? typeGuideTitle(session.typeGuide, 'task') : 'Kein Zugriff auf den Bereich «Aufgaben»'"
               @click="setType('task')"
             >
-              Aufgabe
+              <span class="type-name">Aufgabe</span>
+              <span class="type-hint">{{ session.typeGuide.task.hint }}</span>
             </button>
           </div>
           <span v-if="!item.type && item.suggestedType" class="hint suggestion">
@@ -500,6 +506,26 @@ function onRejected() {
 </template>
 
 <style scoped>
+/* Typ: Knöpfe mit Leitfrage (Entscheid vom 16.11.2026) */
+.type-switch button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  height: auto;
+  min-height: 30px;
+  padding: 5px 8px;
+  line-height: 1.2;
+  min-width: 0;
+}
+/* Die Leitfrage bricht bei Bedarf um, damit sie ganz lesbar bleibt */
+.type-hint {
+  font-size: 11px;
+  font-weight: normal;
+  opacity: 0.75;
+  max-width: 100%;
+  text-align: center;
+}
 .helpspot-origin {
   font-size: 13px;
   margin-top: -6px;

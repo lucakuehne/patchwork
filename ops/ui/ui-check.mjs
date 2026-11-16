@@ -81,7 +81,10 @@ await step('vorgang', async () => {
   await page.locator('.side .type-label .help-icon').hover();
   await tip.waitFor({ state: 'visible' });
   const text = await tip.innerText();
-  if (!text.includes('Störung: Etwas funktioniert nicht mehr') || !text.includes('Aufgabe: Etwas Neues')) throw new Error(`Erklärung zum Typ: ${text}`);
+  // Leitfrage und Beispiele aus Verwaltung → Allgemein, «Typ wählen» (Entscheid vom 16.11.2026)
+  if (!text.includes('Störung: Ging bisher, geht nicht mehr (z.B. Drucker druckt nicht mehr') || !text.includes('Aufgabe: Etwas Neues oder Anderes (z.B.')) {
+    throw new Error(`Erklärung zum Typ: ${text}`);
+  }
   await page.locator('.side').screenshot({ path: `${OUT}/83-typ-erklaerung.png` });
   console.log('Bild 83-typ-erklaerung');
   await page.mouse.move(0, 0);
@@ -1461,6 +1464,60 @@ await step('eingang-ohne-prioritaet', async () => {
   if ((await hints.count()) !== 2) throw new Error(`Hinweis «Erst einen Typ wählen»: ${await hints.count()}-mal`);
   await page.locator('aside.side').screenshot({ path: `${OUT}/124-vorgang-ohne-typ.png` });
   console.log('Bild 124-vorgang-ohne-typ');
+});
+
+await step('typ-waehlen', async () => {
+  // Entscheid vom 16.11.2026: Leitfrage in jedem Knopf, Beispiele beim Darüberfahren, pflegbar unter Verwaltung → Allgemein
+  await page.goto(`${BASE}/inbox`);
+  const incident = page.locator('tbody tr').first().locator('button.type-btn').first();
+  await incident.waitFor();
+  const label = (await incident.innerText()).replace(/\s+/g, ' ').trim();
+  if (label !== 'Störung Ging bisher, geht nicht mehr') throw new Error(`Knopf im Eingang: ${label}`);
+  // Die Leitfrage ist ganz sichtbar (nicht abgeschnitten, weder unten noch mit «…»)
+  const clipped = (button) =>
+    button.evaluate((el) => {
+      const hint = el.querySelector('.type-hint');
+      return el.scrollHeight > el.clientHeight + 1 || !hint || hint.scrollWidth > hint.clientWidth + 1;
+    });
+  if (await clipped(incident)) throw new Error('Leitfrage im Knopf des Eingangs abgeschnitten');
+  const title = await incident.getAttribute('title');
+  if (!title?.includes('Zum Beispiel:') || !title.includes('– Drucker druckt nicht mehr')) throw new Error(`Beispiele beim Darüberfahren: ${title}`);
+  await page.locator('tbody tr').first().screenshot({ path: `${OUT}/125-eingang-typ-knoepfe.png` });
+  console.log('Bild 125-eingang-typ-knoepfe');
+  // Im Vorgang ebenso
+  const item = (await api('GET', '/items?view=inbox')).data.items[0];
+  await page.goto(`${BASE}/items/${item.prefix}-${item.number}`);
+  const taskButton = page.locator('.type-switch button', { hasText: 'Aufgabe' });
+  await taskButton.waitFor();
+  if (!(await taskButton.innerText()).includes('Etwas Neues oder Anderes')) throw new Error('Leitfrage im Knopf des Vorgangs fehlt');
+  if (await clipped(taskButton)) throw new Error('Leitfrage im Knopf des Vorgangs abgeschnitten');
+  await page.locator('.side .type-switch').screenshot({ path: `${OUT}/128-vorgang-typ-knoepfe.png` });
+  console.log('Bild 128-vorgang-typ-knoepfe');
+  // Verwaltung: ändern, dann im Eingang sichtbar
+  await page.goto(`${BASE}/admin/general`);
+  const card = page.locator('.type-guide');
+  await card.locator('#guide-task-hint').waitFor();
+  await card.locator('#guide-task-hint').fill('Etwas Neues bestellen');
+  await card.locator('#guide-task-examples').fill('Zugang\n\nZugang\nMonitor');
+  await card.getByRole('button', { name: 'Speichern' }).click();
+  await page.locator('.toast', { hasText: 'Gespeichert' }).waitFor();
+  if ((await card.locator('#guide-task-examples').inputValue()) !== 'Zugang\nMonitor') throw new Error('Beispiele nicht bereinigt');
+  await card.screenshot({ path: `${OUT}/126-typ-waehlen.png` });
+  console.log('Bild 126-typ-waehlen');
+  await page.goto(`${BASE}/inbox`);
+  await page.locator('button.type-btn', { hasText: 'Etwas Neues bestellen' }).first().waitFor();
+  // Vorgabe wiederherstellen
+  await api('PUT', '/settings/type-guide', {
+    incident: { hint: 'Ging bisher, geht nicht mehr', examples: ['Drucker druckt nicht mehr', 'Kein Zugriff aufs Netzlaufwerk', 'Outlook startet nicht'] },
+    task: { hint: 'Etwas Neues oder Anderes', examples: ['Zugang für eine neue Mitarbeiterin', 'Software installieren', 'Neues Gerät bestellen'] },
+  });
+  // Auswertung «Typ korrigiert» (Smoke-Test hat Korrekturen hinterlassen)
+  await page.goto(`${BASE}/reports`);
+  const section = page.locator('section.type-corrections');
+  await section.waitFor();
+  if (!(await section.locator('table.by-person tbody tr').count())) throw new Error('Typ korrigiert: keine Zeile je Person');
+  await section.screenshot({ path: `${OUT}/127-typ-korrigiert.png` });
+  console.log('Bild 127-typ-korrigiert');
 });
 
 await step('simulieren', async () => {

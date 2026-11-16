@@ -5,7 +5,7 @@ import ItemLink from '../components/ItemLink.vue';
 import ReportChart from '../components/ReportChart.vue';
 import { barChartHeight, chartImage, type ChartSpec } from '../charts';
 import { useReportScope } from '../composables';
-import { formatDate, formatDay, itemRef } from '../format';
+import { formatDate, formatDateTime, formatDay, itemRef, TYPE_LABELS } from '../format';
 import {
   bucketFor,
   customPeriod,
@@ -19,6 +19,8 @@ import {
 import {
   assigneeSpec,
   channelSpec,
+  correctedAfter,
+  correctionShare,
   daysSince,
   facts,
   flowSpec,
@@ -345,6 +347,69 @@ function overdueText(dueDate: string): string {
           <div v-else class="faint">Keine Meldungen im Zeitraum.</div>
         </section>
       </div>
+
+      <!-- Typ korrigiert (Entscheid vom 16.11.2026), nur bei «Alle» -->
+      <section v-if="loadedScope === 'all' && report.typeCorrections" class="card card-body stack type-corrections">
+        <h2>
+          Typ korrigiert
+          <span class="faint small">Zuweisungen im Zeitraum, die danach zwischen Störung und Aufgabe wechselten</span>
+        </h2>
+        <p class="corrections-sum">
+          {{ report.typeCorrections.corrected }} von {{ report.typeCorrections.assigned }} Zuweisungen korrigiert
+          ({{ correctionShare(report.typeCorrections.corrected, report.typeCorrections.assigned) }})
+        </p>
+        <table v-if="report.typeCorrections.byPerson.length" class="table by-person">
+          <thead>
+            <tr>
+              <th>Zugewiesen von</th>
+              <th class="num">Zuweisungen</th>
+              <th class="num">korrigiert</th>
+              <th class="num">Anteil</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in report.typeCorrections.byPerson" :key="p.name">
+              <td>{{ p.name }}</td>
+              <td class="num">{{ p.assigned }}</td>
+              <td class="num">{{ p.corrected }}</td>
+              <td class="num">{{ correctionShare(p.corrected, p.assigned) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <template v-if="report.typeCorrections.cases.length">
+          <h3>
+            Fälle
+            <span v-if="report.typeCorrections.casesTotal > report.typeCorrections.cases.length" class="faint small">
+              die neuesten {{ report.typeCorrections.cases.length }} von {{ report.typeCorrections.casesTotal }}
+            </span>
+          </h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nummer</th>
+                <th>Titel</th>
+                <th>Wechsel</th>
+                <th>Zugewiesen von</th>
+                <th>Korrigiert von</th>
+                <th>Nach</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in report.typeCorrections.cases" :key="`${itemRef(c)}-${c.correctedAt}`">
+                <td>
+                  <ItemLink :item-key="c" :type="c.to" class="mono">{{ itemRef(c) }}</ItemLink>
+                </td>
+                <td class="title-cell">{{ c.title }}</td>
+                <td class="nowrap">{{ TYPE_LABELS[c.from] }} → {{ TYPE_LABELS[c.to] }}</td>
+                <td>{{ c.assignedBy }}</td>
+                <td>{{ c.correctedBy }}</td>
+                <td class="nowrap" :title="formatDateTime(c.correctedAt)">{{ correctedAfter(c.assignedAt, c.correctedAt) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+        <div v-else class="faint">Keine Korrektur im Zeitraum.</div>
+      </section>
 
       <section class="card card-body">
         <h2>Älteste offene {{ noun }} <span class="faint small">{{ oldestHint(report, loadedScope) }}</span></h2>

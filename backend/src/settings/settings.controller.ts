@@ -31,6 +31,7 @@ import { StorageService } from '../storage/storage.service';
 import { TlsService } from '../tls/tls.service';
 import type { User } from '../db/schema';
 import { AREAS, AreasService } from './areas';
+import { TYPE_GUIDE_LIMITS } from './type-guide';
 import {
   BLOCK_TRIGGERS,
   BOARD_CLOSED_DAYS,
@@ -52,6 +53,16 @@ const generalSchema = z.object({
     .max(BOARD_CLOSED_DAYS.max, `Höchstens ${BOARD_CLOSED_DAYS.max} Tage`)
     .optional(),
 });
+/** Typ wählen: Leitfrage und Beispiele je Typ; leere Zeilen fallen weg */
+const typeGuideEntry = z.object({
+  hint: z.string().trim().min(1, 'Leitfrage fehlt').max(TYPE_GUIDE_LIMITS.hint, `Leitfrage: höchstens ${TYPE_GUIDE_LIMITS.hint} Zeichen`),
+  examples: z
+    .array(z.string().trim().max(TYPE_GUIDE_LIMITS.example, `Beispiel: höchstens ${TYPE_GUIDE_LIMITS.example} Zeichen`))
+    .transform((list) => [...new Set(list.filter(Boolean))])
+    .refine((list) => list.length <= TYPE_GUIDE_LIMITS.examples, `Höchstens ${TYPE_GUIDE_LIMITS.examples} Beispiele je Typ`),
+});
+const typeGuideSchema = z.object({ incident: typeGuideEntry, task: typeGuideEntry });
+
 const scope = z.enum(['none', 'selected', 'all']);
 const addressList = z
   .array(emailSchema)
@@ -215,6 +226,20 @@ export class SettingsController {
     const general = { ...current, appName: body.appName, boardClosedDays: body.boardClosedDays ?? current.boardClosedDays };
     await this.settings.set('general', general);
     return general;
+  }
+
+  /** Typ wählen (Entscheid vom 16.11.2026): Leitfrage und Beispiele je Typ, für IT und Admins */
+  @Get('settings/type-guide')
+  typeGuide() {
+    return this.settings.get('typeGuide');
+  }
+
+  @AdminOnly()
+  @Audit('admin', '«Typ wählen» geändert')
+  @Put('settings/type-guide')
+  async updateTypeGuide(@Body(new ZodPipe(typeGuideSchema)) body: z.infer<typeof typeGuideSchema>) {
+    await this.settings.set('typeGuide', body);
+    return body;
   }
 
   @AdminOnly()

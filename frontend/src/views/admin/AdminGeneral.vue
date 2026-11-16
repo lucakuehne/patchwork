@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { api } from '../../api';
 import PortalSettingsCard from '../../components/PortalSettingsCard.vue';
+import TypeGuideCard from '../../components/TypeGuideCard.vue';
 import { useSession } from '../../stores/session';
 import { useToast } from '../../stores/toast';
 
@@ -85,6 +86,7 @@ async function removeLogo() {
       </div>
       <div><button class="btn btn-primary" type="button" :disabled="saving" @click="save">Speichern</button></div>
     </div>
+    <TypeGuideCard />
     <div class="card card-body stack">
       <h2>Logo</h2>
       <div v-if="session.logoUrl" class="logo-preview"><img :src="session.logoUrl" alt="Logo" /></div>

@@ -240,3 +240,13 @@ export function daysSince(value: string, now = new Date()): number {
   const start = new Date(day.getFullYear(), day.getMonth(), day.getDate());
   return Math.round((today.getTime() - start.getTime()) / (24 * 3600 * 1000));
 }
+
+/** Typ korrigiert: Anteil der korrigierten Zuweisungen, z.B. «12 %» */
+export function correctionShare(corrected: number, assigned: number): string {
+  return assigned ? `${Math.round((corrected / assigned) * 100)} %` : '–';
+}
+
+/** Typ korrigiert: Zeit von der Zuweisung bis zur Korrektur, z.B. «2 Std.» */
+export function correctedAfter(assignedAt: string, correctedAt: string): string {
+  return duration(Math.max(0, new Date(correctedAt).getTime() - new Date(assignedAt).getTime()) / 3_600_000);
+}

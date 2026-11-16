@@ -9,11 +9,6 @@ export const TYPE_LABELS: Record<ItemType, string> = { incident: 'Störung', tas
  * gleichentags auf 90 erhöht). Titel aus Mail-Betreffen dürfen länger sein, bis jemand sie bearbeitet.
  */
 export const TITLE_MAX = 90;
-/** Leitfrage je Typ: beim Erfassen und als Erklärung beim Feld «Typ» eines Vorgangs */
-export const TYPE_HINTS: Record<ItemType, string> = {
-  incident: 'Etwas funktioniert nicht mehr, das vorher ging',
-  task: 'Etwas Neues oder Anderes soll gemacht werden',
-};
 export const PRIORITY_LABELS: Record<Priority, string> = { high: 'Hoch', normal: 'Normal', low: 'Niedrig' };
 export const ROLE_LABELS: Record<Role, string> = { admin: 'Admin', it: 'IT', standard: 'Standard' };
 
