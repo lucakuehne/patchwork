@@ -170,11 +170,11 @@ await step('Löschen: Aufgaben bleiben ohne Verweis; Rechte nach Rolle und Berei
   const d = await detail(kept.number);
   assert.equal(d.recurring, null);
   assert.ok(d.entries.some((e) => e.meta?.field === 'recurring'), 'Eintrag im Verlauf bleibt');
-  // Standard-Benutzer: kein Zugriff; IT ohne Bereich Aufgaben ebenso; Durchlauf von Hand nur Admin
+  // Standard-Benutzer: kein Zugriff; IT ohne das Recht «Aufgaben» ebenso; Durchlauf von Hand nur Admin
   await loginAs(ANNA, 'anna-passwort-1');
   await api('GET', '/recurring-tasks', undefined, { expect: [403] });
   await loginAs('ada@test.local', 'geheim-geheim');
-  await api('PUT', '/settings/areas', { it: ['inbox', 'incident'] });
+  await api('PUT', '/settings/permissions', { it: ['inbox', 'incident'] });
   try {
     await loginAs(IVAN, 'geheim-geheim');
     await api('GET', '/recurring-tasks', undefined, { expect: [403] });
@@ -182,7 +182,7 @@ await step('Löschen: Aufgaben bleiben ohne Verweis; Rechte nach Rolle und Berei
     await api('POST', '/admin/recurring-tasks/run', {}, { expect: [403] });
   } finally {
     await loginAs('ada@test.local', 'geheim-geheim');
-    await api('PUT', '/settings/areas', { it: ['inbox', 'incident', 'task'] });
+    await api('PUT', '/settings/permissions', { it: ['inbox', 'incident', 'task'] });
   }
   await api('DELETE', `/recurring-tasks/${patchday.id}`);
 });

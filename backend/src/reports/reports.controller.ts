@@ -1,7 +1,7 @@
 import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { AdminOnly } from '../auth/auth.decorators';
+import { RequirePermission } from '../auth/auth.decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { ReportsService, type ReportPeriod } from './reports.service';
 
@@ -29,7 +29,7 @@ type PeriodQuery = z.infer<typeof periodSchema>;
 const toPeriod = (q: PeriodQuery): ReportPeriod => ({ from: q.from, to: q.to, timeZone: q.tz, bucket: q.bucket, scope: q.scope });
 const FILE_NAMES = { incident: 'stoerungen', task: 'aufgaben', all: 'vorgaenge' } as const;
 
-@AdminOnly()
+@RequirePermission('reports')
 @Controller('admin/reports')
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}

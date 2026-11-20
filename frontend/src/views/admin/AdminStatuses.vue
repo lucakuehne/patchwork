@@ -40,7 +40,9 @@ const usage = ref<Record<string, number>>({});
 const newLabel = ref<Record<ItemType, string>>({ incident: '', task: '' });
 const newClosed = ref<Record<ItemType, boolean>>({ incident: false, task: false });
 const newAssigneeRequired = ref<Record<ItemType, boolean>>({ incident: false, task: false });
+const newCompact = ref<Record<ItemType, boolean>>({ incident: false, task: false });
 /** Erklärung zu «Zuständig Pflicht» (Entscheid vom 04.11.2026) */
+const COMPACT_HINT = 'Karten dieses Status im Board kleiner: gleicher Inhalt, kleinere Schrift und weniger Abstand (z.B. Backlog und Erledigt).';
 const ASSIGNEE_REQUIRED_HINT =
   'Wer einen Vorgang von Hand in diesen Status setzt, muss einen Zuständigen wählen, falls keiner gesetzt ist. ' +
   'Automatische Wechsel (Antwort des Melders, Regeln …) prüfen das nicht.';
@@ -126,6 +128,19 @@ async function setClosed(status: Status, e: Event) {
   await load();
 }
 
+/** Kleine Karten im Board (Entscheid vom 20.11.2026) */
+async function setCompactCards(status: Status, e: Event) {
+  const input = e.target as HTMLInputElement;
+  try {
+    await api.patch(`/statuses/${status.id}`, { compactCards: input.checked });
+    await session.loadStatuses();
+  } catch (err) {
+    toast.error(err);
+    input.checked = status.compactCards;
+  }
+  await load();
+}
+
 async function setAssigneeRequired(status: Status, e: Event) {
   const input = e.target as HTMLInputElement;
   try {
@@ -141,10 +156,17 @@ async function add(type: ItemType) {
   const label = newLabel.value[type].trim();
   if (!label) return;
   try {
-    await api.post('/statuses', { type, label, closed: newClosed.value[type], assigneeRequired: newAssigneeRequired.value[type] });
+    await api.post('/statuses', {
+      type,
+      label,
+      closed: newClosed.value[type],
+      assigneeRequired: newAssigneeRequired.value[type],
+      compactCards: newCompact.value[type],
+    });
     newLabel.value[type] = '';
     newClosed.value[type] = false;
     newAssigneeRequired.value[type] = false;
+    newCompact.value[type] = false;
     await load();
   } catch (err) {
     toast.error(err);
@@ -314,6 +336,7 @@ async function confirmRemove() {
               <span>Name</span>
               <span class="center">abgeschlossen</span>
               <span class="center wrap-head" :title="ASSIGNEE_REQUIRED_HINT">Zuständig Pflicht</span>
+              <span class="center wrap-head" :title="COMPACT_HINT">Kleine Karten</span>
               <span class="right">Vorgänge</span>
               <span />
             </div>
@@ -362,6 +385,16 @@ async function confirmRemove() {
                       @change="setAssigneeRequired(element, $event)"
                     />
                   </span>
+                  <span class="center">
+                    <input
+                      type="checkbox"
+                      class="closed-box"
+                      :checked="element.compactCards"
+                      :title="COMPACT_HINT"
+                      :aria-label="`${element.label}: kleine Karten`"
+                      @change="setCompactCards(element, $event)"
+                    />
+                  </span>
                   <span class="right faint usage" title="Vorgänge mit diesem Status">{{ usage[element.id] ?? 0 }}</span>
                   <button class="btn btn-sm btn-ghost btn-danger" type="button" :aria-label="`${element.label} löschen`" @click="askRemove(element)">
                     ✕
@@ -384,6 +417,9 @@ async function confirmRemove() {
                   title="Zuständig Pflicht"
                   aria-label="Neuer Status: Zuständig Pflicht"
                 />
+              </span>
+              <span class="center">
+                <input v-model="newCompact[type]" type="checkbox" class="closed-box" title="Kleine Karten" aria-label="Neuer Status: kleine Karten" />
               </span>
               <span />
               <button class="btn btn-sm" type="submit" :disabled="!newLabel[type].trim()" aria-label="Status hinzufügen">+</button>
@@ -504,7 +540,7 @@ async function confirmRemove() {
 /* Links die Status und die automatischen Wechsel, rechts das Ablaufdiagramm; schmal untereinander */
 .type-grid {
   display: grid;
-  grid-template-columns: minmax(400px, 520px) 1fr;
+  grid-template-columns: minmax(460px, 590px) 1fr;
   gap: 20px;
   align-items: start;
 }
@@ -555,7 +591,7 @@ async function confirmRemove() {
 /* Zeile: Griff, Farbe, Name mit Ziel-Schildern, abgeschlossen, Anzahl Vorgänge, Löschen */
 .status-row {
   display: grid;
-  grid-template-columns: 16px 22px minmax(0, 1fr) 88px 72px 56px 26px;
+  grid-template-columns: 16px 22px minmax(0, 1fr) 88px 72px 64px 56px 26px;
   align-items: center;
   gap: 8px;
 }

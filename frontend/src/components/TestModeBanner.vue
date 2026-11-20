@@ -11,7 +11,7 @@ const session = useSession();
 <template>
   <div v-if="session.info?.testMode" class="test-mode" role="status">
     <strong>Testbetrieb:</strong> Es werden nicht alle Mails versendet.
-    <RouterLink v-if="session.isAdmin" to="/admin/outgoing-mails?status=withheld">Nicht versendete Mails ansehen</RouterLink>
+    <RouterLink v-if="session.can('admin')" to="/admin/outgoing-mails?status=withheld">Nicht versendete Mails ansehen</RouterLink>
   </div>
 </template>
 

@@ -1798,15 +1798,38 @@ await step('willkommen', async () => {
   if (!(await row.innerText()).includes('Willkommen')) throw new Error('Art «Willkommen» fehlt in den ausgehenden Mails');
 });
 
-await step('bereiche', async () => {
-  // Verwaltung → Benutzer: Karte «Bereiche der IT»
+await step('rechte', async () => {
+  // Verwaltung → Rechte: Admin immer alles, Standard nichts, die IT einstellbar
   await page.goto(`${BASE}/admin/users`);
-  const card = page.locator('.card', { hasText: 'Bereiche der IT' });
-  await card.waitFor();
-  await card.screenshot({ path: `${OUT}/52-bereiche-der-it.png` });
-  console.log('Bild 52-bereiche-der-it');
-  // IT nur mit Aufgaben: Navigation, Startseite, gesperrter Vorgang, Typwahl beim Erfassen
-  await api('PUT', '/settings/areas', { it: ['task'] });
+  await page.locator('.admin-nav a', { hasText: 'Rechte' }).click();
+  await page.waitForURL(/\/admin\/permissions$/);
+  const table = page.locator('table.rights');
+  await table.waitFor();
+  if ((await page.locator('.card', { hasText: 'Bereiche der IT' }).count()) > 0) throw new Error('Karte «Bereiche der IT» noch da');
+  const box = (role, label) => page.getByRole('checkbox', { name: `${role}: ${label}`, exact: true });
+  for (const label of ['Verwaltung', 'Auswertungen', 'Pläne bearbeiten']) {
+    if (!(await box('Admin', label).isChecked()) || !(await box('Admin', label).isDisabled())) throw new Error(`Admin: ${label} nicht fest gesetzt`);
+    if ((await box('Standard', label).isChecked()) || !(await box('Standard', label).isDisabled())) throw new Error(`Standard: ${label} nicht fest leer`);
+  }
+  // «Pläne bearbeiten» schliesst «Pläne ansehen» ein; ohne «Pläne ansehen» fällt auch «Pläne bearbeiten» weg
+  await box('IT', 'Pläne bearbeiten').check();
+  if (!(await box('IT', 'Pläne ansehen').isChecked())) throw new Error('«Pläne ansehen» nicht mitgesetzt');
+  await page.locator('.unsaved', { hasText: 'Ungespeicherte Änderungen' }).waitFor();
+  await shot('52-rechte');
+  await box('IT', 'Pläne ansehen').uncheck();
+  if (await box('IT', 'Pläne bearbeiten').isChecked()) throw new Error('«Pläne bearbeiten» ohne «Pläne ansehen»');
+  // Ohne Eingang, Störungen, Aufgaben und Pläne: Hinweis, Speichern gesperrt
+  for (const label of ['Eingang sehen und bearbeiten', 'Störungen sehen und bearbeiten', 'Aufgaben sehen und bearbeiten']) await box('IT', label).uncheck();
+  await page.locator('.error-text', { hasText: 'mindestens eines dieser Rechte' }).waitFor();
+  if (!(await page.getByRole('button', { name: 'Speichern' }).isDisabled())) throw new Error('Speichern ohne Bereich möglich');
+  // Aufgaben und Auswertungen speichern
+  await box('IT', 'Aufgaben sehen und bearbeiten').check();
+  await box('IT', 'Auswertungen').check();
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.locator('.toast', { hasText: 'Rechte gespeichert' }).waitFor();
+  const saved = (await api('GET', '/settings/permissions')).data;
+  if (saved.it.join() !== 'task,reports') throw new Error(`Gespeichert: ${saved.it.join(', ')}`);
+  // IT nur mit Aufgaben (und Auswertungen): Navigation, Startseite, gesperrter Vorgang
   const ivan = (await api('GET', '/admin/users')).data.find((u) => u.role === 'it' && u.email.startsWith('ivan-'));
   const incident = (await api('GET', '/items?view=incidents')).data.items[0];
   await api('POST', '/auth/logout');
@@ -1818,8 +1841,13 @@ await step('bereiche', async () => {
     await page.locator('nav.tabs .tab').first().waitFor();
     // Name des Tabs ohne die Zahlen dahinter (bei Störungen und Aufgaben eine je Status)
     const tabs = (await page.locator('nav.tabs .tab').allInnerTexts()).map((t) => t.replace(/[\s\d]+$/, '').trim());
-    if (tabs.join(',') !== 'Aufgaben') throw new Error(`Navigation: ${tabs.join(', ')}`);
+    if (tabs.join(',') !== 'Aufgaben,Auswertungen') throw new Error(`Navigation: ${tabs.join(', ')}`);
     await page.goto(`${BASE}/inbox`);
+    await page.waitForURL(/\/tasks$/);
+    // Auswertungen mit dem Recht, die Verwaltung ohne: zurück zur Startseite
+    await page.goto(`${BASE}/reports`);
+    await page.waitForURL(/\/reports$/);
+    await page.goto(`${BASE}/admin/users`);
     await page.waitForURL(/\/tasks$/);
     const before = problems.length;
     await page.goto(`${BASE}/items/${incident.prefix}-${incident.number}`);
@@ -1831,7 +1859,7 @@ await step('bereiche', async () => {
     // Auch nach einem Fehler zurück zu Ada, sonst scheitern die folgenden Schritte
     await api('POST', '/auth/logout');
     await login('ada@test.local', 'geheim-geheim');
-    await api('PUT', '/settings/areas', { it: ['inbox', 'incident', 'task'] });
+    await api('PUT', '/settings/permissions', { it: ['inbox', 'incident', 'task'] });
   }
 });
 
@@ -2133,6 +2161,205 @@ await step('zustaendig-pflicht', async () => {
     await api('PATCH', `/statuses/${inProgress.id}`, { assigneeRequired: false });
     // Die zwei erwarteten Ablehnungen meldet der Browser in der Konsole
     for (let i = problems.length - 1; i >= before; i--) if (problems[i].includes('status of 400')) problems.splice(i, 1);
+  }
+});
+
+await step('kleine-karten', async () => {
+  // Entscheid vom 20.11.2026: je Status «Kleine Karten», Vorgabe Backlog und Erledigt; gleicher Inhalt, kleiner
+  const statuses = (await api('GET', '/statuses')).data.filter((s) => s.type === 'task');
+  const backlog = statuses.find((s) => s.key === 'backlog');
+  const planned = statuses.find((s) => s.key === 'planned');
+  await page.goto(`${BASE}/admin/statuses`);
+  const box = page.getByLabel(`${planned.label}: kleine Karten`);
+  await box.waitFor();
+  if (!(await page.getByLabel(`${backlog.label}: kleine Karten`).isChecked())) throw new Error('Backlog nicht mit kleinen Karten');
+  if (await box.isChecked()) throw new Error('Geplant schon mit kleinen Karten');
+  await page.locator('.type-card', { has: page.getByLabel(`${planned.label}: kleine Karten`) }).screenshot({ path: `${OUT}/135-status-kleine-karten.png` });
+  console.log('Bild 135-status-kleine-karten');
+  await api('PUT', '/me/preferences', { layout: { tasks: 'board' } });
+  await page.goto(`${BASE}/tasks`);
+  const column = (label) => page.locator('.column', { has: page.locator('.column-head .badge', { hasText: label }) });
+  await column(backlog.label).waitFor();
+  if (!(await column(backlog.label).evaluate((el) => el.classList.contains('compact')))) throw new Error('Spalte Backlog nicht klein');
+  if (await column(planned.label).evaluate((el) => el.classList.contains('compact'))) throw new Error('Spalte Geplant klein');
+  // Gleicher Inhalt, kleinere Schrift
+  const sizes = async (label) =>
+    column(label).locator('.board-card .card-title').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize)).catch(() => null);
+  const small = await sizes(backlog.label);
+  const normal = await sizes(statuses.find((s) => s.key === 'in_progress').label);
+  if (small !== null && normal !== null && !(small < normal)) throw new Error(`Titel klein ${small}px, normal ${normal}px`);
+  await shot('136-board-kleine-karten');
+});
+
+/** PDF mit einfachen Linien (Seiten A4 quer), für «Plan hochladen» */
+function makePdf(pageCount) {
+  const pages = [];
+  const kids = [];
+  let next = 3;
+  for (let i = 0; i < pageCount; i++) {
+    const pageId = next++;
+    const contentId = next++;
+    kids.push(`${pageId} 0 R`);
+    const stream = `1 w 40 40 762 515 re S 40 300 m 802 300 l S ${200 + i * 100} 40 m ${200 + i * 100} 555 l S`;
+    pages.push([pageId, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Contents ${contentId} 0 R >>`]);
+    pages.push([contentId, `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`]);
+  }
+  const objects = [[1, '<< /Type /Catalog /Pages 2 0 R >>'], [2, `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pageCount} >>`], ...pages];
+  let out = '%PDF-1.4\n';
+  const offsets = {};
+  for (const [id, body] of objects) {
+    offsets[id] = out.length;
+    out += `${id} 0 obj\n${body}\nendobj\n`;
+  }
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let id = 1; id <= objects.length; id++) out += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, 'latin1');
+}
+
+await step('plaene', async () => {
+  // Entscheid vom 20.11.2026: Standort → Gebäude → Stockwerk → Raum, massstabsgetreu
+  await page.goto(`${BASE}/plans`);
+  await page.locator('.plans-page h1', { hasText: 'Pläne' }).waitFor();
+  if (!(await page.locator('.header .tab', { hasText: 'Pläne' }).count())) throw new Error('Menüpunkt «Pläne» fehlt');
+  const dialog = page.locator('.dialog');
+  const addNode = async (button, name) => {
+    await button.click();
+    await dialog.locator('#plan-node-name').fill(name);
+    await dialog.getByRole('button', { name: 'Hinzufügen' }).click();
+    await dialog.waitFor({ state: 'detached' });
+  };
+  const tree = page.locator('.plan-tree');
+  // Die Knöpfe eines Eintrags erscheinen beim Darüberfahren (die Namen behalten so ihren Platz)
+  const action = async (node, name) => {
+    await node.hover();
+    return node.getByRole('button', { name, exact: true });
+  };
+  await addNode(tree.getByRole('button', { name: '+ Standort' }), 'Hauptsitz');
+  await addNode(await action(tree.locator('.node.site', { hasText: 'Hauptsitz' }), 'Gebäude hinzufügen'), 'Gebäude A');
+  const siteName = (await tree.locator('.node.site .node-label').first().innerText()).trim();
+  if (siteName !== 'Hauptsitz') throw new Error(`Name des Standorts gekürzt: ${siteName}`);
+  // Neues Stockwerk: Name vorgeschlagen («EG»), danach «1. OG» zuoberst
+  const building = tree.locator('.node.building', { hasText: 'Gebäude A' });
+  await (await action(building, 'Stockwerk hinzufügen')).click();
+  if ((await dialog.locator('#plan-node-name').inputValue()) !== 'EG') throw new Error('Name «EG» nicht vorgeschlagen');
+  await dialog.getByRole('button', { name: 'Hinzufügen' }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await (await action(building, 'Stockwerk hinzufügen')).click();
+  if ((await dialog.locator('#plan-node-name').inputValue()) !== '1. OG') throw new Error('Name «1. OG» nicht vorgeschlagen');
+  await dialog.getByRole('button', { name: 'Hinzufügen' }).click();
+  await dialog.waitFor({ state: 'detached' });
+  const floorNames = (await tree.locator('.node.floor .node-label').allInnerTexts()).map((t) => t.trim());
+  if (floorNames.join('|') !== '1. OG|EG') throw new Error(`Reihenfolge der Stockwerke: ${floorNames.join(', ')}`);
+  await page.locator('.crumbs', { hasText: 'Hauptsitz · Gebäude A · 1. OG' }).waitFor();
+
+  // Bearbeiten: Rechteck ziehen, Namen eintippen, speichern
+  await page.getByRole('button', { name: 'Bearbeiten' }).click();
+  await page.getByRole('button', { name: 'Rechteck', exact: true }).click();
+  const stage = page.locator('.stage svg').first();
+  const box = await stage.boundingBox();
+  const drawRect = async (x1, y1, x2, y2) => {
+    await page.mouse.move(box.x + box.width * x1, box.y + box.height * y1);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * ((x1 + x2) / 2), box.y + box.height * ((y1 + y2) / 2), { steps: 4 });
+    await page.mouse.move(box.x + box.width * x2, box.y + box.height * y2, { steps: 4 });
+    await page.mouse.up();
+  };
+  await drawRect(0.15, 0.15, 0.4, 0.45);
+  await page.locator('#plan-room-name').waitFor();
+  if (!(await page.locator('#plan-room-name').evaluate((el) => el === document.activeElement))) throw new Error('Name des neuen Raums nicht im Fokus');
+  await page.locator('#plan-room-name').fill('Sitzungszimmer Säntis');
+  await page.locator('#plan-room-description').fill('Beamer, 12 Plätze');
+  await page.locator('.unsaved', { hasText: 'Ungespeicherte Änderungen' }).waitFor();
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.locator('.toast', { hasText: 'Gespeichert' }).waitFor();
+  await tree.locator('.node.floor', { hasText: '1. OG' }).locator('.count', { hasText: '1 Raum' }).waitFor();
+
+  // Doppelter Name im Stockwerk: Speichern geht nicht
+  await page.getByRole('button', { name: 'Bearbeiten' }).click();
+  await page.getByRole('button', { name: 'Rechteck', exact: true }).click();
+  await drawRect(0.5, 0.15, 0.7, 0.45);
+  await page.locator('#plan-room-name').fill('sitzungszimmer säntis');
+  await page.locator('.details .error-text', { hasText: 'Diesen Namen gibt es in diesem Stockwerk schon' }).waitFor();
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.locator('.save-error', { hasText: 'doppelt' }).waitFor();
+  await page.locator('#plan-room-name').fill('Sitzungszimmer Pilatus');
+
+  // Plan aus einem PDF mit zwei Seiten: Seite wählen, Massstab setzen
+  await page.locator('#plan-file').setInputFiles({ name: 'Grundriss.pdf', mimeType: 'application/pdf', buffer: makePdf(2) });
+  await dialog.locator('.page img').nth(1).waitFor({ timeout: 30000 });
+  await shot('130-plan-pdf-seite');
+  await dialog.locator('.page').nth(1).click();
+  await dialog.getByRole('button', { name: 'Seite 2 übernehmen' }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await page.locator('.stage image.plan-image').waitFor({ state: 'attached' });
+  await page.locator('.plan-status', { hasText: 'Massstab noch nicht gesetzt' }).waitFor();
+  if (!(await page.locator('.tool.active', { hasText: 'Massstab setzen' }).count())) throw new Error('«Massstab setzen» nicht gewählt');
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.8);
+  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.8);
+  await page.locator('#plan-scale-real').fill('12,5');
+  await page.getByRole('button', { name: 'Übernehmen' }).click();
+  await page.locator('.toast', { hasText: 'Massstab gesetzt: 12,50 m' }).waitFor();
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.locator('.toast', { hasText: 'Gespeichert' }).last().waitFor();
+  await tree.locator('.node.floor', { hasText: '1. OG' }).locator('.count', { hasText: '2 Räume' }).waitFor();
+  await shot('131-plaene');
+
+  // Suchen, auswählen, messen
+  await page.locator('.sidebar input[type="search"]').fill('säntis');
+  await page.locator('.results .result', { hasText: 'Sitzungszimmer Säntis' }).click();
+  await page.locator('.details h2', { hasText: 'Sitzungszimmer Säntis' }).waitFor();
+  if (!(await page.locator('.details', { hasText: 'Beamer, 12 Plätze' }).count())) throw new Error('Beschreibung fehlt');
+  await page.getByRole('button', { name: 'Messen', exact: true }).click();
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.6);
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.6);
+  await page.locator('.measure-text').waitFor();
+  await shot('132-plaene-suchen-messen');
+
+  // Druck: A4 quer im Massstab
+  await page.emulateMedia({ media: 'print' });
+  const sheet = page.locator('.plan-print-root');
+  await sheet.waitFor({ state: 'visible' });
+  const foot = await sheet.locator('.sheet-foot').innerText();
+  if (!/Massstab 1:\d+ auf A4 quer/.test(foot)) throw new Error(`Druck: ${foot}`);
+  if (await page.locator('.header').isVisible()) throw new Error('Kopfzeile im Druck sichtbar');
+  await page.screenshot({ path: `${OUT}/133-plaene-druck.png` });
+  console.log('Bild 133-plaene-druck');
+  await page.emulateMedia({ media: 'screen' });
+
+  // Ungespeicherte Änderungen beim Wechsel des Stockwerks: Rückfrage
+  await page.getByRole('button', { name: 'Bearbeiten' }).click();
+  await page.getByRole('button', { name: 'Beschriftung', exact: true }).click();
+  await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.2);
+  await tree.locator('.node.floor', { hasText: 'EG' }).getByRole('button', { name: 'EG', exact: true }).click();
+  await dialog.locator('.leave-text', { hasText: 'ungespeicherte Änderungen' }).waitFor();
+  await dialog.getByRole('button', { name: 'Verwerfen' }).click();
+  await page.locator('.crumbs', { hasText: 'Hauptsitz · Gebäude A · EG' }).waitFor();
+
+  // Löschen fragt nach und nennt, was wegfällt
+  await (await action(building, 'Gebäude A löschen')).click();
+  const deleteText = await dialog.locator('.delete-text').innerText();
+  if (!deleteText.includes('2 Stockwerke, 2 Räume')) throw new Error(`Rückfrage beim Löschen: ${deleteText}`);
+  await dialog.getByRole('button', { name: 'Abbrechen' }).click();
+
+  // IT mit dem Recht «Pläne ansehen»: ansehen ja, ändern nein
+  const permissions = (await api('GET', '/settings/permissions')).data;
+  const ivan = (await api('GET', '/admin/users')).data.find((u) => u.email.startsWith('ivan-'));
+  await api('PUT', '/settings/permissions', { it: [...permissions.it.filter((p) => p !== 'plansView' && p !== 'plansEdit'), 'plansView'] });
+  try {
+    await api('POST', '/auth/logout');
+    await login(ivan.email, 'geheim-geheim');
+    await page.goto(`${BASE}/plans`);
+    await page.locator('.plan-tree .node.floor').first().waitFor();
+    if (await page.getByRole('button', { name: 'Bearbeiten' }).count()) throw new Error('IT kann bearbeiten');
+    if (await page.locator('.plan-tree .node-action').count()) throw new Error('IT sieht Aktionen im Baum');
+    if (!(await page.getByRole('button', { name: 'Drucken' }).count())) throw new Error('IT kann nicht drucken');
+    await shot('134-plaene-it');
+  } finally {
+    await api('POST', '/auth/logout');
+    await login('ada@test.local', 'geheim-geheim');
+    await api('PUT', '/settings/permissions', permissions);
   }
 });
 

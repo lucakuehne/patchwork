@@ -19,6 +19,9 @@ import {
   statuses,
   users,
   type AuditArea,
+  planBuildings,
+  planFloors,
+  planSites,
 } from '../db/schema';
 import { byKey, parseItemRef, type ItemKey } from '../items/item-ref';
 import { templateByKey } from '../mail/mail-templates';
@@ -127,6 +130,30 @@ export class AuditService {
       }
       case 'mailTemplate':
         return { label: templateByKey(params.key ?? '')?.label ?? params.key ?? '', itemId: null };
+      // Pläne: mit dem Weg, z.B. «Hauptsitz · Gebäude A · 1. OG»
+      case 'planSite': {
+        const [row] = await this.db.select({ site: planSites.name }).from(planSites).where(eq(planSites.id, id)).limit(1);
+        return row ? { label: row.site, itemId: null } : null;
+      }
+      case 'planBuilding': {
+        const [row] = await this.db
+          .select({ site: planSites.name, building: planBuildings.name })
+          .from(planBuildings)
+          .innerJoin(planSites, eq(planSites.id, planBuildings.siteId))
+          .where(eq(planBuildings.id, id))
+          .limit(1);
+        return row ? { label: `${row.site} · ${row.building}`, itemId: null } : null;
+      }
+      case 'planFloor': {
+        const [row] = await this.db
+          .select({ site: planSites.name, building: planBuildings.name, floor: planFloors.name })
+          .from(planFloors)
+          .innerJoin(planBuildings, eq(planBuildings.id, planFloors.buildingId))
+          .innerJoin(planSites, eq(planSites.id, planBuildings.siteId))
+          .where(eq(planFloors.id, id))
+          .limit(1);
+        return row ? { label: `${row.site} · ${row.building} · ${row.floor}`, itemId: null } : null;
+      }
       default:
         return this.named(spec.target, id);
     }

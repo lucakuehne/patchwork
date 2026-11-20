@@ -167,7 +167,7 @@ async function submit(statusId: string | null) {
     <div class="row">
       <span class="faint small">{{ statusChoices.length ? 'Ctrl+Enter öffnet die Auswahl' : 'Ctrl+Enter sendet' }}</span>
       <div class="spacer" />
-      <label v-if="session.isAdmin && otherStaff.length" class="as-user small">
+      <label v-if="session.can('admin') && otherStaff.length" class="as-user small">
         Als
         <select v-model="asUserId" class="select" aria-label="Im Namen von">
           <option value="">{{ session.user?.name }} (ich)</option>

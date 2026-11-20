@@ -14,7 +14,7 @@ const days = computed(() => {
 </script>
 
 <template>
-  <div v-if="session.isAdmin && days !== null && days <= 30" class="certificate" role="status">
+  <div v-if="session.can('admin') && days !== null && days <= 30" class="certificate" role="status">
     <strong>HTTPS-Zertifikat:</strong>
     <template v-if="days < 0"> ist am {{ formatDate(session.info!.certificateExpiresAt!) }} abgelaufen.</template>
     <template v-else> läuft am {{ formatDate(session.info!.certificateExpiresAt!) }} ab (noch {{ days }} {{ days === 1 ? 'Tag' : 'Tage' }}).</template>

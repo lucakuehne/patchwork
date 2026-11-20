@@ -93,7 +93,7 @@ const showOriginal = ref(false);
 const showSent = ref(false);
 
 // Zeit einer internen Notiz: Admins können sie jederzeit anpassen (alle Autoren, auch per Mail eingegangene)
-const canChangeTime = computed(() => props.entry.kind === 'note' && session.isAdmin);
+const canChangeTime = computed(() => props.entry.kind === 'note' && session.can('admin'));
 const showTime = ref(false);
 const timeChangeTitle = computed(() => {
   const change = props.entry.timeChange;

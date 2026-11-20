@@ -14,6 +14,8 @@ import { AlertsController } from './common/alerts.controller';
 import { HealthController } from './common/health.controller';
 import { DbModule } from './db/db.module';
 import { HelpSpotController } from './helpspot/helpspot.controller';
+import { PlansController } from './plans/plans.controller';
+import { PlansService } from './plans/plans.service';
 import { HelpSpotImportService } from './helpspot/helpspot-import.service';
 import { ChecklistsController } from './items/checklists.controller';
 import { ChecklistsService } from './items/checklists.service';
@@ -96,6 +98,7 @@ import { UsersService } from './users/users.service';
     UploadsController,
     PublicImagesController,
     HelpSpotController,
+    PlansController,
     AuditController,
   ],
   providers: [
@@ -139,6 +142,7 @@ import { UsersService } from './users/users.service';
     TlsService,
     UploadsService,
     HelpSpotImportService,
+    PlansService,
   ],
 })
 export class AppModule {}

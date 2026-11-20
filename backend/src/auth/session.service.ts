@@ -5,6 +5,7 @@ import { appConfig } from '../config';
 import { randomToken, sha256 } from '../common/crypto';
 import { InjectDb, type Db } from '../db/db.module';
 import { sessions, users, type User } from '../db/schema';
+import { AreasService } from '../settings/areas';
 
 export const SESSION_COOKIE = 'pw_session';
 const SESSION_DAYS = 14;
@@ -14,7 +15,10 @@ const ACTIVE_RESOLUTION_MS = 60 * 1000;
 
 @Injectable()
 export class SessionService {
-  constructor(@InjectDb() private readonly db: Db) {}
+  constructor(
+    @InjectDb() private readonly db: Db,
+    private readonly areas: AreasService,
+  ) {}
 
   async create(userId: string, res: Response): Promise<void> {
     const token = randomToken();
@@ -49,8 +53,9 @@ export class SessionService {
     let impersonator: User | null = null;
     if (row.impersonatorId) {
       [impersonator = null] = await this.db.select().from(users).where(eq(users.id, row.impersonatorId)).limit(1);
-      if (!impersonator?.active || impersonator.role !== 'admin') {
-        // Der Admin dahinter ist es nicht mehr: Sitzung beenden, damit sie auch nach einer Reaktivierung nicht wieder gilt
+      // «Als dieser Benutzer arbeiten» braucht das Recht «Verwaltung» (Rechte je Rolle, seit 20.11.2026)
+      if (!impersonator?.active || !(await this.areas.can(impersonator, 'admin'))) {
+        // Die Person dahinter darf es nicht mehr: Sitzung beenden, damit sie auch nach einer Reaktivierung nicht wieder gilt
         await this.db.delete(sessions).where(eq(sessions.id, id));
         return null;
       }

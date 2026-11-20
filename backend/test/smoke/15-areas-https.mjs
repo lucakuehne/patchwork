@@ -54,18 +54,19 @@ import {
 let { mailboxId, ivan, itemNo, statuses, channels, firstMessageId, t1, t2, t3, task, taskListId, mentionTask, dupOriginal, dupSame, dupOther, anna, portalItem, supplierRule } = state;
 
 await step('Bereiche je Rolle: IT nur mit Aufgaben, gesperrte Vorgänge, Verweise nur mit Nummer, keine Mails ohne Zugriff', async () => {
-  assert.deepEqual(await api('GET', '/areas'), { areas: ['inbox', 'incident', 'task'] });
-  assert.deepEqual(await api('GET', '/settings/areas'), { it: ['inbox', 'incident', 'task'] }, 'Standard: alle');
-  assert.match((await api('PUT', '/settings/areas', { it: [] }, { expect: [400] })).message, /mindestens einen Bereich/);
+  // Rechte je Rolle (seit 20.11.2026): Admins alle, die IT laut Einstellung
+  assert.deepEqual(await api('GET', '/areas'), { areas: ['inbox', 'incident', 'task', 'plans'], permissions: ['inbox', 'incident', 'task', 'plansView', 'plansEdit', 'reports', 'admin'] });
+  assert.deepEqual(await api('GET', '/settings/permissions'), { it: ['inbox', 'incident', 'task'] }, 'Standard: alle Vorgänge');
+  assert.match((await api('PUT', '/settings/permissions', { it: [] }, { expect: [400] })).message, /mindestens eines dieser Rechte/);
   const task = await createItem({ type: 'task', title: `Bereiche ${RUN}` });
   await api('POST', `/items/${task}/links`, { role: 'relates', other: itemNo });
   const incidentFile = (await detail(itemNo)).attachments[0].id;
-  await api('PUT', '/settings/areas', { it: ['task', 'task'] });
-  assert.deepEqual(await api('GET', '/settings/areas'), { it: ['task'] });
+  await api('PUT', '/settings/permissions', { it: ['task', 'task'] });
+  assert.deepEqual(await api('GET', '/settings/permissions'), { it: ['task'] });
 
   await loginAs(IVAN, 'geheim-geheim');
-  assert.deepEqual(await api('GET', '/areas'), { areas: ['task'] });
-  await api('GET', '/settings/areas', undefined, { expect: [403] });
+  assert.deepEqual(await api('GET', '/areas'), { areas: ['task'], permissions: ['task'] });
+  await api('GET', '/settings/permissions', undefined, { expect: [403] });
   const counts = await api('GET', '/items/counts');
   assert.deepEqual([counts.inbox, counts.incidents], [0, 0]);
   assert.ok(counts.tasks > 0);
@@ -99,7 +100,7 @@ await step('Bereiche je Rolle: IT nur mit Aufgaben, gesperrte Vorgänge, Verweis
   assert.ok(!(await inbox(IVAN)).some((m) => m.subject.startsWith(`[PW-${incident}]`)), 'keine Mail zur Störung');
   assert.equal((await detail(incident)).assignee.email, IVAN);
 
-  await api('PUT', '/settings/areas', { it: ['inbox', 'incident', 'task'] });
+  await api('PUT', '/settings/permissions', { it: ['inbox', 'incident', 'task'] });
 });
 
 await step('Als Benutzer arbeiten: nur Admins, IT/Admin und Melder mit Portal, Rechte und Autor wie der Benutzer, zurück zum eigenen Konto', async () => {

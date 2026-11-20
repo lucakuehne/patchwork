@@ -1,7 +1,10 @@
 export type Role = 'admin' | 'it' | 'standard';
 export type ItemType = 'incident' | 'task';
 /** Bereiche der Oberfläche (Bereiche je Rolle): Eingang (ohne Typ), Störungen, Aufgaben */
-export type Area = 'inbox' | ItemType;
+/** Bereiche je Rolle: Vorgänge (Eingang, Störungen, Aufgaben) und seit 20.11.2026 «Pläne» */
+export type Area = 'inbox' | ItemType | 'plans';
+/** Rechte je Rolle (Verwaltung → Rechte, Entscheid vom 20.11.2026) */
+export type Permission = 'inbox' | 'incident' | 'task' | 'plansView' | 'plansEdit' | 'reports' | 'admin';
 export type Priority = 'high' | 'normal' | 'low';
 export type View =
   | 'inbox'
@@ -144,6 +147,8 @@ export interface Status {
   closed: boolean;
   /** Zuständig Pflicht: ein Wechsel von Hand in diesen Status braucht einen Zuständigen (seit 04.11.2026) */
   assigneeRequired: boolean;
+  /** Kleine Karten im Board (Entscheid vom 20.11.2026) */
+  compactCards: boolean;
   /** Reihenfolge im Typ: Spalten des Boards und alle Auswahllisten */
   position: number;
   color: StatusColor;
@@ -705,7 +710,7 @@ export interface OutgoingMail {
 }
 
 /** Bereich im Aktionsprotokoll: Vorgänge, Portal, Verwaltung, Anmeldung und Konto */
-export type AuditArea = 'items' | 'portal' | 'admin' | 'account';
+export type AuditArea = 'items' | 'portal' | 'admin' | 'account' | 'plans';
 
 /** Eintrag im Aktionsprotokoll (Verwaltung → Aktionsprotokoll, nur Admins) */
 export interface AuditEntry {
@@ -1081,4 +1086,65 @@ export interface HelpSpotCopy {
   original: { id: string; prefix: string; number: number; title: string; type: ItemType | null; status: { label: string; closed: boolean } | null };
   /** Vorschlag, welcher bleibt: die Kopie bei Aufgaben und bei Antworten oder Notizen der IT, sonst der HS-Vorgang */
   suggestion: { keep: 'copy' | 'original'; reason: 'task' | 'staffEntries' | null };
+}
+
+/* ---------- Pläne (Entscheid vom 20.11.2026), Masse in Metern, Ursprung oben links ---------- */
+export type PlanPoint = [number, number];
+
+export interface PlanTreeFloor {
+  id: string;
+  name: string;
+  roomCount: number;
+}
+export interface PlanTreeBuilding {
+  id: string;
+  name: string;
+  floors: PlanTreeFloor[];
+}
+export interface PlanTreeSite {
+  id: string;
+  name: string;
+  buildings: PlanTreeBuilding[];
+}
+
+export interface PlanRoom {
+  id: string;
+  name: string;
+  description: string;
+  points: PlanPoint[];
+}
+export interface PlanLabel {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+}
+/** Plan im Hintergrund: Bild mit Massstab (Meter pro Bildpunkt) und Lage der linken oberen Ecke */
+export interface PlanBackground {
+  url: string;
+  widthPx: number;
+  heightPx: number;
+  metersPerPx: number;
+  x: number;
+  y: number;
+  calibrated: boolean;
+}
+export interface PlanFloor {
+  id: string;
+  name: string;
+  site: { id: string; name: string };
+  building: { id: string; name: string };
+  rooms: PlanRoom[];
+  labels: PlanLabel[];
+  plan: PlanBackground | null;
+  contentUpdatedAt: string;
+}
+export interface PlanSearchHit {
+  id: string;
+  name: string;
+  description: string;
+  floorId: string;
+  floor: string;
+  building: string;
+  site: string;
 }

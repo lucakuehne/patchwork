@@ -372,6 +372,27 @@
       "when": 1794559473297,
       "tag": "0052_inbox_without_priority_assignee",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1795170379877,
+      "tag": "0053_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1795173839844,
+      "tag": "0054_compact_cards",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1795175548602,
+      "tag": "0055_permissions",
+      "breakpoints": true
     }
   ]
 }

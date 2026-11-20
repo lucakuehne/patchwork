@@ -9,6 +9,7 @@ const status = (id: string, closed: boolean, position: number, x: number | null 
   label: id,
   closed,
   assigneeRequired: false,
+  compactCards: false,
   position,
   color: 'gray',
   diagramX: x,

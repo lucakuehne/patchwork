@@ -135,7 +135,7 @@ function open(item: ItemSummary, event: MouseEvent) {
       v-for="status in statuses"
       :key="status.id"
       class="column"
-      :class="{ blocked: blocked(status.id) }"
+      :class="{ blocked: blocked(status.id), compact: status.compactCards }"
       :style="{ '--column-tint': `var(--st-${status.color}-bg)` }"
       :title="blocked(status.id) ? 'Dieser Wechsel ist im Ablauf nicht vorgesehen' : undefined"
     >
@@ -171,7 +171,7 @@ function open(item: ItemSummary, event: MouseEvent) {
         <template #item="{ element }">
           <article
             class="board-card card"
-            :class="{ done: status.closed, backlog: status.id === backlogId }"
+            :class="{ done: status.closed, backlog: status.id === backlogId, compact: status.compactCards }"
             @click="open(element, $event)"
             @auxclick.middle.prevent="open(element, $event)"
           >
@@ -368,6 +368,41 @@ function open(item: ItemSummary, event: MouseEvent) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Kleine Karten (Verwaltung → Status, Entscheid vom 20.11.2026): gleicher Inhalt, kleinere Schrift, weniger Abstand */
+.column.compact .cards {
+  gap: 5px;
+}
+.board-card.compact {
+  padding: 5px 8px;
+  gap: 3px;
+}
+.board-card.compact .card-title {
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+.board-card.compact .card-top,
+.board-card.compact .card-foot,
+.board-card.compact .prio,
+.board-card.compact .meta-icon,
+.board-card.compact .due {
+  font-size: 11px;
+}
+.board-card.compact .card-top,
+.board-card.compact .card-foot {
+  gap: 6px;
+}
+.board-card.compact .due {
+  height: 17px;
+}
+.board-card.compact .meta-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.board-card.compact .avatar {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
 }
 .ghost {
   opacity: 0.4;

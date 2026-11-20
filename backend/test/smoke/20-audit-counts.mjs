@@ -92,8 +92,8 @@ await step('Zähler je Status im Menü', async () => {
   assert.ok(Object.values(counts.byStatus).every((n) => n > 0));
   assert.equal(sum(open('incident')), counts.incidents);
   assert.equal(sum(open('task').filter((s) => s.id !== targets.task.start)), counts.tasks);
-  // Ohne Bereich Aufgaben: keine Status der Aufgaben
-  await api('PUT', '/settings/areas', { it: ['inbox', 'incident'] });
+  // Ohne das Recht «Aufgaben»: keine Status der Aufgaben
+  await api('PUT', '/settings/permissions', { it: ['inbox', 'incident'] });
   try {
     await loginAs(IVAN, 'geheim-geheim');
     const limited = await api('GET', '/items/counts');
@@ -101,7 +101,7 @@ await step('Zähler je Status im Menü', async () => {
     assert.ok(Object.keys(limited.byStatus).every((id) => statuses.find((s) => s.id === id).type === 'incident'));
   } finally {
     await loginAs(ADA, 'geheim-geheim');
-    await api('PUT', '/settings/areas', { it: ['inbox', 'incident', 'task'] });
+    await api('PUT', '/settings/permissions', { it: ['inbox', 'incident', 'task'] });
   }
 });
 

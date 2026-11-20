@@ -3,15 +3,15 @@ import { Reflector } from '@nestjs/core';
 import type { Response } from 'express';
 import { parseItemRef } from '../items/item-ref';
 import { PORTAL_REFUSED, PortalAccessService } from '../portal/portal-access.service';
-import { AreasService } from '../settings/areas';
-import { ADMIN_ONLY, AuthedRequest, IS_PUBLIC, PORTAL } from './auth.decorators';
+import { AreasService, PERMISSION_LABELS, type Permission } from '../settings/areas';
+import { AuthedRequest, IS_PUBLIC, PORTAL, REQUIRED_PERMISSION } from './auth.decorators';
 import { SESSION_COOKIE, SessionService } from './session.service';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
- * Globaler Guard: Alle Routen verlangen eine Anmeldung mit Rolle Admin oder IT,
- * ausser sie sind mit @Public markiert. Schreibende Anfragen brauchen zusätzlich
+ * Globaler Guard: Alle Routen verlangen eine Anmeldung mit Rolle Admin oder IT, ausser sie sind mit @Public markiert;
+ * mit @RequirePermission bzw. @AdminOnly zusätzlich das Recht (Verwaltung → Rechte). Schreibende Anfragen brauchen zusätzlich
  * den Header «X-Patchwork» als Schutz gegen Cross-Site-Requests.
  */
 @Injectable()
@@ -54,8 +54,10 @@ export class AuthGuard implements CanActivate {
       return true;
     }
     if (req.user.role !== 'admin' && req.user.role !== 'it') throw new ForbiddenException('Kein Zugang');
-    if (this.reflector.getAllAndOverride<boolean>(ADMIN_ONLY, targets) && req.user.role !== 'admin') {
-      throw new ForbiddenException('Nur für Administratoren');
+    // Rechte je Rolle (Verwaltung → Rechte)
+    const permission = this.reflector.getAllAndOverride<Permission | undefined>(REQUIRED_PERMISSION, targets);
+    if (permission && !(await this.areas.can(req.user, permission))) {
+      throw new ForbiddenException(`Dafür fehlt das Recht «${PERMISSION_LABELS[permission]}»`);
     }
     // Routen eines Vorgangs (…/items/:ref/…): nur in den Bereichen des Benutzers (Bereiche je Rolle)
     const ref = req.params?.ref;

@@ -21,6 +21,7 @@ const AREAS: { key: AuditArea | ''; label: string }[] = [
   { key: 'items', label: 'Vorgänge' },
   { key: 'portal', label: 'Portal' },
   { key: 'admin', label: 'Verwaltung' },
+  { key: 'plans', label: 'Pläne' },
   { key: 'account', label: 'Anmeldung und Konto' },
 ];
 const AREA_LABELS = Object.fromEntries(AREAS.map((a) => [a.key, a.label])) as Record<AuditArea, string>;

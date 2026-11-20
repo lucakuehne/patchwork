@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { parseItemRef } from './item-ref';
 import { legacyLocation } from './legacy-urls';
 import { useSession } from './stores/session';
-import type { Area } from './types';
+import type { Area, Permission } from './types';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -65,6 +65,8 @@ export const router = createRouter({
         { path: '', redirect: '/admin/general' },
         { path: 'general', name: 'admin-general', component: () => import('./views/admin/AdminGeneral.vue') },
         { path: 'users', name: 'admin-users', component: () => import('./views/admin/AdminUsers.vue') },
+        // Rechte je Rolle (Entscheid vom 20.11.2026)
+        { path: 'permissions', name: 'admin-permissions', component: () => import('./views/admin/AdminPermissions.vue') },
         { path: 'mailboxes', name: 'admin-mailboxes', component: () => import('./views/admin/AdminMailboxes.vue') },
         { path: 'audit-log', name: 'admin-audit-log', component: () => import('./views/admin/AdminAuditLog.vue') },
         {
@@ -97,10 +99,17 @@ export const router = createRouter({
       ],
     },
     {
+      // Pläne (Entscheid vom 20.11.2026): ?floor=<id>&room=<id>
+      path: '/plans',
+      name: 'plans',
+      component: () => import('./views/PlansView.vue'),
+      meta: { area: 'plans' },
+    },
+    {
       path: '/reports',
       name: 'reports',
       component: () => import('./views/ReportsView.vue'),
-      meta: { admin: true },
+      meta: { permission: 'reports' },
     },
     {
       path: '/portal',
@@ -155,7 +164,10 @@ router.beforeEach(async (to) => {
     // Admin und IT nutzen die normale Oberfläche; Links auf einen Vorgang im Portal führen direkt dorthin
     return to.name === 'portal-item' ? { name: 'item', params: { ref: to.params.ref } } : { name: session.homeRoute };
   }
-  if (to.matched.some((r) => r.meta.admin) && !session.isAdmin) return { name: session.homeRoute };
+  // Rechte je Rolle: Verwaltung bzw. das Recht der Ansicht
+  if (to.matched.some((r) => r.meta.admin) && !session.can('admin')) return { name: session.homeRoute };
+  const permission = to.meta.permission as Permission | undefined;
+  if (permission && !session.can(permission)) return { name: session.homeRoute };
   // Bereiche ohne Zugriff (z.B. «/» bzw. Eingang, wenn die IT ihn nicht sieht): zum ersten sichtbaren Bereich
   const area = to.meta.area as Area | undefined;
   if (area && !session.areas.includes(area)) return { name: session.homeRoute };

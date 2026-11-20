@@ -18,7 +18,10 @@ export type AuditTarget =
   | 'recurringTask'
   | 'outgoingMail'
   | 'incomingMail'
-  | 'mailTemplate';
+  | 'mailTemplate'
+  | 'planSite'
+  | 'planBuilding'
+  | 'planFloor';
 
 /** Objekt, vor der Aktion gelesen (beim Löschen ist es danach weg) */
 export interface ResolvedTarget {

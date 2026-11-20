@@ -1,9 +1,10 @@
 import { createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/common';
 import type { Request } from 'express';
 import type { User } from '../db/schema';
+import type { Permission } from '../settings/areas';
 
 export const IS_PUBLIC = 'isPublic';
-export const ADMIN_ONLY = 'adminOnly';
+export const REQUIRED_PERMISSION = 'requiredPermission';
 export const PORTAL = 'portal';
 
 /** Route ohne Anmeldung erreichbar. */
@@ -12,8 +13,11 @@ export const Public = () => SetMetadata(IS_PUBLIC, true);
 /** Portal-Route: für alle angemeldeten Benutzer, auch mit Rolle Standard. */
 export const PortalRoute = () => SetMetadata(PORTAL, true);
 
-/** Route nur für die Rolle Admin. */
-export const AdminOnly = () => SetMetadata(ADMIN_ONLY, true);
+/** Route nur mit diesem Recht (Verwaltung → Rechte, Entscheid vom 20.11.2026); Admins haben alle Rechte. */
+export const RequirePermission = (permission: Permission) => SetMetadata(REQUIRED_PERMISSION, permission);
+
+/** Route nur mit dem Recht «Verwaltung» (bis 20.11.2026: nur die Rolle Admin). */
+export const AdminOnly = () => RequirePermission('admin');
 
 export interface AuthedRequest extends Request {
   user?: User;

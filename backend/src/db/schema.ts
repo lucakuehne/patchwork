@@ -151,6 +151,8 @@ export const statuses = pgTable(
     closed: boolean('closed').notNull().default(false),
     /** Zuständig Pflicht: ein Wechsel von Hand in diesen Status braucht einen Zuständigen (seit 04.11.2026) */
     assigneeRequired: boolean('assignee_required').notNull().default(false),
+    /** Kleine Karten im Board: gleicher Inhalt, kleinere Schrift und weniger Abstand (seit 20.11.2026) */
+    compactCards: boolean('compact_cards').notNull().default(false),
     /** Reihenfolge im Typ: Spalten des Boards und alle Auswahllisten */
     position: integer('position').notNull(),
     /** Farbe aus der Palette (siehe STATUS_COLORS) */
@@ -700,7 +702,7 @@ export const helpspotImportRuns = pgTable('helpspot_import_runs', {
 });
 
 /** Bereich eines Eintrags im Aktionsprotokoll: Vorgänge, Portal, Verwaltung, Anmeldung und Konto */
-export const auditArea = pgEnum('audit_area', ['items', 'portal', 'admin', 'account']);
+export const auditArea = pgEnum('audit_area', ['items', 'portal', 'admin', 'account', 'plans']);
 
 /**
  * Aktionsprotokoll (seit 03.11.2026, nur Admins): jede Änderung durch eine Person, dazu An- und Abmeldungen. Ohne
@@ -822,3 +824,89 @@ export type UserRole = (typeof userRole.enumValues)[number];
 export type ItemType = (typeof itemType.enumValues)[number];
 export type StatusTargetKind = (typeof statusTarget.enumValues)[number];
 export type Priority = (typeof priority.enumValues)[number];
+
+/**
+ * Pläne (Entscheid vom 20.11.2026): Standort → Gebäude → Stockwerk → Raum, massstabsgetreu in Metern (Ursprung oben
+ * links, y nach unten). Ein Stockwerk hat optional einen Plan als Bild im Hintergrund (aus einem Bild oder einer
+ * PDF-Seite), dessen Massstab man über eine bekannte Strecke setzt.
+ */
+export const planSites = pgTable('plan_sites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  createdAt: createdAt(),
+});
+
+export const planBuildings = pgTable(
+  'plan_buildings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    siteId: uuid('site_id')
+      .notNull()
+      .references(() => planSites.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('plan_buildings_site_idx').on(t.siteId)],
+);
+
+export const planFloors = pgTable(
+  'plan_floors',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    buildingId: uuid('building_id')
+      .notNull()
+      .references(() => planBuildings.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Reihenfolge im Gebäude: 0 = oberstes Stockwerk */
+    position: integer('position').notNull().default(0),
+    /** Plan im Hintergrund: Bild in der Ablage, Grösse in Bildpunkten */
+    planStorageKey: text('plan_storage_key'),
+    planContentType: text('plan_content_type'),
+    planWidthPx: integer('plan_width_px'),
+    planHeightPx: integer('plan_height_px'),
+    /** Massstab des Plans (Meter pro Bildpunkt) und Lage seiner linken oberen Ecke in Metern */
+    planMetersPerPx: doublePrecision('plan_meters_per_px'),
+    planX: doublePrecision('plan_x').notNull().default(0),
+    planY: doublePrecision('plan_y').notNull().default(0),
+    /** Massstab über eine bekannte Strecke gesetzt */
+    planCalibrated: boolean('plan_calibrated').notNull().default(false),
+    createdAt: createdAt(),
+    /** Letztes Speichern des Inhalts (Räume, Beschriftungen, Plan); erkennt gleichzeitiges Bearbeiten */
+    contentUpdatedAt: timestamp('content_updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('plan_floors_building_idx').on(t.buildingId)],
+);
+
+export const planRooms = pgTable(
+  'plan_rooms',
+  {
+    id: uuid('id').primaryKey(),
+    floorId: uuid('floor_id')
+      .notNull()
+      .references(() => planFloors.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    /** Ecken in Metern, im Uhrzeigersinn oder dagegen */
+    points: jsonb('points').$type<[number, number][]>().notNull(),
+  },
+  (t) => [
+    index('plan_rooms_floor_idx').on(t.floorId),
+    // Ein Name je Stockwerk, Gross-/Kleinschreibung egal
+    uniqueIndex('plan_rooms_floor_name_uq').on(t.floorId, sql`lower(${t.name})`),
+  ],
+);
+
+export const planLabels = pgTable(
+  'plan_labels',
+  {
+    id: uuid('id').primaryKey(),
+    floorId: uuid('floor_id')
+      .notNull()
+      .references(() => planFloors.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    x: doublePrecision('x').notNull(),
+    y: doublePrecision('y').notNull(),
+  },
+  (t) => [index('plan_labels_floor_idx').on(t.floorId)],
+);
+export type PlanFloorRow = typeof planFloors.$inferSelect;

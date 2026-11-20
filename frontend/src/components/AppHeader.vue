@@ -21,6 +21,8 @@ const tabs = computed(() =>
     { area: 'inbox', to: '/inbox', label: 'Eingang', count: session.counts.inbox, segments: null, prefix: '/inbox' },
     { area: 'incident', to: '/incidents', label: 'Störungen', count: session.counts.incidents, segments: segments('incident'), prefix: '/incidents' },
     { area: 'task', to: '/tasks', label: 'Aufgaben', count: session.counts.tasks, segments: segments('task'), prefix: '/tasks' },
+    // Pläne ohne Zähler (Entscheid vom 20.11.2026)
+    { area: 'plans', to: '/plans', label: 'Pläne', count: null, segments: null, prefix: '/plans' },
   ].filter((tab) => session.areas.includes(tab.area as Area)),
 );
 
@@ -56,9 +58,9 @@ watch(
       >
         {{ tab.label }}
         <NavCount v-if="tab.segments" :segments="tab.segments" />
-        <span v-else class="count" :class="{ zero: tab.count === 0 }">{{ tab.count }}</span>
+        <span v-else-if="tab.count !== null" class="count" :class="{ zero: tab.count === 0 }">{{ tab.count }}</span>
       </RouterLink>
-      <RouterLink v-if="session.isAdmin" to="/reports" class="tab" :class="{ active: route.path.startsWith('/reports') }">
+      <RouterLink v-if="session.can('reports')" to="/reports" class="tab" :class="{ active: route.path.startsWith('/reports') }">
         Auswertungen
       </RouterLink>
     </nav>
@@ -71,7 +73,7 @@ watch(
 
     <UserMenu>
       <RouterLink to="/settings" class="menu-item">Einstellungen</RouterLink>
-      <RouterLink v-if="session.isAdmin" to="/admin" class="menu-item">Verwaltung</RouterLink>
+      <RouterLink v-if="session.can('admin')" to="/admin" class="menu-item">Verwaltung</RouterLink>
     </UserMenu>
   </header>
 </template>

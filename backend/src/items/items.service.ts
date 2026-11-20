@@ -49,7 +49,7 @@ import { annotateReferences, referencedKeys, referenceMeta } from './references'
 import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
 import { TITLE_MAX, TITLE_TOO_LONG } from './title';
 import type { RuleRun } from '../rules/rules.service';
-import { areaCondition, AreasService, type Area } from '../settings/areas';
+import { areaCondition, AreasService, type ItemArea } from '../settings/areas';
 import { SettingsService } from '../settings/settings.service';
 import {
   assigneeUser,
@@ -144,7 +144,7 @@ export class ItemsService {
       q: string;
       limit: number;
       offset: number;
-      areas: Area[] | null;
+      areas: ItemArea[] | null;
       /** Filter der Liste (Priorität, Zuständig, Status, Meldeweg) */
       filters?: ListFilters;
       /** Sortierung per Spaltenkopf; ohne Angabe die Reihenfolge der Ansicht (auf dem Board immer) */
@@ -195,7 +195,7 @@ export class ItemsService {
    * Bereiche ausserhalb von «areas» zählen 0. «byStatus»: offene Vorgänge je Status (ID → Anzahl, nur Status mit
    * Vorgängen) für die Zähler je Status im Menü (seit 03.11.2026).
    */
-  async counts(areas: Area[] | null = null) {
+  async counts(areas: ItemArea[] | null = null) {
     const taskStart = sql`exists (select 1 from ${statusTargets} where ${statusTargets.statusId} = ${items.statusId} and ${statusTargets.type} = 'task' and ${statusTargets.target} = 'start')`;
     const [[row], perStatus] = await Promise.all([
       this.db
@@ -214,7 +214,7 @@ export class ItemsService {
         .groupBy(statuses.id, statuses.type),
     ]);
     const counts = row ?? { inbox: 0, incidents: 0, tasks: 0 };
-    const sees = (area: Area) => !areas || areas.includes(area);
+    const sees = (area: ItemArea) => !areas || areas.includes(area);
     const byStatus = Object.fromEntries(perStatus.filter((s) => sees(s.type)).map((s) => [s.statusId, s.count]));
     return {
       inbox: sees('inbox') ? counts.inbox : 0,
@@ -892,9 +892,9 @@ export class ItemsService {
     await this.flush(pending);
   }
 
-  /** Im Namen schreiben: nur Admins, nur für aktive IT-Mitarbeitende und Admins (Entscheid vom 28.10.2026) */
+  /** Im Namen schreiben: mit dem Recht «Verwaltung», nur für aktive IT-Mitarbeitende und Admins (Entscheid vom 28.10.2026) */
   private async onBehalfAuthor(actor: User, userId: string): Promise<User> {
-    if (actor.role !== 'admin') throw new ForbiddenException('Nur Admins können im Namen eines anderen schreiben');
+    if (!(await this.areas.can(actor, 'admin'))) throw new ForbiddenException('Im Namen eines anderen schreiben braucht das Recht «Verwaltung»');
     const [user] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user?.active || (user.role !== 'it' && user.role !== 'admin')) {
       throw new BadRequestException('Im Namen schreiben geht nur für aktive IT-Mitarbeitende und Admins');
@@ -1201,7 +1201,7 @@ export class ItemsService {
     att: Attachment,
     entryKind: Entry['kind'] | null,
     entryMeta: Entry['meta'] | null,
-    areas: Area[] | null,
+    areas: ItemArea[] | null,
     involved: Set<string>,
   ): boolean {
     if (actor.role === 'admin' || actor.role === 'it') return !areas || areas.includes(item.type ?? 'inbox');

@@ -30,7 +30,7 @@ import { PortalAccessService } from '../portal/portal-access.service';
 import { StorageService } from '../storage/storage.service';
 import { TlsService } from '../tls/tls.service';
 import type { User } from '../db/schema';
-import { AREAS, AreasService } from './areas';
+import { AREA_PERMISSIONS, AreasService, normalizePermissions, PERMISSION_LABELS, PERMISSIONS } from './areas';
 import { TYPE_GUIDE_LIMITS } from './type-guide';
 import {
   BLOCK_TRIGGERS,
@@ -92,12 +92,14 @@ const portalSchema = z.object({
   emails: addressList,
   groupDn: z.string().trim().max(500).default(''),
 });
-/** Bereiche der Rolle IT, in der Reihenfolge der Navigation */
-const areasSchema = z.object({
+/** Rechte der Rolle IT (Entscheid vom 20.11.2026): mindestens ein Bereich, damit sie eine Startseite hat */
+const permissionsSchema = z.object({
   it: z
-    .array(z.enum(AREAS))
-    .min(1, 'Die IT muss mindestens einen Bereich sehen')
-    .transform((list) => AREAS.filter((a) => list.includes(a))),
+    .array(z.enum(PERMISSIONS))
+    .transform((list) => normalizePermissions(list))
+    .refine((list) => list.some((p) => AREA_PERMISSIONS.includes(p)), {
+      message: `Die IT braucht mindestens eines dieser Rechte: ${AREA_PERMISSIONS.map((p) => `«${PERMISSION_LABELS[p]}»`).join(', ')}`,
+    }),
 });
 const microsoftSchema = z.object({
   clientId: z
@@ -276,24 +278,26 @@ export class SettingsController {
     return { ...body, url: `${appConfig.publicUrl}/portal` };
   }
 
-  /** Bereiche des angemeldeten Benutzers (Navigation, Weiterleitung beim Anmelden) */
+  /** Bereiche und Rechte des angemeldeten Benutzers (Navigation, Weiterleitung beim Anmelden, Knöpfe) */
   @Get('areas')
   async myAreas(@CurrentUser() user: User) {
-    return { areas: await this.areas.of(user) };
+    return { areas: await this.areas.of(user), permissions: await this.areas.permissions(user) };
   }
 
+  /** Rechte je Rolle (Verwaltung → Rechte): Admins alle, Standard keine, die IT nach Einstellung */
   @AdminOnly()
-  @Get('settings/areas')
-  areaSettings() {
-    return this.settings.get('areas');
+  @Get('settings/permissions')
+  async permissionSettings() {
+    const settings = await this.settings.get('permissions');
+    return { it: normalizePermissions(settings.it) };
   }
 
-  /** Welche Bereiche die Rolle IT sieht (mindestens einer). Gilt sofort, auch für angemeldete Benutzer. */
+  /** Rechte der Rolle IT. Gilt sofort, auch für angemeldete Benutzer. */
   @AdminOnly()
-  @Audit('admin', 'Bereiche je Rolle geändert')
-  @Put('settings/areas')
-  async updateAreas(@Body(new ZodPipe(areasSchema)) body: z.infer<typeof areasSchema>) {
-    await this.settings.set('areas', body);
+  @Audit('admin', 'Rechte geändert')
+  @Put('settings/permissions')
+  async updatePermissions(@Body(new ZodPipe(permissionsSchema)) body: z.infer<typeof permissionsSchema>) {
+    await this.settings.set('permissions', body);
     return body;
   }
 

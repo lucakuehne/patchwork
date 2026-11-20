@@ -10,6 +10,7 @@ import type {
   Counts,
   ItemType,
   MailboxOption,
+  Permission,
   Preferences,
   PublicInfo,
   Status,
@@ -22,7 +23,7 @@ import type {
 import { DEFAULT_TYPE_GUIDE } from '../type-guide';
 
 /** Startseite je Bereich */
-export const AREA_ROUTES: Record<Area, string> = { inbox: 'inbox', incident: 'incidents', task: 'tasks' };
+export const AREA_ROUTES: Record<Area, string> = { inbox: 'inbox', incident: 'incidents', task: 'tasks', plans: 'plans' };
 
 export const useSession = defineStore('session', () => {
   const info = ref<PublicInfo | null>(null);
@@ -53,6 +54,9 @@ export const useSession = defineStore('session', () => {
   const openMode = (type: ItemType | null) => preferences.value.open[type ?? 'inbox'];
 
   const isAdmin = computed(() => user.value?.role === 'admin');
+  /** Rechte je Rolle (Verwaltung → Rechte): Admins haben alle */
+  const permissions = ref<Permission[]>([]);
+  const can = (permission: Permission) => permissions.value.includes(permission);
   /** Sieht der Benutzer den Bereich eines Typs (null = Eingang)? */
   const canSee = (type: ItemType | null) => areas.value.includes(type ?? 'inbox');
   /** Erster sichtbarer Bereich: Ziel nach dem Anmelden und bei gesperrten Ansichten */
@@ -160,7 +164,9 @@ export const useSession = defineStore('session', () => {
   }
 
   async function loadAreas() {
-    areas.value = (await api.get<{ areas: Area[] }>('/areas')).areas;
+    const mine = await api.get<{ areas: Area[]; permissions: Permission[] }>('/areas');
+    areas.value = mine.areas;
+    permissions.value = mine.permissions;
   }
 
   async function loadPreferences() {
@@ -277,6 +283,8 @@ export const useSession = defineStore('session', () => {
     openMode,
     savePreferences,
     isAdmin,
+    permissions,
+    can,
     isStaff,
     appName,
     logoUrl,

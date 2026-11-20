@@ -2,7 +2,6 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, errorMessage } from '../../api';
-import ItAreasCard from '../../components/ItAreasCard.vue';
 import ModalDialog from '../../components/ModalDialog.vue';
 import PersonSearch from '../../components/PersonSearch.vue';
 import { useDebounced } from '../../composables';
@@ -407,7 +406,6 @@ async function removePassword() {
       <div v-if="!visible.length" class="empty">Keine Benutzer</div>
     </div>
 
-    <ItAreasCard />
 
     <ModalDialog v-if="draft" :title="draft.id ? 'Benutzer bearbeiten' : 'Neuer Benutzer'" @close="draft = null">
       <div v-if="!draft.id && ldapEnabled" class="segmented">

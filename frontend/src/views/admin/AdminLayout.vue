@@ -4,6 +4,7 @@
       <h2>Verwaltung</h2>
       <RouterLink to="/admin/general">Allgemein</RouterLink>
       <RouterLink to="/admin/users">Benutzer</RouterLink>
+      <RouterLink to="/admin/permissions">Rechte</RouterLink>
       <RouterLink to="/admin/mailboxes">Postfächer</RouterLink>
       <RouterLink to="/admin/incoming-mails">Eingehende Mails</RouterLink>
       <RouterLink to="/admin/outgoing-mails">Ausgehende Mails</RouterLink>

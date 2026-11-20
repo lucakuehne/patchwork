@@ -18,7 +18,7 @@ const alerts = ref<SystemAlerts | null>(null);
 
 /** «background»: regelmässiges Nachladen, zählt nicht als Aktivität */
 async function load(background = false) {
-  if (!session.isAdmin) return;
+  if (!session.can('admin')) return;
   try {
     alerts.value = await api.get<SystemAlerts>('/admin/alerts', { background });
   } catch {
@@ -38,7 +38,7 @@ const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1).replace('.', ','
 </script>
 
 <template>
-  <template v-if="session.isAdmin && alerts">
+  <template v-if="session.can('admin') && alerts">
     <div v-if="alerts.mailFetchOff.length" class="alert" role="alert">
       <strong>Mail-Abruf ausgeschaltet:</strong>
       {{ alerts.mailFetchOff.length === 1 ? 'Postfach' : 'Postfächer' }} {{ alerts.mailFetchOff.map((m) => `«${m.name}»`).join(', ') }},

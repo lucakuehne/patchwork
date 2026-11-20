@@ -26,7 +26,7 @@ const toast = useToast();
 const mail = ref<MailView | null>(null);
 const error = ref('');
 const query = `?messageId=${encodeURIComponent(props.messageId)}`;
-const canSimulate = computed(() => session.isAdmin && !!session.info?.testMode);
+const canSimulate = computed(() => session.can('admin') && !!session.info?.testMode);
 const draft = ref<SimulationDraft | null>(null);
 
 onMounted(async () => {

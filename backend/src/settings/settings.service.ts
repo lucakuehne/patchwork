@@ -4,7 +4,7 @@ import { InjectDb, type Db } from '../db/db.module';
 import { settings, type ItemType } from '../db/schema';
 import { DEFAULT_MAIL_RETRY, type MailRetrySettings } from '../mail/mail-retry';
 import type { TemplateKey } from '../mail/mail-templates';
-import type { AreaSettings } from './areas';
+import { DEFAULT_PERMISSIONS, type PermissionSettings } from './permissions';
 import { DEFAULT_TYPE_GUIDE, type TypeGuide } from './type-guide';
 
 export interface GeneralSettings {
@@ -198,7 +198,8 @@ interface SettingsMap {
   microsoft: MicrosoftSettings;
   mailTemplates: MailTemplateOverrides;
   userNames: UserNamesSettings;
-  areas: AreaSettings;
+  /** Rechte je Rolle (Entscheid vom 20.11.2026) */
+  permissions: PermissionSettings;
   helpspot: HelpSpotSettings;
   typeGuide: TypeGuide;
 }
@@ -219,8 +220,8 @@ const DEFAULTS: SettingsMap = {
   microsoft: { clientId: '' },
   mailTemplates: {},
   userNames: { directorySyncedAt: null },
-  // Ohne Einstellung sieht die IT alle Bereiche (Entscheid vom 23.10.2026)
-  areas: { it: ['inbox', 'incident', 'task'] },
+  // Ohne Einstellung sieht die IT alle Bereiche der Vorgänge (Entscheid vom 23.10.2026)
+  permissions: DEFAULT_PERMISSIONS,
   helpspot: { url: '', apiKeyEnc: null, types: {}, statuses: {}, channels: {}, analysis: null },
   // Hilfe zur Typwahl (Entscheid vom 16.11.2026)
   typeGuide: DEFAULT_TYPE_GUIDE,

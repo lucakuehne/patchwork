@@ -16,11 +16,14 @@ const createSchema = z.object({
   closed: z.boolean(),
   /** Zuständig Pflicht (Entscheid vom 04.11.2026) */
   assigneeRequired: z.boolean().default(false),
+  /** Kleine Karten im Board (Entscheid vom 20.11.2026) */
+  compactCards: z.boolean().default(false),
 });
 const updateSchema = z.object({
   label: labelSchema.optional(),
   closed: z.boolean().optional(),
   assigneeRequired: z.boolean().optional(),
+  compactCards: z.boolean().optional(),
   color: z.enum(STATUS_COLORS).optional(),
   diagramX: coordinate.optional(),
   diagramY: coordinate.optional(),

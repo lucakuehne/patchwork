@@ -557,6 +557,83 @@ automatisch gesetzt.
   letzten 5 statt 7 Tage, einstellbar unter Verwaltung → Allgemein (1 bis 60 Tage, für beide Boards derselbe Wert). Die
   Spalte zeigt «letzte 5 Tage» mit dem eingestellten Wert.
 
+## Rechte je Rolle (bestätigt am 20.11.2026)
+
+- Ersetzt die Karte «Bereiche der IT» (Entscheid vom 23.10.2026, siehe «Bereiche je Rolle»): Unter **Verwaltung →
+  Rechte** steht eine Tabelle mit den Rechten in Zeilen und den Rollen Admin, IT und Standard in Spalten.
+- **Rollen** bleiben dieselben drei (Admin, IT, Standard), ebenso die Zuordnung über die Gruppen im LDAP/AD.
+- **Rechte:** Eingang sehen und bearbeiten, Störungen sehen und bearbeiten, Aufgaben sehen und bearbeiten, Pläne
+  ansehen, Pläne bearbeiten, Auswertungen, Verwaltung.
+- **Admin** hat immer alle Rechte, nicht änderbar. **Standard** nutzt weiterhin nur das Portal und hat keine Rechte.
+  Einstellen lassen sich nur die Rechte der IT.
+- **Beim Update** erhält die IT die Rechte ihrer bisherigen Bereiche (Eingang, Störungen, Aufgaben, «Pläne» wird zu
+  «Pläne ansehen»); Pläne bearbeiten, Auswertungen und Verwaltung hatte sie bisher nicht.
+- Für Eingang, Störungen und Aufgaben gilt weiterhin alles aus «Bereiche je Rolle» (kein Zugriff heisst gesperrt, auch
+  per Link, ohne Mails dazu, nicht wählbar beim Erfassen und Umklassieren).
+- Details (bestätigt am 20.11.2026):
+  - «Pläne bearbeiten» schliesst «Pläne ansehen» ein: Wer das eine setzt, setzt das andere mit; ohne «Pläne ansehen»
+    fällt «Pläne bearbeiten» weg.
+  - Die IT braucht mindestens eines der Rechte Eingang, Störungen, Aufgaben oder Pläne ansehen (für die Startseite nach
+    dem Anmelden, wie bisher der erste sichtbare Bereich).
+  - «Verwaltung» umfasst alles unter Verwaltung, auch Benutzer und Rechte (wer es hat, kann damit faktisch alles), dazu
+    das Aktionsprotokoll, die Hinweise oben (Störungen, Zertifikat, Link im Balken des Testbetriebs), «Im Namen von …
+    schreiben», die Zeit interner Notizen anpassen, «Antwort simulieren» bei der Originalmail und «Als dieser Benutzer
+    arbeiten».
+  - «Auswertungen» zeigt wie bisher alle Vorgänge (auch die älteste offenen mit Titel und den Export als CSV), auch
+    wenn die IT einen Bereich nicht sieht.
+  - Änderungen gelten sofort, auch für angemeldete Benutzer; «Als dieser Benutzer arbeiten» endet, sobald das Recht
+    «Verwaltung» fehlt.
+  - Im Aktionsprotokoll als «Rechte geändert» (Bereich Verwaltung).
+- Technisch: Einstellung `permissions` (`{ it: [...] }`, ersetzt `areas`, Migration 0055). Routen tragen
+  `@RequirePermission(…)` (`@AdminOnly()` heisst Recht «Verwaltung»); der AuthGuard antwortet ohne Recht mit 403
+  «Dafür fehlt das Recht «…»». Die Oberfläche fragt `session.can(…)` statt nach der Rolle Admin.
+
+## Kleine Karten im Board (bestätigt am 20.11.2026)
+
+- Je Status ein Häkchen «Kleine Karten» unter Verwaltung → Status (auch beim Anlegen), für Aufgaben und Störungen.
+- Eine kleine Karte zeigt denselben Inhalt wie bisher (Nummer, Priorität, Alter, Titel, Fälligkeit, Checkliste, Melder,
+  Beschreibung, Kommentare, Zuständig), nur mit kleinerer Schrift und weniger Abstand.
+- Beim Update erhalten «Backlog» und «Erledigt» der Aufgaben kleine Karten; neue Installationen ebenso.
+
+## Pläne (bestätigt am 20.11.2026)
+
+- Anlass: Man soll sehen, welcher Raum wo und auf welchem Stockwerk ist, und alle sollen ihn gleich nennen.
+- **Menüpunkt «Pläne»** zwischen «Aufgaben» und «Auswertungen». Links ein Baum Standort → Gebäude → Stockwerk (auf-
+  und zuklappbar, mit Anzahl Gebäude, Stockwerke bzw. Räume), rechts davon der Plan des gewählten Stockwerks und die
+  Angaben. Eine Suche nach Raum (Name oder Beschreibung) springt aufs Stockwerk und hebt den Raum hervor.
+- **Grundriss massstabsgetreu:** Räume als Rechteck oder Vieleck in Metern (Raster 10 cm, rastet an Ecken anderer Räume
+  ein), freie Beschriftungen (Treppenhaus, Lift, Eingang usw.), Massstabsleiste, Fläche je Raum, Messen von Strecken.
+  Ein Plan als Vorlage im Hintergrund ist freiwillig: Bild (PNG, JPEG, WebP) oder PDF, bei mehreren Seiten wählt man
+  die Seite; den Massstab setzt man über eine bekannte Strecke.
+- **Raum:** Name und kurze Beschreibung; der Name ist innerhalb des Stockwerks eindeutig. Die Fläche rechnet Patchwork.
+- **Rechte:** Admins sehen und ändern die Pläne immer. Die IT sieht sie, wenn unter Verwaltung → Benutzer bei «Bereiche
+  der IT» «Pläne» gewählt ist; ändern kann sie nichts. Seit «Rechte je Rolle» (20.11.2026): ansehen mit dem Recht
+  «Pläne ansehen», ändern mit «Pläne bearbeiten».
+- **Keine Verknüpfung** mit Vorgängen.
+- **Bearbeiten** gilt für den Inhalt eines Stockwerks (Räume, Beschriftungen, Plan) und erst mit «Speichern»;
+  «Verwerfen» nimmt alles seit «Bearbeiten» zurück.
+- **Baum jederzeit:** Standorte, Gebäude und Stockwerke legen Admins im Baum jederzeit an und löschen sie (mit Rückfrage,
+  die nennt, was wegfällt), nicht erst im Bearbeiten.
+- **Stockwerke** wie im Gebäude, das oberste zuoberst; die Reihenfolge ändert man durch Ziehen.
+- **Drucken:** ein Stockwerk mit Namen, Flächen, Beschriftungen und Massstabsleiste auf A4 quer im üblichen Massstab
+  (z.B. 1:200), über den Druckdialog des Browsers, dort auch «Als PDF speichern».
+- Details (bestätigt am 20.11.2026):
+  - Im Baum benennt ein Stift Standorte, Gebäude und Stockwerke um; Anlegen und Umbenennen über ein kleines Fenster
+    mit dem Namen. Ein neues Stockwerk kommt zuoberst und heisst gleich passend (nach «EG» das «1. OG»).
+  - Änderungen am Baum gelten sofort, ohne «Speichern».
+  - Wechselt man mit ungespeicherten Änderungen das Stockwerk oder verlässt die Seite, fragt Patchwork: «Speichern»,
+    «Verwerfen» oder «Zurück».
+  - Speichert jemand anderes dasselbe Stockwerk inzwischen, überschreibt «Speichern» das nicht, sondern meldet es.
+  - Namen auch für Standorte (überall), Gebäude (im Standort) und Stockwerke (im Gebäude) eindeutig; Standorte und
+    Gebäude stehen nach Namen geordnet.
+  - Im Aktionsprotokoll ein eigener Bereich «Pläne» (Anlegen, Umbenennen, Löschen, Reihenfolge, Speichern eines
+    Stockwerks mit dem Weg, z.B. «Hauptsitz · Gebäude A · 1. OG»).
+  - Plan als Bild höchstens 20 MB; ein PDF wandelt der Browser in ein Bild um (rund 300 dpi bei A4). Im dunklen
+    Farbschema erscheint der Plan umgekehrt (dunkel), im Druck wie hochgeladen.
+- Technisch: Tabellen `plan_sites`, `plan_buildings`, `plan_floors` (mit Bild in der Ablage und Massstab in Metern
+  pro Bildpunkt), `plan_rooms` (Ecken als JSON, eindeutiger Name je Stockwerk) und `plan_labels`. PDF über pdf.js
+  (`pdfjs-dist`, Apache-2.0), das erst lädt, wenn jemand ein PDF wählt.
+
 ## Typ wählen und Typ korrigiert (bestätigt am 16.11.2026)
 
 - Anlass: Der Typ wird beim Einordnen im Eingang immer wieder falsch zugewiesen, in beide Richtungen. Umgesetzt werden
@@ -572,7 +649,7 @@ automatisch gesetzt.
 - **Auswertung «Typ korrigiert»** unter Auswertungen: Zuweisungen eines Typs und wie viele davon danach zwischen
   Störung und Aufgabe wechselten, mit Anteil, je Person (bzw. Regel) und als Liste der Fälle mit Richtung, «zugewiesen
   von», «korrigiert von» und der Zeit bis zur Korrektur. Jeder Wechsel zählt, auch ein später.
-- Noch zu bestätigen (von Claude festgelegt):
+- Details (bestätigt am 16.11.2026):
   - Der Abschnitt steht nur bei «Alle». Massgebend sind die Zuweisungen im gewählten Zeitraum; die Korrektur darf auch
     danach liegen. Die Liste zeigt die neuesten 50 Fälle.
   - Als Zuweisung zählen: Erfassen mit Typ durch die IT, Einordnen aus dem Eingang, eine Regel und jeder Wechsel (wer
@@ -685,7 +762,7 @@ automatisch gesetzt.
   - «Nicht sehen» heisst kein Zugriff: Der Bereich fehlt in Navigation und Zählern, Vorgänge dieses Bereichs (Eingang = ohne Typ) sind gesperrt, auch per Link, und fehlen in Suche und Verknüpfungen.
   - IT-Mitarbeitende ohne Zugriff bleiben bei solchen Vorgängen als Zuständige wählbar und erwähnbar, öffnen können sie sie aber nicht, und sie erhalten dazu keine Mails (Zugewiesen, Neue Antwort, Fällig, Erwähnt …), auch nicht als Beteiligte (CC).
   - Details (bestätigt am 23.10.2026):
-    - Die Einstellung steht unter Verwaltung → Benutzer als Karte «Bereiche der IT». Mindestens ein Bereich bleibt gewählt; nach dem Anmelden landet die IT im ersten sichtbaren Bereich.
+    - Die Einstellung steht unter Verwaltung → Benutzer als Karte «Bereiche der IT». Mindestens ein Bereich bleibt gewählt; nach dem Anmelden landet die IT im ersten sichtbaren Bereich. Seit 20.11.2026 ersetzt durch Verwaltung → Rechte (siehe «Rechte je Rolle»).
     - Die IT kann einen Vorgang nicht in einen Bereich verschieben, den sie nicht sieht: Typen ohne Zugriff stehen beim Erfassen und beim Typwechsel nicht zur Wahl.
     - Verweise auf gesperrte Vorgänge (Verknüpfungen, Duplikate im Verlauf) zeigen nur die Nummer, ohne Titel und nicht anklickbar.
     - Antwortet jemand aus der IT per Mail auf einen Vorgang ohne Zugriff (z.B. auf eine alte Benachrichtigung), wird die Mail wie bisher als interne Notiz angenommen.

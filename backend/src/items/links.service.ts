@@ -7,7 +7,7 @@ import { byKey, itemRef, type ItemKey } from './item-ref';
 import { referenceMeta } from './references';
 import { replaceImages } from './inline-images';
 import { NotificationsService } from '../mail/notifications.service';
-import { areaCondition, areaOf, type Area } from '../settings/areas';
+import { areaCondition, areaOf, type ItemArea } from '../settings/areas';
 import { StatusesService } from '../statuses/statuses.service';
 import { ItemsService, statusMeta, TYPE_LABELS } from './items.service';
 
@@ -73,7 +73,7 @@ export class LinksService {
    * Verknüpfungen eines Vorgangs mit den Angaben zum jeweils anderen Vorgang. Liegt dieser ausserhalb von «areas»
    * (Bereiche je Rolle, null = alle), bleibt nur seine Nummer («hidden»).
    */
-  async forItem(itemId: string, areas: Area[] | null = null) {
+  async forItem(itemId: string, areas: ItemArea[] | null = null) {
     const rows = await this.db
       .select({
         link: links,
@@ -303,7 +303,7 @@ export class LinksService {
    * Vorschläge zum Zusammenführen: offene Vorgänge desselben Melders, ohne verworfene und ohne solche, die schon
    * Duplikat sind, neueste zuerst. Nur Vorgänge in «areas» (Bereiche je Rolle, null = alle).
    */
-  async mergeCandidates(key: ItemKey, areas: Area[] | null) {
+  async mergeCandidates(key: ItemKey, areas: ItemArea[] | null) {
     const [self] = await this.db.select().from(items).where(byKey(key)).limit(1);
     if (!self) throw new NotFoundException(`Vorgang ${itemRef(key)} nicht gefunden`);
     const isDuplicate = this.db
