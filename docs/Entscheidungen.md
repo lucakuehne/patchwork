@@ -601,7 +601,7 @@ automatisch gesetzt.
 - **Menüpunkt «Pläne»** zwischen «Aufgaben» und «Auswertungen». Links ein Baum Standort → Gebäude → Stockwerk (auf-
   und zuklappbar, mit Anzahl Gebäude, Stockwerke bzw. Räume), rechts davon der Plan des gewählten Stockwerks und die
   Angaben. Eine Suche nach Raum (Name oder Beschreibung) springt aufs Stockwerk und hebt den Raum hervor.
-- **Grundriss massstabsgetreu:** Räume als Rechteck oder Vieleck in Metern (Raster 10 cm, rastet an Ecken anderer Räume
+- **Grundriss massstabsgetreu:** Räume als Rechteck oder Vieleck in Metern (Raster 10 cm, seit 20.11.2026 5 cm; rastet an Ecken anderer Räume
   ein), freie Beschriftungen (Treppenhaus, Lift, Eingang usw.), Massstabsleiste, Fläche je Raum, Messen von Strecken.
   Ein Plan als Vorlage im Hintergrund ist freiwillig: Bild (PNG, JPEG, WebP) oder PDF, bei mehreren Seiten wählt man
   die Seite; den Massstab setzt man über eine bekannte Strecke.
@@ -682,6 +682,38 @@ automatisch gesetzt.
   Räume übernehmen und Umriss setzen, alte Tabelle weg). Das Speichern prüft, dass alles im Umriss liegt
   (`plans/plan-shapes.ts`, dieselbe Geometrie im Frontend); das Wachsen rechnet das Frontend mit `polygon-clipping` (MIT).
   Bildschirm und Druck zeichnen mit derselben Komponente (`PlanDrawing.vue`).
+
+### Wände als gerade Stücke, Raster 5 cm (bestätigt am 20.11.2026)
+
+- Anlass: Eine Aussenwand ist dicker als die Innenwände; mit Wänden als Linienzug (und «Wände entlang …» als eine
+  geschlossene Wand) hatten alle Seiten dieselbe Dicke.
+- **Eine Wand ist ein gerades Stück** mit eigener Dicke, einzeln wählbar und löschbar. Zeichnen: Anfang klicken, Ende
+  klicken, schon steht die Wand; weitere Klicks zeichnen am Ende weiter (je eine neue Wand). Doppelklick, Eingabetaste
+  oder Esc beendet. «Wände entlang …» macht eine Wand je Kante. Bestehende Wände werden beim Update in Stücke geteilt,
+  Türen und Fenster bleiben an ihrem Platz.
+- **Lage:** mittig auf der Linie (Vorgabe) oder bündig, mit wählbarer Seite der Dicke. «Wände entlang des Umrisses» legt
+  sie bündig nach innen (die Aussenkante ist der Umriss).
+- **Dicke bei «Wände entlang …»:** Feld direkt neben dem Knopf, Vorgabe die zuletzt gewählte Dicke.
+- **Mehrere Wände:** Shift+Klick wählt mehrere; die Dicke gilt dann für alle.
+- **Raster** beim Zeichnen 5 cm statt 10 cm.
+- Ecken zwischen Wänden sauber, ohne Überstand (technisch entschieden).
+- Details (bestätigt am 20.11.2026):
+  - Klick auf den ersten Punkt schliesst den Zug (letzte Wand bis dorthin) und beendet ihn; Rücktaste nimmt beim
+    Zeichnen die letzte Wand zurück. Nach dem Beenden sind die neuen Wände gewählt, um gleich die Dicke zu setzen.
+  - Zieht man das Ende einer Wand, gehen die angrenzenden Wände (mit ihrem Ende am selben Punkt) mit; verschiebt man eine
+    ganze Wand, bleiben die angrenzenden an ihr hängen und werden länger oder kürzer.
+  - «Wände entlang der Fläche»: Die Lage wählt man neben dem Knopf: mittig auf den Kanten, innen bündig oder aussen
+    bündig (Vorgabe mittig, die zuletzt gewählte gilt beim nächsten Mal; noch zu bestätigen). Kanten, auf denen schon
+    eine Wand liegt, bleiben.
+  - Ecken: Treffen genau zwei Wände mit ihren Enden aufeinander, stossen sie auf Gehrung (auch bei verschiedener Dicke);
+    endet eine Wand an einer anderen (T-Stoss), reicht sie bis zu deren Rückseite; freie Enden sind gerade.
+  - Einrasten: zuerst an Ecken (Umriss, Flächen, Enden von Wänden), sonst auf Kanten (auf der Linie, entlang der Kante am
+    Raster), sonst am Raster. Je näher gezoomt, desto kleiner der Abstand, ab dem etwas einrastet.
+  - Mehrere gewählte Wände lassen sich zusammen löschen; die Lage stellt man je Wand ein.
+- Technisch: Eine Wand ist `{ a, b, thickness, align }` (`align` = `center`, `left` oder `right`, gesehen in Richtung
+  von a nach b; «left» ist die Seite der Normalen), eine Öffnung `{ wallId, offset, … }` ohne Abschnitt. Migration 0059
+  teilt die bisherigen Linienzüge (das erste Stück behält die ID der Wand). Die Ecken rechnet `wallPolygons` in
+  `plans/geometry.ts`.
 
 ## Typ wählen und Typ korrigiert (bestätigt am 16.11.2026)
 

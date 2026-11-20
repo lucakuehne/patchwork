@@ -12,6 +12,7 @@ import {
   AREA_KIND_LABELS,
   AREA_KIND_PLURALS,
   AREA_KINDS,
+  ALONG_SIDE_LABELS,
   OPENING_LABELS,
   areaTitle,
   bbox,
@@ -21,7 +22,7 @@ import {
   isRect,
   openingFrame,
   polygonArea,
-  polylineLength,
+  wallLength,
 } from '../plans/geometry';
 import { imageSize, openPdf, type PdfPages } from '../plans/pdf';
 import { useSession } from '../stores/session';
@@ -216,8 +217,8 @@ const HINTS: Record<'view' | 'edit', Partial<Record<PlanTool, string>>> = {
   },
   edit: {
     select:
-      'Anklicken wählt aus; Flächen, Wände, Säulen, Türen und Beschriftungen lassen sich ziehen. Bei der gewählten Form: Ecken ziehen, Punkt in der Kantenmitte ziehen fügt eine Ecke ein, Doppelklick entfernt sie. Entf löscht.',
-    wall: 'Wand: Ecken nacheinander anklicken. Doppelklick oder Eingabetaste beendet, Klick auf die erste Ecke schliesst sie, Rücktaste nimmt die letzte Ecke weg.',
+      'Anklicken wählt aus, Shift+Klick wählt mehrere Wände. Flächen, Wände, Säulen, Türen und Beschriftungen lassen sich ziehen. Bei der gewählten Form: Ecken ziehen, Punkt in der Kantenmitte ziehen fügt eine Ecke ein, Doppelklick entfernt sie. Entf löscht.',
+    wall: 'Wand: Anfang anklicken, dann jeden weiteren Punkt; jedes gerade Stück wird eine eigene Wand. Doppelklick, Eingabetaste oder Esc beendet, Klick auf den ersten Punkt schliesst. Rücktaste nimmt die letzte Wand zurück.',
     pillar: 'Säule: an die Stelle klicken. Form und Grösse oben, danach rechts änderbar.',
     door: 'Tür: auf eine Wand klicken. Anschlag und Aufschlag stellst du danach rechts ein.',
     window: 'Fenster: auf eine Wand klicken.',
@@ -227,7 +228,7 @@ const HINTS: Record<'view' | 'edit', Partial<Record<PlanTool, string>>> = {
   },
 };
 const DRAW_HINTS = {
-  rect: 'an einer Ecke drücken und zur gegenüberliegenden ziehen. Raster 10 cm, rastet an Ecken ein.',
+  rect: 'an einer Ecke drücken und zur gegenüberliegenden ziehen. Raster 5 cm, rastet an Ecken und Kanten ein.',
   poly: 'Ecken nacheinander anklicken, zum Abschliessen die erste Ecke anklicken oder doppelklicken. Rücktaste nimmt die letzte Ecke weg.',
 };
 const hint = computed(() => {
@@ -276,6 +277,7 @@ function stillThere(sel: PlanSelection | null): boolean {
   const c = editor.content.value;
   if (!sel || !c) return false;
   if (sel.kind === 'outline') return !!c.outline;
+  if (sel.kind === 'walls') return !!sel.ids?.every((id) => c.walls.some((w) => w.id === id));
   return ({ area: c.areas, wall: c.walls, pillar: c.pillars, opening: c.openings, label: c.labels }[sel.kind] as { id: string }[]).some((x) => x.id === sel.id);
 }
 async function saveFloor(): Promise<boolean> {
@@ -419,17 +421,33 @@ watch(
 
 /* Wand, Säule, Tür und Fenster */
 const wall = computed(() => editor.selectedWall.value);
-const wallThicknessCm = cmField(
-  () => wall.value?.thickness,
-  (m) => {
+// Die zuletzt gewählte Dicke gilt für die nächste Wand
+const wallThicknessCm = cmField(() => wall.value?.thickness, (m) => wall.value && editor.setWallThickness([wall.value], m), 2, 200);
+/** Lage: mittig oder bündig (dann mit «Seite wechseln») */
+const wallAlign = computed({
+  get: () => (wall.value?.align === 'center' ? 'center' : 'flush'),
+  set: (v: string) => {
     if (!wall.value) return;
-    wall.value.thickness = m;
-    // Die zuletzt gewählte Dicke gilt für die nächste Wand
-    state.options.wallThickness = m;
+    if (v === 'center') wall.value.align = 'center';
+    else if (wall.value.align === 'center') wall.value.align = 'left';
   },
-  2,
-  200,
-);
+});
+function flipWallSide() {
+  if (wall.value && wall.value.align !== 'center') wall.value.align = wall.value.align === 'left' ? 'right' : 'left';
+}
+const walls = computed(() => editor.selectedWalls.value);
+/** Dicke mehrerer Wände: leer, wenn sie verschieden sind */
+const wallsThicknessCm = computed({
+  get: () => {
+    const list = walls.value;
+    const first = list[0]?.thickness;
+    return list.length && list.every((w) => Math.abs(w.thickness - first!) < 1e-9) ? Math.round(first! * 100) : ('' as number | '');
+  },
+  set: (value: number | string) => {
+    const n = Number(value);
+    if (value !== '' && Number.isFinite(n) && n >= 2 && n <= 200) editor.setWallThickness(walls.value, n / 100);
+  },
+});
 const wallOpenings = computed(() => (wall.value ? (content.value?.openings ?? []).filter((o) => o.wallId === wall.value!.id).length : 0));
 const pillar = computed(() => editor.selectedPillar.value);
 const pillarWidthCm = cmField(
@@ -641,9 +659,15 @@ function print() {
               Der Umriss umschliesst alles im Stockwerk. Flächen, die über ihn hinausgehen, lassen ihn wachsen; kleiner ziehen geht, solange er alles
               umschliesst.
             </span>
-            <div class="row">
-              <button class="btn btn-sm" type="button" @click="editor.addWallsAlong(content.outline)">Wände entlang des Umrisses</button>
-              <button v-if="editor.outlineDeletable.value" class="btn btn-sm btn-danger" type="button" @click="editor.deleteSelected()">Umriss löschen</button>
+            <div class="along">
+              <button class="btn btn-sm" type="button" @click="editor.addWallsAlong(content.outline, 'inside')">Wände entlang des Umrisses</button>
+              <label class="opt">
+                <input v-model.number="wallCm" class="input input-sm num" type="number" min="2" max="200" aria-label="Dicke der Wände entlang des Umrisses in cm" /> cm
+              </label>
+            </div>
+            <span class="hint">Eine Wand je Kante, bündig innen: ihre Aussenkante ist der Umriss. Kanten mit Wand bleiben, wie sie sind.</span>
+            <div v-if="editor.outlineDeletable.value">
+              <button class="btn btn-sm btn-danger" type="button" @click="editor.deleteSelected()">Umriss löschen</button>
             </div>
           </template>
           <div><button class="link-btn" type="button" @click="editor.select(null)">← Zum Stockwerk</button></div>
@@ -692,7 +716,15 @@ function print() {
             <dd>{{ floor.name }}</dd>
           </dl>
           <template v-if="editing">
-            <div><button class="btn btn-sm" type="button" @click="editor.addWallsAlong(area.points)">Wände entlang der Fläche</button></div>
+            <div class="along">
+              <button class="btn btn-sm" type="button" @click="editor.addWallsAlong(area.points, state.options.alongSide)">Wände entlang der Fläche</button>
+              <label class="opt">
+                <input v-model.number="wallCm" class="input input-sm num" type="number" min="2" max="200" aria-label="Dicke der Wände entlang der Fläche in cm" /> cm
+              </label>
+              <select v-model="state.options.alongSide" class="input input-sm" aria-label="Lage der Wände entlang der Fläche">
+                <option v-for="(text, side) in ALONG_SIDE_LABELS" :key="side" :value="side">{{ text }}</option>
+              </select>
+            </div>
             <div v-if="state.confirmDelete" class="confirm">
               Fläche «{{ areaTitle(area) }}» löschen?
               <div class="row">
@@ -712,16 +744,42 @@ function print() {
             <label for="plan-wall-thickness">Dicke in cm</label>
             <input id="plan-wall-thickness" v-model.number="wallThicknessCm" class="input" type="number" min="2" max="200" />
           </div>
+          <div class="field">
+            <label for="plan-wall-align">Lage</label>
+            <div class="row">
+              <select id="plan-wall-align" v-model="wallAlign" class="input">
+                <option value="center">Mittig auf der Linie</option>
+                <option value="flush">Bündig, auf einer Seite</option>
+              </select>
+              <button v-if="wall.align !== 'center'" class="btn btn-sm" type="button" @click="flipWallSide">Seite wechseln</button>
+            </div>
+          </div>
           <dl class="facts">
             <dt>Länge</dt>
-            <dd>{{ formatNumber(polylineLength(wall.points, wall.closed), 2) }} m</dd>
-            <dt>Ecken</dt>
-            <dd>{{ wall.points.length }}{{ wall.closed ? ', geschlossen' : '' }}</dd>
+            <dd>{{ formatNumber(wallLength(wall), 2) }} m</dd>
             <dt>Türen, Fenster</dt>
             <dd>{{ wallOpenings }}</dd>
           </dl>
-          <span class="hint">Die Wand sitzt mittig auf der Linie. Türen und Fenster wandern mit, wenn du die Wand verschiebst.</span>
+          <span class="hint">
+            Enden ziehen: angrenzende Wände gehen mit. Türen und Fenster wandern mit der Wand. Shift+Klick wählt weitere Wände, um die Dicke für alle
+            zu ändern.
+          </span>
           <div><button class="btn btn-sm btn-danger" type="button" @click="editor.deleteSelected()">Wand löschen</button></div>
+        </template>
+
+        <!-- Mehrere Wände -->
+        <template v-else-if="walls.length && editing">
+          <h2>{{ walls.length }} Wände</h2>
+          <div class="field">
+            <label for="plan-walls-thickness">Dicke in cm, für alle</label>
+            <input id="plan-walls-thickness" v-model.number="wallsThicknessCm" class="input" type="number" min="2" max="200" placeholder="verschieden" />
+          </div>
+          <dl class="facts">
+            <dt>Länge</dt>
+            <dd>{{ formatNumber(walls.reduce((s, w) => s + wallLength(w), 0), 2) }} m</dd>
+          </dl>
+          <span class="hint">Shift+Klick auf eine Wand nimmt sie dazu oder weg.</span>
+          <div><button class="btn btn-sm btn-danger" type="button" @click="editor.deleteSelected()">{{ walls.length }} Wände löschen</button></div>
         </template>
 
         <!-- Säule -->
@@ -1054,6 +1112,12 @@ function print() {
   margin: 0;
   font-size: 15px;
   overflow-wrap: anywhere;
+}
+.along {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 .field-row {
   display: grid;

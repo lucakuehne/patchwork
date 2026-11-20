@@ -28,9 +28,10 @@ import {
   pointInPolygon,
   polygonArea,
   refitOpening,
-  shapeInPolygon,
+  segmentInPolygon,
   snap,
   wallsAlong,
+  type AlongSide,
 } from './geometry';
 
 /**
@@ -39,10 +40,12 @@ import {
  * umschliesst immer alles: Flächen lassen ihn wachsen, alles andere muss in ihm liegen.
  */
 export type PlanTool = 'select' | 'outline' | 'area' | 'wall' | 'pillar' | 'door' | 'window' | 'label' | 'measure' | 'scale';
-export type PlanSelectionKind = 'outline' | 'area' | 'wall' | 'pillar' | 'opening' | 'label';
+/** «walls»: mehrere Wände auf einmal (Shift+Klick), dann in «ids» */
+export type PlanSelectionKind = 'outline' | 'area' | 'wall' | 'walls' | 'pillar' | 'opening' | 'label';
 export interface PlanSelection {
   kind: PlanSelectionKind;
   id: string;
+  ids?: string[];
 }
 /** Der Umriss hat keine eigene ID */
 export const OUTLINE_ID = 'outline';
@@ -82,7 +85,7 @@ export function newId(): string {
 const clone = (c: FloorContent): FloorContent => ({
   outline: c.outline ? copyPoints(c.outline) : null,
   areas: c.areas.map((a) => ({ ...a, points: copyPoints(a.points) })),
-  walls: c.walls.map((w) => ({ ...w, points: copyPoints(w.points) })),
+  walls: c.walls.map((w) => ({ ...w, a: [w.a[0], w.a[1]], b: [w.b[0], w.b[1]] })),
   pillars: c.pillars.map((p) => ({ ...p })),
   openings: c.openings.map((o) => ({ ...o })),
   labels: c.labels.map((l) => ({ ...l })),
@@ -102,8 +105,10 @@ export function usePlanEditor() {
     draft: null as FloorContent | null,
     tool: 'select' as PlanTool,
     selection: null as PlanSelection | null,
-    /** Rechteck (a, b) oder Ecken (points) beim Zeichnen von Umriss, Fläche oder Wand */
+    /** Rechteck (a, b) oder Ecken (points) beim Zeichnen von Umriss, Fläche oder Wänden */
     drawing: null as { a: PlanPoint; b: PlanPoint } | { points: PlanPoint[] } | null,
+    /** Wände, die beim laufenden Zeichnen schon entstanden sind (Rücktaste nimmt die letzte weg) */
+    chain: [] as string[],
     cursor: null as PlanPoint | null,
     measure: null as Line | null,
     scaleLine: null as Line | null,
@@ -113,6 +118,8 @@ export function usePlanEditor() {
       shape: 'rect' as 'rect' | 'poly',
       areaKind: 'room' as PlanAreaKind,
       wallThickness: DEFAULT_WALL_THICKNESS,
+      /** Lage der Wände entlang einer Fläche; die zuletzt gewählte gilt für das nächste Mal */
+      alongSide: 'center' as AlongSide,
       pillarShape: 'rect' as 'rect' | 'round',
       pillarSize: DEFAULT_PILLAR_SIZE,
       doorKind: 'door' as Exclude<PlanOpeningKind, 'window'>,
@@ -138,6 +145,12 @@ export function usePlanEditor() {
     computed<T | null>(() => (state.selection?.kind === kind && content.value ? (list(content.value).find((x) => x.id === state.selection!.id) ?? null) : null));
   const selectedArea = pick('area', (c) => c.areas);
   const selectedWall = pick('wall', (c) => c.walls);
+  /** Mehrere gewählte Wände */
+  const selectedWalls = computed(() => {
+    const sel = state.selection;
+    if (sel?.kind !== 'walls' || !content.value) return [];
+    return content.value.walls.filter((w) => sel.ids?.includes(w.id));
+  });
   const selectedPillar = pick('pillar', (c) => c.pillars);
   const selectedOpening = pick('opening', (c) => c.openings);
   const selectedLabel = pick('label', (c) => c.labels);
@@ -155,6 +168,7 @@ export function usePlanEditor() {
   });
 
   function resetTools() {
+    endChain();
     state.tool = 'select';
     state.drawing = null;
     state.cursor = null;
@@ -185,6 +199,7 @@ export function usePlanEditor() {
   function exists(sel: PlanSelection, c: FloorContent | null): boolean {
     if (!c) return false;
     if (sel.kind === 'outline') return !!c.outline;
+    if (sel.kind === 'walls') return !!sel.ids?.every((id) => c.walls.some((w) => w.id === id));
     const list = { area: c.areas, wall: c.walls, pillar: c.pillars, opening: c.openings, label: c.labels }[sel.kind];
     return list.some((x) => x.id === sel.id);
   }
@@ -237,10 +252,26 @@ export function usePlanEditor() {
     }
   }
 
-  function select(kind: PlanSelectionKind | null, id?: string) {
-    state.selection = kind ? { kind, id: kind === 'outline' ? OUTLINE_ID : (id ?? '') } : null;
-    if (state.selection && !state.selection.id) state.selection = null;
+  function select(kind: PlanSelectionKind | null, id?: string, ids?: string[]) {
+    if (kind === 'walls') {
+      // Mehrere Wände; eine einzige ist eine gewöhnliche Auswahl
+      const list = [...new Set(ids ?? [])];
+      state.selection = list.length > 1 ? { kind: 'walls', id: list[0]!, ids: list } : list.length ? { kind: 'wall', id: list[0]! } : null;
+    } else {
+      state.selection = kind ? { kind, id: kind === 'outline' ? OUTLINE_ID : (id ?? '') } : null;
+      if (state.selection && !state.selection.id) state.selection = null;
+    }
     state.confirmDelete = false;
+  }
+
+  /** Shift+Klick auf eine Wand: zur Auswahl hinzu oder weg */
+  function toggleWall(id: string) {
+    const sel = state.selection;
+    const ids = sel?.kind === 'walls' ? [...(sel.ids ?? [])] : sel?.kind === 'wall' ? [sel.id] : [];
+    const i = ids.indexOf(id);
+    if (i >= 0) ids.splice(i, 1);
+    else ids.push(id);
+    select('walls', undefined, ids);
   }
 
   /** Wände, Säulen, Türen, Fenster und Beschriftungen gehen erst mit einem Umriss */
@@ -326,66 +357,107 @@ export function usePlanEditor() {
 
   /* ---------- Wände ---------- */
 
-  function addWall(points: PlanPoint[], closed: boolean) {
+  /** Eine Wand von a nach b (ein gerades Stück), gehört zum laufenden Zeichnen */
+  function addWallPiece(a: PlanPoint, b: PlanPoint): boolean {
     const d = state.draft;
     const outline = outlineOrHint();
-    if (!d || !outline) return;
-    if (!shapeInPolygon(points, closed, outline)) {
+    if (!d || !outline) return false;
+    if (!segmentInPolygon(a, b, outline)) {
       toast.error('Die Wand muss im Umriss liegen.');
-      return;
+      return false;
     }
-    const wall: PlanWall = { id: newId(), points, closed, thickness: state.options.wallThickness };
+    const wall: PlanWall = { id: newId(), a: [a[0], a[1]], b: [b[0], b[1]], thickness: state.options.wallThickness, align: 'center' };
     d.walls.push(wall);
-    state.drawing = null;
-    state.cursor = null;
-    select('wall', wall.id);
+    state.chain.push(wall.id);
+    return true;
   }
 
-  /** Wände auf den Kanten einer Fläche oder des Umrisses; Kanten mit Wand fallen weg */
-  function addWallsAlong(points: PlanPoint[]) {
+  /** Letzte Wand des laufenden Zeichnens zurücknehmen (Rücktaste) */
+  function undoWallPiece() {
+    const d = state.draft;
+    const id = state.chain.pop();
+    if (!d || !id) return;
+    d.walls = d.walls.filter((w) => w.id !== id);
+    d.openings = d.openings.filter((o) => o.wallId !== id);
+  }
+
+  /** Zeichnen der Wände beenden: die neuen Wände sind gewählt (für die Dicke) */
+  function endChain() {
+    const ids = state.chain.filter((id) => state.draft?.walls.some((w) => w.id === id));
+    state.chain = [];
+    if (state.tool === 'wall') {
+      state.drawing = null;
+      state.cursor = null;
+    }
+    if (ids.length) select('walls', undefined, ids);
+  }
+
+  /**
+   * Wände auf den Kanten einer Fläche oder des Umrisses: eine je Kante, Kanten mit Wand fallen weg. Beim Umriss bündig
+   * nach innen (die Aussenkante ist der Umriss), bei Flächen nach Wahl mittig, innen oder aussen bündig.
+   */
+  function addWallsAlong(points: PlanPoint[], side: AlongSide) {
     const d = state.draft;
     if (!d || !outlineOrHint()) return;
-    const chains = wallsAlong(points, d.walls);
-    if (!chains.length) {
+    const pieces = wallsAlong(points, d.walls, side);
+    if (!pieces.length) {
       toast.error('Auf allen Kanten liegt schon eine Wand.');
       return;
     }
-    for (const c of chains) d.walls.push({ id: newId(), points: c.points, closed: c.closed, thickness: state.options.wallThickness });
-    toast.success(chains.length === 1 ? 'Wand angelegt' : `${chains.length} Wände angelegt`);
+    const thickness = state.options.wallThickness;
+    for (const p of pieces) d.walls.push({ id: newId(), a: p.a, b: p.b, thickness, align: p.align });
+    toast.success(pieces.length === 1 ? 'Wand angelegt' : `${pieces.length} Wände angelegt`);
   }
 
-  /** Stand einer Wand vor dem Ziehen, mit ihren Türen und Fenstern */
-  function wallSnapshot(wall: PlanWall) {
+  /** Dicke für mehrere Wände; die zuletzt gewählte Dicke gilt für die nächste Wand */
+  function setWallThickness(walls: PlanWall[], meters: number) {
+    for (const w of walls) w.thickness = meters;
+    state.options.wallThickness = meters;
+  }
+
+  /** Stand von Wänden vor dem Ziehen, mit ihren Türen und Fenstern */
+  function wallsSnapshot(ids: string[]) {
+    const d = state.draft;
     return {
-      points: copyPoints(wall.points),
-      openings: (state.draft?.openings ?? []).filter((o) => o.wallId === wall.id).map((o) => ({ ...o })),
+      walls: (d?.walls ?? []).filter((w) => ids.includes(w.id)).map((w) => ({ ...w, a: [w.a[0], w.a[1]] as PlanPoint, b: [w.b[0], w.b[1]] as PlanPoint })),
+      openings: (d?.openings ?? []).filter((o) => ids.includes(o.wallId)).map((o) => ({ ...o })),
     };
   }
+  type WallsSnapshot = ReturnType<typeof wallsSnapshot>;
 
   /** Türen und Fenster folgen ihrer Wand: vom Stand vor dem Ziehen auf die neue Lage; passt eine nicht mehr, fällt sie weg */
-  function refitOpenings(wall: PlanWall, snapshot: ReturnType<typeof wallSnapshot>) {
+  function refitOpenings(snapshot: WallsSnapshot) {
     const d = state.draft;
     if (!d) return;
-    const old: PlanWall = { ...wall, points: snapshot.points };
     const moved = new Map<string, PlanOpening | null>();
     for (const o of snapshot.openings) {
-      const f = openingFrame(o, [old]);
-      moved.set(o.id, f ? refitOpening(o, wall, f.c) : null);
+      const f = openingFrame(o, snapshot.walls);
+      const wall = d.walls.find((w) => w.id === o.wallId);
+      // Mitte auf der Linie der Wand (nicht in der Mitte der Dicke)
+      const old = snapshot.walls.find((w) => w.id === o.wallId)!;
+      const center: PlanPoint | null = f ? [old.a[0] + f.u[0] * o.offset, old.a[1] + f.u[1] * o.offset] : null;
+      moved.set(o.id, f && wall && center ? refitOpening(o, wall, center) : null);
     }
     d.openings = [...d.openings.filter((o) => !moved.has(o.id)), ...[...moved.values()].filter((o): o is PlanOpening => !!o)];
   }
 
-  /** Nach dem Ziehen einer Wand oder Ecke: ausserhalb des Umrisses springt sie zurück */
-  function commitWall(wall: PlanWall, snapshot: ReturnType<typeof wallSnapshot>): boolean {
+  /** Nach dem Ziehen von Wänden oder Enden: ausserhalb des Umrisses springen alle zurück */
+  function commitWalls(snapshot: WallsSnapshot): boolean {
     const d = state.draft;
     if (!d?.outline) return false;
-    if (shapeInPolygon(wall.points, wall.closed, d.outline)) {
+    const ids = snapshot.walls.map((w) => w.id);
+    const changed = d.walls.filter((w) => ids.includes(w.id));
+    if (changed.every((w) => segmentInPolygon(w.a, w.b, d.outline!))) {
       const lost = snapshot.openings.filter((o) => !d.openings.some((x) => x.id === o.id)).length;
       if (lost) toast.error(lost === 1 ? 'Eine Tür bzw. ein Fenster passte nicht mehr in die Wand und fiel weg.' : `${lost} Türen bzw. Fenster passten nicht mehr in die Wand und fielen weg.`);
       return true;
     }
-    wall.points = snapshot.points;
-    d.openings = [...d.openings.filter((o) => o.wallId !== wall.id), ...snapshot.openings];
+    for (const w of changed) {
+      const before = snapshot.walls.find((x) => x.id === w.id)!;
+      w.a = before.a;
+      w.b = before.b;
+    }
+    d.openings = [...d.openings.filter((o) => !ids.includes(o.wallId)), ...snapshot.openings];
     toast.error('Die Wand muss im Umriss liegen.');
     return false;
   }
@@ -467,9 +539,12 @@ export function usePlanEditor() {
         d.areas = d.areas.filter((a) => a.id !== sel.id);
         break;
       case 'wall':
-        d.walls = d.walls.filter((w) => w.id !== sel.id);
-        d.openings = d.openings.filter((o) => o.wallId !== sel.id);
+      case 'walls': {
+        const ids = sel.kind === 'walls' ? (sel.ids ?? []) : [sel.id];
+        d.walls = d.walls.filter((w) => !ids.includes(w.id));
+        d.openings = d.openings.filter((o) => !ids.includes(o.wallId));
         break;
+      }
       case 'pillar':
         d.pillars = d.pillars.filter((p) => p.id !== sel.id);
         break;
@@ -525,6 +600,7 @@ export function usePlanEditor() {
     bounds,
     selectedArea,
     selectedWall,
+    selectedWalls,
     selectedPillar,
     selectedOpening,
     selectedLabel,
@@ -537,16 +613,20 @@ export function usePlanEditor() {
     discard,
     save,
     select,
+    toggleWall,
     setOutline,
     commitOutline,
     checkOutline,
     addArea,
     commitArea,
-    addWall,
+    addWallPiece,
+    undoWallPiece,
+    endChain,
     addWallsAlong,
-    wallSnapshot,
+    setWallThickness,
+    wallsSnapshot,
     refitOpenings,
-    commitWall,
+    commitWalls,
     addPillar,
     addOpening,
     addLabel,

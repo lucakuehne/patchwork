@@ -129,8 +129,10 @@ await step('Pläne: Umriss umschliesst alles, Flächen nach Art, Wände, Säulen
   assert.match((await saveContent(og, { ...base, outline: null }, { expect: [400] })).message, /braucht einen Umriss/);
   const outsideArea = { id: uuid(), kind: 'corridor', name: 'Laubengang', description: '', points: rect(20, 0, 2, 10) };
   assert.match((await saveContent(og, { ...base, areas: [...base.areas, outsideArea] }, { expect: [400] })).message, /umschliessen.*«Laubengang»/);
-  // Gang ohne Namen, Treppenhaus mit Namen, Wand mit Tür und Fenster, Säule
-  const wallId = uuid();
+  // Gang ohne Namen, Treppenhaus mit Namen, Aussenwände (je Kante eine, bündig innen) mit Tür und Fenster, Innenwand, Säule
+  const corners = rect(0, 0, 20, 20);
+  const outer = corners.map((a, i) => ({ id: uuid(), a, b: corners[(i + 1) % 4], thickness: 0.3, align: 'left' }));
+  const inner = { id: uuid(), a: [9, 0.3], b: [9, 7], thickness: 0.1 };
   const content = {
     ...base,
     areas: [
@@ -138,18 +140,20 @@ await step('Pläne: Umriss umschliesst alles, Flächen nach Art, Wände, Säulen
       { id: uuid(), kind: 'corridor', name: '', description: '', points: rect(0, 8, 20, 3) },
       { id: uuid(), kind: 'stairs', name: `Treppe Ost ${RUN}`, description: 'bis ins 3. OG', points: rect(16, 0, 4, 7) },
     ],
-    walls: [{ id: wallId, points: rect(0, 0, 20, 20), closed: true, thickness: 0.3 }],
+    walls: [...outer, inner],
     pillars: [{ id: uuid(), shape: 'round', x: 10, y: 9.5, width: 0.4, depth: 0.4, rotation: 0 }],
     openings: [
-      { id: uuid(), wallId, segment: 0, offset: 12, width: 1.6, kind: 'double', hinge: 'start', side: 'right' },
-      { id: uuid(), wallId, segment: 1, offset: 4, width: 1.2, kind: 'window' },
+      { id: uuid(), wallId: outer[0].id, offset: 12, width: 1.6, kind: 'double', hinge: 'start', side: 'right' },
+      { id: uuid(), wallId: outer[1].id, offset: 4, width: 1.2, kind: 'window' },
     ],
   };
-  // Tür in einer unbekannten Wand oder breiter als ihr Wandstück
+  // Tür in einer unbekannten Wand oder breiter als ihre Wand
   assert.match((await saveContent(og, { ...content, openings: [{ ...content.openings[0], wallId: uuid() }] }, { expect: [400] })).message, /keiner Wand/);
-  assert.match((await saveContent(og, { ...content, openings: [{ ...content.openings[0], offset: 19.5 }] }, { expect: [400] })).message, /breiter als ihr Wandstück/);
-  // Wand ausserhalb
-  const outsideWall = { id: uuid(), points: [[5, 5], [25, 5]], closed: false, thickness: 0.1 };
+  assert.match((await saveContent(og, { ...content, openings: [{ ...content.openings[0], offset: 19.5 }] }, { expect: [400] })).message, /breiter als ihre Wand/);
+  // Wand ausserhalb, Wand ohne Länge, unbekannte Lage
+  const outsideWall = { id: uuid(), a: [5, 5], b: [25, 5], thickness: 0.1 };
+  assert.match((await saveContent(og, { ...content, walls: [...content.walls, { ...inner, id: uuid(), b: inner.a }] }, { expect: [400] })).message, /keine Länge/);
+  await saveContent(og, { ...content, walls: [{ ...inner, align: 'oben' }] }, { expect: [400] });
   assert.match((await saveContent(og, { ...content, walls: [...content.walls, outsideWall] }, { expect: [400] })).message, /eine Wand/);
   await saveContent(og, content);
   floor = await api('GET', `/plans/floors/${og}`);
@@ -159,7 +163,7 @@ await step('Pläne: Umriss umschliesst alles, Flächen nach Art, Wände, Säulen
     ['stairs', `Treppe Ost ${RUN}`],
     ['corridor', ''],
   ], 'Flächen ohne Namen zuletzt');
-  assert.deepEqual(floor.walls, content.walls);
+  assert.deepEqual(floor.walls, [...outer, { ...inner, align: 'center' }], 'Wände als gerade Stücke, Lage mittig als Vorgabe');
   assert.deepEqual(floor.pillars, content.pillars);
   assert.deepEqual(floor.openings[1], { ...content.openings[1], hinge: 'start', side: 'left' }, 'Vorgaben für Fenster');
   // Suche: Flächen mit Namen, mit Art; der Baum zählt nur Räume
@@ -191,7 +195,7 @@ await step('Pläne: Plan als Bild hochladen, Massstab setzen, entfernen', async 
   floor = await api('GET', `/plans/floors/${og}`);
   assert.ok(floor.plan.url.startsWith(`/api/plans/floors/${og}/image?v=`));
   assert.deepEqual([floor.plan.widthPx, floor.plan.metersPerPx, floor.plan.calibrated], [1, 36, false]);
-  assert.equal(floor.walls.length, 1, 'Bauteile bleiben beim Hochladen');
+  assert.equal(floor.walls.length, 5, 'Bauteile bleiben beim Hochladen');
   const res = await fetch(`${BASE}/plans/floors/${og}/image`, { headers: { cookie } });
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('content-type'), 'image/png');

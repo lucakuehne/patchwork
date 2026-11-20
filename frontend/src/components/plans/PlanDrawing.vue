@@ -12,6 +12,8 @@ import {
   openingFrame,
   polygonArea,
   stairLines,
+  wallBand,
+  wallPolygons,
 } from '../../plans/geometry';
 import type { FloorContent, Layers, OpeningDraft, PlanSelection } from '../../plans/editor';
 import type { PlanArea, PlanPoint } from '../../types';
@@ -37,7 +39,9 @@ const props = defineProps<{
 }>();
 
 const pointsAttr = (points: PlanPoint[]) => points.map((p) => p.join(',')).join(' ');
-const isSelected = (kind: PlanSelection['kind'], id: string) => props.selection?.kind === kind && props.selection.id === id;
+const isSelected = (kind: PlanSelection['kind'], id: string) =>
+  (props.selection?.kind === kind && props.selection.id === id) ||
+  (kind === 'wall' && props.selection?.kind === 'walls' && !!props.selection.ids?.includes(id));
 const hitWidth = computed(() => 10 / (props.px ?? 40));
 /** Linien in Bildpunkten auf dem Bildschirm; im Druck in Metern (sonst wären sie auf Papier kaum sichtbar) */
 const ve = computed(() => (props.print ? undefined : 'non-scaling-stroke'));
@@ -63,7 +67,23 @@ const areas = computed(() =>
   }),
 );
 
-const walls = computed(() => props.content.walls.map((w) => ({ ...w, attr: pointsAttr(w.points) })));
+/** Wände als Vierecke mit sauberen Ecken; die Klickfläche liegt auf der Mitte der Dicke */
+const walls = computed(() => {
+  const polygons = wallPolygons(props.content.walls);
+  return props.content.walls.map((w) => {
+    const { n, lo, hi } = wallBand(w);
+    const mid = (lo + hi) / 2;
+    return {
+      id: w.id,
+      thickness: w.thickness,
+      attr: pointsAttr(polygons.get(w.id) ?? []),
+      x1: w.a[0] + n[0] * mid,
+      y1: w.a[1] + n[1] * mid,
+      x2: w.b[0] + n[0] * mid,
+      y2: w.b[1] + n[1] * mid,
+    };
+  });
+});
 const openings = computed(() => {
   const list = [
     ...props.content.openings.map((o) => ({ o, id: o.id, preview: false })),
@@ -78,7 +98,7 @@ const openings = computed(() => {
 });
 /** Maske der Wände: weiss zeigt, die Lücken der Türen und Fenster schwarz */
 const maskBox = computed(() => {
-  const pts = [...(props.content.outline ?? []), ...props.content.walls.flatMap((w) => w.points)];
+  const pts = [...(props.content.outline ?? []), ...props.content.walls.flatMap((w) => [w.a, w.b])];
   if (!pts.length) return { x: 0, y: 0, w: 1, h: 1 };
   const b = bbox(pts);
   return { x: b.x - 5, y: b.y - 5, w: b.w + 10, h: b.h + 10 };
@@ -141,24 +161,18 @@ const pillarTransform = (p: { x: number; y: number; rotation: number }) => `tran
     <!-- Bauteile: Wände (mit Lücken), Säulen, Türen und Fenster -->
     <template v-if="layers.structure">
       <g class="walls" :mask="`url(#${uid}-walls)`">
-        <component
-          :is="w.closed ? 'polygon' : 'polyline'"
-          v-for="w in walls"
-          :key="w.id"
-          class="wall"
-          :class="{ selected: isSelected('wall', w.id) }"
-          :points="w.attr"
-          :stroke-width="w.thickness"
-        />
+        <polygon v-for="w in walls" :key="w.id" class="wall" :class="{ selected: isSelected('wall', w.id) }" :points="w.attr" />
       </g>
       <template v-if="editing">
-        <component
-          :is="w.closed ? 'polygon' : 'polyline'"
+        <line
           v-for="w in walls"
           :key="`h-${w.id}`"
           class="hit-stroke"
           :data-wall="w.id"
-          :points="w.attr"
+          :x1="w.x1"
+          :y1="w.y1"
+          :x2="w.x2"
+          :y2="w.y2"
           :stroke-width="Math.max(w.thickness, hitWidth)"
         />
       </template>
@@ -301,15 +315,11 @@ const pillarTransform = (p: { x: number; y: number; rotation: number }) => `tran
   pointer-events: none;
 }
 .wall {
-  fill: none;
-  stroke: var(--wall);
-  stroke-linejoin: miter;
-  stroke-miterlimit: 8;
-  stroke-linecap: square;
+  fill: var(--wall);
   pointer-events: none;
 }
 .wall.selected {
-  stroke: var(--accent);
+  fill: var(--accent);
 }
 .pillar {
   fill: var(--wall);

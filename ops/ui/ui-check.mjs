@@ -2316,8 +2316,9 @@ await step('plaene', async () => {
   await page.mouse.click(...(await at(0.27, 0.3)));
   await page.locator('#plan-area-name').waitFor();
   if ((await page.locator('#plan-area-name').inputValue()) !== 'Sitzungszimmer Säntis') throw new Error('Säntis nicht gewählt');
+  await page.getByLabel('Lage der Wände entlang der Fläche').selectOption('inside');
   await page.getByRole('button', { name: 'Wände entlang der Fläche' }).click();
-  await toast('Wand angelegt');
+  await toast('4 Wände angelegt');
   await tool('Tür').click();
   await page.mouse.move(...(await at(0.27, 0.45)));
   await page.locator('.stage .opening.preview').waitFor({ state: 'attached' });
@@ -2335,6 +2336,26 @@ await step('plaene', async () => {
   await page.locator('.details h2', { hasText: 'Säule' }).waitFor();
   if ((await page.locator('#plan-pillar-width').inputValue()) !== '30') throw new Error('Säule nicht 30 cm');
 
+  // Wände Stück für Stück: jeder Klick eine Wand, Eingabetaste beendet; die neuen Wände sind gewählt
+  await tool('Wand').click();
+  await page.locator('.options input[aria-label="Dicke der Wand in cm"]').fill('20');
+  for (const [x, y] of [[0.45, 0.6], [0.45, 0.85], [0.6, 0.85]]) await page.mouse.click(...(await at(x, y)));
+  await page.keyboard.press('Enter');
+  await page.locator('.details h2', { hasText: '2 Wände' }).waitFor();
+  await page.locator('#plan-walls-thickness').fill('12');
+  await tool('Auswählen').click();
+  await page.mouse.click(...(await at(0.45, 0.7)));
+  await page.locator('.details h2').filter({ hasText: /^Wand$/ }).waitFor();
+  if ((await page.locator('#plan-wall-thickness').inputValue()) !== '12') throw new Error('Dicke nicht für beide Wände gesetzt');
+  await page.locator('#plan-wall-align').selectOption('flush');
+  await page.getByRole('button', { name: 'Seite wechseln' }).click();
+  // Shift+Klick: zweite Wand dazu
+  await page.keyboard.down('Shift');
+  await page.mouse.click(...(await at(0.53, 0.85)));
+  await page.keyboard.up('Shift');
+  await page.locator('.details h2', { hasText: '2 Wände' }).waitFor();
+  await page.keyboard.press('Escape');
+
   // Umriss kleiner ziehen, bis etwas ausserhalb läge: springt zurück
   await tool('Umriss').click();
   await page.locator('.details h2', { hasText: 'Umriss' }).waitFor();
@@ -2351,7 +2372,7 @@ await step('plaene', async () => {
   await tree.locator('.node.floor', { hasText: '1. OG' }).locator('.count', { hasText: '2 Räume' }).waitFor();
   await page.getByRole('button', { name: '← Zum Stockwerk' }).click();
   const facts = await page.locator('.details .facts').innerText();
-  for (const text of ['Umriss', 'Räume', 'Gang/Flur', '1 Wand', '1 Tür', '1 Fenster', '1 Säule']) {
+  for (const text of ['Umriss', 'Räume', 'Gang/Flur', '6 Wände', '1 Tür', '1 Fenster', '1 Säule']) {
     if (!facts.includes(text)) throw new Error(`Angaben ohne «${text}»: ${facts}`);
   }
   await shot('137-plaene-bauteile');

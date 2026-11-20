@@ -2,12 +2,14 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import PlanDrawing from './PlanDrawing.vue';
 import {
+  VERTEX_SNAP,
   bbox,
+  connectedEnds,
   copyPoints,
   dist,
   formatNumber,
   isRect,
-  nearestWallSegment,
+  nearestWall,
   niceLength,
   placeOnSegment,
   pointInPolygon,
@@ -15,18 +17,19 @@ import {
   segmentInPolygon,
   snap,
   snapCandidates,
+  snapEdges,
   snapPoint,
   type Box,
 } from '../../plans/geometry';
 import { OUTLINE_ID, type PlanEditor } from '../../plans/editor';
 import { useToast } from '../../stores/toast';
-import type { PlanPoint } from '../../types';
+import type { PlanPoint, PlanWall } from '../../types';
 
 /**
  * Zeichenfläche eines Stockwerks (Pläne, Entscheide vom 20.11.2026). Ansehen: Ziehen verschiebt, Mausrad vergrössert,
- * Klick auf eine Fläche wählt sie. Bearbeiten: Umriss, Flächen (Rechteck oder Vieleck), Wände, Säulen, Türen, Fenster
- * und Beschriftungen; Ecken ziehen, in der Mitte einer Kante eine Ecke einfügen, Doppelklick auf eine Ecke entfernt sie.
- * Raster 10 cm, Ecken von Umriss, Flächen und Wänden rasten ein.
+ * Klick auf eine Fläche wählt sie. Bearbeiten: Umriss, Flächen (Rechteck oder Vieleck), Wände (gerade Stücke, Klick für
+ * Klick), Säulen, Türen, Fenster und Beschriftungen; Ecken ziehen, in der Mitte einer Kante eine Ecke einfügen,
+ * Doppelklick auf eine Ecke entfernt sie; Shift+Klick wählt mehrere Wände. Raster 5 cm, Ecken und Kanten rasten ein.
  */
 const props = defineProps<{ editor: PlanEditor }>();
 const editor = props.editor;
@@ -94,8 +97,13 @@ const gridLines = computed(() => {
 });
 
 const pointsAttr = (points: PlanPoint[]) => points.map((p) => p.join(',')).join(' ');
-const candidates = (except?: PlanPoint[]) => (content.value ? snapCandidates(content.value, except) : []);
-const closeDistance = () => Math.max(0.4, 10 / px.value);
+/** Einrasten an Ecken und Kanten (ohne die gerade bearbeiteten Formen), näher gezoomt mit kleinerem Radius */
+function snapAt(p: PlanPoint, exceptLists: PlanPoint[][] = [], exceptWallIds: string[] = []): PlanPoint {
+  const c = content.value;
+  if (!c) return [snap(p[0]), snap(p[1])];
+  return snapPoint(p, snapCandidates(c, exceptLists), Math.min(VERTEX_SNAP, 14 / px.value), snapEdges(c, exceptLists, exceptWallIds));
+}
+const closeDistance = () => Math.max(0.3, 10 / px.value);
 
 /* ---------- Gewählte Form: Ecken und Kantenmitten ---------- */
 type ShapeKind = 'outline' | 'area' | 'wall';
@@ -106,40 +114,38 @@ const handleShape = computed<{ kind: ShapeKind; id: string; points: PlanPoint[];
   const a = editor.selectedArea.value;
   if (a) return { kind: 'area', id: a.id, points: a.points, closed: true };
   const w = editor.selectedWall.value;
-  if (w) return { kind: 'wall', id: w.id, points: w.points, closed: w.closed };
+  if (w) return { kind: 'wall', id: w.id, points: [w.a, w.b], closed: false };
   return null;
 });
+/** Kantenmitten zum Einfügen einer Ecke: bei Umriss und Flächen (eine Wand ist ein gerades Stück) */
 const midpoints = computed(() => {
   const s = handleShape.value;
-  if (!s) return [];
-  const count = s.closed ? s.points.length : s.points.length - 1;
-  return Array.from({ length: count }, (_, i) => {
-    const a = s.points[i]!;
-    const b = s.points[(i + 1) % s.points.length]!;
-    return { i, x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, long: dist(a, b) > 24 / px.value };
-  }).filter((m) => m.long);
+  if (!s || s.kind === 'wall') return [];
+  return s.points
+    .map((a, i) => {
+      const b = s.points[(i + 1) % s.points.length]!;
+      return { i, x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, long: dist(a, b) > 24 / px.value };
+    })
+    .filter((m) => m.long);
 });
 
-/** Ecken einer Form im Entwurf (live, zum Ändern) */
-function livePoints(kind: ShapeKind, id: string): PlanPoint[] | null {
+/** Ecken einer Fläche oder des Umrisses im Entwurf (live, zum Ändern) */
+function livePoints(kind: 'outline' | 'area', id: string): PlanPoint[] | null {
   const d = state.draft;
   if (!d) return null;
   if (kind === 'outline') return d.outline;
-  if (kind === 'area') return d.areas.find((a) => a.id === id)?.points ?? null;
-  return d.walls.find((w) => w.id === id)?.points ?? null;
+  return d.areas.find((a) => a.id === id)?.points ?? null;
 }
-function setLivePoints(kind: ShapeKind, id: string, points: PlanPoint[]) {
+function setLivePoints(kind: 'outline' | 'area', id: string, points: PlanPoint[]) {
   const d = state.draft;
   if (!d) return;
   if (kind === 'outline') d.outline = points;
-  else if (kind === 'area') {
+  else {
     const a = d.areas.find((x) => x.id === id);
     if (a) a.points = points;
-  } else {
-    const w = d.walls.find((x) => x.id === id);
-    if (w) w.points = points;
   }
 }
+const wallById = (id: string): PlanWall | undefined => state.draft?.walls.find((w) => w.id === id);
 
 /* ---------- Masse und Vorschau ---------- */
 const selectedDims = computed(() => {
@@ -154,10 +160,13 @@ const drawingRect = computed(() => {
   const y = Math.min(d.a[1], d.b[1]);
   return { x, y, w: Math.abs(d.b[0] - d.a[0]), h: Math.abs(d.b[1] - d.a[1]) };
 });
+/** Vieleck beim Zeichnen; bei Wänden nur das Stück vom letzten Punkt zum Zeiger (die fertigen Stücke sind schon Wände) */
 const drawingPoly = computed(() => {
   const d = state.drawing;
   if (!d || !('points' in d)) return null;
-  return { points: d.points, rubber: state.cursor ? [...d.points, state.cursor] : d.points, wall: state.tool === 'wall' };
+  const wall = state.tool === 'wall';
+  const shown = wall ? d.points.slice(-1) : d.points;
+  return { points: shown, rubber: state.cursor ? [...shown, state.cursor] : shown, wall, last: d.points[d.points.length - 1]! };
 });
 const lines = computed(() =>
   [
@@ -170,7 +179,7 @@ const lines = computed(() =>
       return { a: line!.a, b, text: b ? `${formatNumber(dist(line!.a, b), 2)} m${scale ? ' (laut Plan)' : ''}` : '' };
     }),
 );
-const pillarGhost = computed(() => (state.tool === 'pillar' && state.cursor ? { x: snap(state.cursor[0], 0.05), y: snap(state.cursor[1], 0.05) } : null));
+const pillarGhost = computed(() => (state.tool === 'pillar' && state.cursor ? { x: snap(state.cursor[0]), y: snap(state.cursor[1]) } : null));
 
 /* Massstabsleiste */
 const scalebar = computed(() => {
@@ -179,16 +188,25 @@ const scalebar = computed(() => {
 });
 
 /* ---------- Zeiger ---------- */
-type WallSnap = ReturnType<PlanEditor['wallSnapshot']>;
+type WallsSnapshot = ReturnType<PlanEditor['wallsSnapshot']>;
+/** Wandenden, die beim Ziehen mitgehen: die gezogene Wand und die angrenzenden Wände mit ihrem Ende dort */
+type EndRef = { id: string; end: 'a' | 'b' };
 type Drag =
   | { kind: 'pan'; start: [number, number]; view: Box; moved: boolean; areaId: string | null }
-  | { kind: 'vertex'; shape: ShapeKind; id: string; index: number; before: PlanPoint[]; wall?: WallSnap }
-  | { kind: 'move'; shape: 'area' | 'wall'; id: string; start: PlanPoint; before: PlanPoint[]; wall?: WallSnap }
+  | { kind: 'vertex'; shape: 'outline' | 'area'; id: string; index: number; before: PlanPoint[] }
+  | { kind: 'move'; id: string; start: PlanPoint; before: PlanPoint[] }
+  | { kind: 'wallEnd'; ends: EndRef[]; snapshot: WallsSnapshot }
+  | { kind: 'wallMove'; id: string; start: PlanPoint; atA: EndRef[]; atB: EndRef[]; snapshot: WallsSnapshot }
   | { kind: 'point'; what: 'pillar' | 'label'; id: string; start: PlanPoint; before: PlanPoint }
   | { kind: 'opening'; id: string };
 let drag: Drag | null = null;
 
 const dataOf = (el: Element, name: string) => el.closest(`[data-${name}]`)?.getAttribute(`data-${name}`) ?? null;
+const pointOf = (ref: EndRef) => wallById(ref.id)?.[ref.end] ?? null;
+function setEnd(ref: EndRef, p: PlanPoint) {
+  const w = wallById(ref.id);
+  if (w) w[ref.end] = [p[0], p[1]];
+}
 
 function onPointerDown(e: PointerEvent) {
   if (e.button !== 0 || !content.value) return;
@@ -203,10 +221,17 @@ function onPointerDown(e: PointerEvent) {
       const shape = handleShape.value;
       const vertex = dataOf(target, 'vertex');
       const mid = dataOf(target, 'mid');
-      if (edit && shape && (vertex !== null || mid !== null)) {
+      if (edit && d && shape && (vertex !== null || mid !== null)) {
+        if (shape.kind === 'wall') {
+          // Ende einer Wand: angrenzende Wände mit ihrem Ende am selben Punkt gehen mit
+          const end = vertex === '0' ? 'a' : 'b';
+          const wall = editor.selectedWall.value!;
+          const ends: EndRef[] = [{ id: wall.id, end }, ...connectedEnds(d.walls, wall[end], wall.id)];
+          drag = { kind: 'wallEnd', ends, snapshot: editor.wallsSnapshot(ends.map((x) => x.id)) };
+          return;
+        }
         let index = Number(vertex ?? mid);
         const before = copyPoints(shape.points);
-        const wall = shape.kind === 'wall' ? editor.wallSnapshot(editor.selectedWall.value!) : undefined;
         if (mid !== null) {
           // Ecke einfügen: in der Mitte der Kante, dann gleich ziehen
           const a = shape.points[index]!;
@@ -214,7 +239,7 @@ function onPointerDown(e: PointerEvent) {
           shape.points.splice(index + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
           index += 1;
         }
-        drag = { kind: 'vertex', shape: shape.kind, id: shape.id, index, before, wall };
+        drag = { kind: 'vertex', shape: shape.kind, id: shape.id, index, before };
         return;
       }
       const openingId = dataOf(target, 'opening');
@@ -222,7 +247,9 @@ function onPointerDown(e: PointerEvent) {
       const labelId = dataOf(target, 'label');
       const wallId = dataOf(target, 'wall');
       const areaId = dataOf(target, 'area');
-      if (edit && d && openingId) {
+      if (edit && d && wallId && e.shiftKey) {
+        editor.toggleWall(wallId);
+      } else if (edit && d && openingId) {
         editor.select('opening', openingId);
         drag = { kind: 'opening', id: openingId };
       } else if (edit && d && pillarId) {
@@ -234,13 +261,17 @@ function onPointerDown(e: PointerEvent) {
         editor.select('label', labelId);
         drag = { kind: 'point', what: 'label', id: labelId, start: p, before: [label.x, label.y] };
       } else if (edit && d && wallId) {
-        const wall = d.walls.find((x) => x.id === wallId)!;
+        const wall = wallById(wallId)!;
         editor.select('wall', wallId);
-        drag = { kind: 'move', shape: 'wall', id: wallId, start: p, before: copyPoints(wall.points), wall: editor.wallSnapshot(wall) };
+        // Die Wand verschieben; angrenzende Wände bleiben mit ihrem Ende an ihr hängen
+        const atA = connectedEnds(d.walls, wall.a, wall.id);
+        const atB = connectedEnds(d.walls, wall.b, wall.id);
+        const ids = [wall.id, ...atA.map((x) => x.id), ...atB.map((x) => x.id)];
+        drag = { kind: 'wallMove', id: wallId, start: p, atA, atB, snapshot: editor.wallsSnapshot(ids) };
       } else if (edit && d && areaId) {
         const area = d.areas.find((x) => x.id === areaId)!;
         editor.select('area', areaId);
-        drag = { kind: 'move', shape: 'area', id: areaId, start: p, before: copyPoints(area.points) };
+        drag = { kind: 'move', id: areaId, start: p, before: copyPoints(area.points) };
       } else if (edit && dataOf(target, 'outline')) {
         editor.select('outline');
       } else {
@@ -251,7 +282,7 @@ function onPointerDown(e: PointerEvent) {
     }
     case 'outline':
     case 'area': {
-      const q = snapPoint(p, candidates());
+      const q = snapAt(p);
       if (state.options.shape === 'rect') {
         state.drawing = { a: q, b: q };
         return;
@@ -265,7 +296,7 @@ function onPointerDown(e: PointerEvent) {
       wallClick(p);
       return;
     case 'pillar':
-      editor.addPillar(p);
+      editor.addPillar(snapAt(p));
       return;
     case 'door':
     case 'window':
@@ -279,46 +310,56 @@ function onPointerDown(e: PointerEvent) {
     case 'scale': {
       const key = state.tool === 'measure' ? 'measure' : 'scaleLine';
       const line = state[key];
-      const q = state.tool === 'measure' ? snapPoint(p, candidates()) : p;
+      const q = state.tool === 'measure' ? snapAt(p) : p;
       state[key] = !line?.a || line.b ? { a: q } : { a: line.a, b: q };
       state.cursor = null;
     }
   }
 }
 
-/** Wand zeichnen: jede Ecke muss mit dem Stück davor im Umriss liegen; Klick auf die erste Ecke schliesst die Wand */
+/**
+ * Wände zeichnen, Klick für Klick: Jeder weitere Klick macht eine Wand vom letzten Punkt aus (ein gerades Stück). Klick
+ * auf den ersten Punkt schliesst den Zug und beendet ihn, ebenso Doppelklick, Eingabetaste oder Esc.
+ */
 function wallClick(p: PlanPoint) {
   const outline = content.value?.outline;
   if (!outline) {
     toast.error('Zeichne zuerst den Umriss des Stockwerks oder eine Fläche.');
     return;
   }
-  const q = snapPoint(p, candidates());
+  const q = snapAt(p);
   const pts = state.drawing && 'points' in state.drawing ? state.drawing.points : [];
-  if (pts.length >= 3 && dist(q, pts[0]!) < closeDistance()) {
-    finishDrawing(true);
+  if (!pts.length) {
+    if (!pointInPolygon(q, outline)) toast.error('Die Wand muss im Umriss liegen.');
+    else state.drawing = { points: [q] };
     return;
   }
-  const inside = pts.length ? segmentInPolygon(pts[pts.length - 1]!, q, outline) : pointInPolygon(q, outline);
-  if (!inside) {
+  const last = pts[pts.length - 1]!;
+  // Zweiter Klick eines Doppelklicks: keine Wand ohne Länge
+  if (dist(q, last) < 0.025) return;
+  const closing = pts.length >= 3 && dist(q, pts[0]!) < closeDistance();
+  const end = closing ? pts[0]! : q;
+  if (!segmentInPolygon(last, end, outline)) {
     toast.error('Die Wand muss im Umriss liegen.');
     return;
   }
-  state.drawing = { points: [...pts, q] };
+  if (!editor.addWallPiece(last, end)) return;
+  if (closing) editor.endChain();
+  else state.drawing = { points: [...pts, end] };
 }
 
-/** Vieleck bzw. Wand abschliessen (erste Ecke, Doppelklick oder Eingabetaste) */
-function finishDrawing(closeWall = false) {
+/** Vieleck abschliessen (erste Ecke, Doppelklick oder Eingabetaste) bzw. das Zeichnen der Wände beenden */
+function finishDrawing() {
+  if (state.tool === 'wall') {
+    editor.endChain();
+    return;
+  }
   const d = state.drawing;
   const pts = d && 'points' in d ? d.points : [];
   // Ein Doppelklick setzt die letzte Ecke doppelt
-  const clean = pts.filter((p, i) => i === 0 || dist(p, pts[i - 1]!) > 0.05);
+  const clean = pts.filter((p, i) => i === 0 || dist(p, pts[i - 1]!) > 0.025);
   state.drawing = null;
   state.cursor = null;
-  if (state.tool === 'wall') {
-    if (clean.length >= 2) editor.addWall(clean, closeWall && clean.length >= 3);
-    return;
-  }
   if (clean.length < 3) return;
   if (state.tool === 'outline') editor.setOutline(clean);
   else editor.addArea(clean);
@@ -338,51 +379,70 @@ function onPointerMove(e: PointerEvent) {
   if (drag?.kind === 'vertex') {
     const pts = livePoints(drag.shape, drag.id);
     if (!pts) return;
-    pts[drag.index] = snapPoint(p, candidates(pts));
-    if (drag.shape === 'wall' && drag.wall) editor.refitOpenings(editor.selectedWall.value!, drag.wall);
+    pts[drag.index] = snapAt(p, [pts]);
     if (drag.shape === 'outline') editor.checkOutline();
     return;
   }
   if (drag?.kind === 'move') {
-    // Verschieben um ganze 10 cm; die Form selbst bleibt, wie sie ist
+    // Verschieben um ganze 5 cm; die Form selbst bleibt, wie sie ist
     const dx = snap(p[0] - drag.start[0]);
     const dy = snap(p[1] - drag.start[1]);
-    setLivePoints(drag.shape, drag.id, drag.before.map(([x, y]): PlanPoint => [x + dx, y + dy]));
-    if (drag.shape === 'wall' && drag.wall) editor.refitOpenings(editor.selectedWall.value!, drag.wall);
+    setLivePoints('area', drag.id, drag.before.map(([x, y]): PlanPoint => [x + dx, y + dy]));
+    return;
+  }
+  if (drag?.kind === 'wallEnd' && d) {
+    const moving = drag.ends.map((r) => pointOf(r)).filter((x): x is PlanPoint => !!x);
+    const ids = [...new Set(drag.ends.map((r) => r.id))];
+    const q = snapAt(p, [moving], ids);
+    for (const r of drag.ends) setEnd(r, q);
+    editor.refitOpenings(drag.snapshot);
+    return;
+  }
+  if (drag?.kind === 'wallMove' && d) {
+    const id = drag.id;
+    const before = drag.snapshot.walls.find((w) => w.id === id)!;
+    const dx = snap(p[0] - drag.start[0]);
+    const dy = snap(p[1] - drag.start[1]);
+    const a: PlanPoint = [before.a[0] + dx, before.a[1] + dy];
+    const b: PlanPoint = [before.b[0] + dx, before.b[1] + dy];
+    setEnd({ id: drag.id, end: 'a' }, a);
+    setEnd({ id: drag.id, end: 'b' }, b);
+    for (const r of drag.atA) setEnd(r, a);
+    for (const r of drag.atB) setEnd(r, b);
+    editor.refitOpenings(drag.snapshot);
     return;
   }
   if (drag?.kind === 'point' && d) {
     const id = drag.id;
     const item = drag.what === 'pillar' ? d.pillars.find((x) => x.id === id) : d.labels.find((x) => x.id === id);
     if (!item) return;
-    const step = drag.what === 'pillar' ? 0.05 : 0.1;
-    item.x = snap(drag.before[0] + p[0] - drag.start[0], step);
-    item.y = snap(drag.before[1] + p[1] - drag.start[1], step);
+    item.x = snap(drag.before[0] + p[0] - drag.start[0]);
+    item.y = snap(drag.before[1] + p[1] - drag.start[1]);
     return;
   }
   if (drag?.kind === 'opening' && d) {
     const id = drag.id;
     const o = d.openings.find((x) => x.id === id);
-    const hit = o ? nearestWallSegment(p, d.walls, 1) : null;
+    const hit = o ? nearestWall(p, d.walls, 1) : null;
     const offset = o && hit ? placeOnSegment(hit.along, hit.length, o.width) : null;
-    if (o && hit && offset !== null) Object.assign(o, { wallId: hit.wall.id, segment: hit.segment, offset });
+    if (o && hit && offset !== null) Object.assign(o, { wallId: hit.wall.id, offset });
     return;
   }
   if ((state.tool === 'outline' || state.tool === 'area') && state.drawing && 'a' in state.drawing) {
-    state.drawing.b = snapPoint(p, candidates());
+    state.drawing.b = snapAt(p);
     return;
   }
   if (state.tool === 'door' || state.tool === 'window') {
     const kind = state.tool === 'window' ? 'window' : state.options.doorKind;
     const width = state.options.widths[kind];
-    const hit = d ? nearestWallSegment(p, d.walls, 12 / px.value) : null;
+    const hit = d ? nearestWall(p, d.walls, 12 / px.value) : null;
     const offset = hit ? placeOnSegment(hit.along, hit.length, width) : null;
-    state.openingPreview = hit && offset !== null ? { wallId: hit.wall.id, segment: hit.segment, offset, width, kind, hinge: 'start', side: 'left' } : null;
+    state.openingPreview = hit && offset !== null ? { wallId: hit.wall.id, offset, width, kind, hinge: 'start', side: 'left' } : null;
     return;
   }
   const waiting = (l: { a: PlanPoint; b?: PlanPoint } | null) => !!l?.a && !l.b;
   if (['outline', 'area', 'wall', 'pillar'].includes(state.tool) || (state.tool === 'measure' && waiting(state.measure))) {
-    state.cursor = snapPoint(p, candidates());
+    state.cursor = snapAt(p);
   } else if (state.tool === 'scale' && waiting(state.scaleLine)) state.cursor = p;
 }
 
@@ -392,7 +452,9 @@ function onPointerUp() {
   panning.value = false;
   const d = state.draft;
   if (dr?.kind === 'pan' && !dr.moved) editor.select(dr.areaId ? 'area' : null, dr.areaId ?? undefined);
-  if ((dr?.kind === 'vertex' || dr?.kind === 'move') && d) commitShape(dr.shape, dr.id, dr.before, dr.wall);
+  if (dr?.kind === 'vertex' && d) commitShape(dr.shape, dr.id, dr.before);
+  if (dr?.kind === 'move' && d) commitShape('area', dr.id, dr.before);
+  if ((dr?.kind === 'wallEnd' || dr?.kind === 'wallMove') && d) editor.commitWalls(dr.snapshot);
   if (dr?.kind === 'point' && d) {
     const item = dr.what === 'pillar' ? d.pillars.find((x) => x.id === dr.id) : d.labels.find((x) => x.id === dr.id);
     if (item) editor.commitPoint(item, dr.before, dr.what === 'pillar' ? 'Die Säule' : 'Die Beschriftung');
@@ -407,43 +469,37 @@ function onPointerUp() {
   }
 }
 
-/** Nach dem Ziehen: Umriss umschliesst alles, Flächen lassen ihn wachsen, Wände bleiben drin */
-function commitShape(kind: ShapeKind, id: string, before: PlanPoint[], wall?: WallSnap) {
+/** Nach dem Ziehen: Umriss umschliesst alles, Flächen lassen ihn wachsen */
+function commitShape(kind: 'outline' | 'area', id: string, before: PlanPoint[]) {
   const d = state.draft;
   if (!d) return;
   if (kind === 'outline') editor.commitOutline(before);
-  else if (kind === 'area') {
+  else {
     const area = d.areas.find((a) => a.id === id);
     if (area) editor.commitArea(area, before);
-  } else {
-    const w = d.walls.find((x) => x.id === id);
-    if (w && wall) editor.commitWall(w, wall);
   }
 }
 
-/** Doppelklick: Vieleck oder Wand abschliessen, sonst eine Ecke der gewählten Form entfernen */
+/** Doppelklick: Vieleck abschliessen, Zeichnen der Wände beenden, sonst eine Ecke der gewählten Form entfernen */
 function onDblClick(e: MouseEvent) {
-  if (state.drawing && 'points' in state.drawing) {
+  if (state.tool === 'wall' || (state.drawing && 'points' in state.drawing)) {
     finishDrawing();
     return;
   }
   const vertex = dataOf(e.target as Element, 'vertex');
   const shape = handleShape.value;
-  if (vertex === null || !shape) return;
-  if (shape.points.length <= (shape.closed ? 3 : 2)) {
+  if (vertex === null || !shape || shape.kind === 'wall') return;
+  if (shape.points.length <= 3) {
     toast.error('Weniger Ecken geht nicht.');
     return;
   }
   const before = copyPoints(shape.points);
-  const wall = shape.kind === 'wall' ? editor.wallSnapshot(editor.selectedWall.value!) : undefined;
-  if (wall) wall.points = before;
   setLivePoints(
     shape.kind,
     shape.id,
     before.filter((_, i) => i !== Number(vertex)),
   );
-  if (shape.kind === 'wall' && wall) editor.refitOpenings(editor.selectedWall.value!, wall);
-  commitShape(shape.kind, shape.id, before, wall);
+  commitShape(shape.kind, shape.id, before);
 }
 
 function onWheel(e: WheelEvent) {
@@ -452,7 +508,12 @@ function onWheel(e: WheelEvent) {
 
 function onKey(e: KeyboardEvent) {
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement as HTMLElement | null)?.tagName ?? '');
+  const drawing = state.drawing && 'points' in state.drawing ? state.drawing : null;
   if (e.key === 'Escape') {
+    if (state.tool === 'wall' && drawing) {
+      editor.endChain();
+      return;
+    }
     state.drawing = null;
     state.cursor = null;
     state.measure = null;
@@ -462,7 +523,6 @@ function onKey(e: KeyboardEvent) {
     return;
   }
   if (typing || !editor.editing.value) return;
-  const drawing = state.drawing && 'points' in state.drawing ? state.drawing : null;
   if (e.key === 'Enter' && drawing) {
     e.preventDefault();
     finishDrawing();
@@ -470,6 +530,8 @@ function onKey(e: KeyboardEvent) {
   }
   if (e.key === 'Backspace' && drawing) {
     e.preventDefault();
+    // Wände: die letzte Wand zurücknehmen; Vieleck: die letzte Ecke
+    if (state.tool === 'wall' && drawing.points.length > 1) editor.undoWallPiece();
     drawing.points.pop();
     if (!drawing.points.length) state.drawing = null;
     return;
@@ -592,15 +654,15 @@ watch(
         <polyline class="draft" :points="pointsAttr(drawingPoly.rubber)" vector-effect="non-scaling-stroke" />
         <circle v-for="(p, i) in drawingPoly.points" :key="`p-${i}`" class="handle" :cx="p[0]" :cy="p[1]" :r="5 / px" vector-effect="non-scaling-stroke" />
         <text
-          v-if="state.cursor && drawingPoly.points.length"
+          v-if="state.cursor"
           class="dim"
           :stroke-width="3 / px"
-          :x="(drawingPoly.points[drawingPoly.points.length - 1]![0] + state.cursor[0]) / 2"
-          :y="(drawingPoly.points[drawingPoly.points.length - 1]![1] + state.cursor[1]) / 2 - 6 / px"
+          :x="(drawingPoly.last[0] + state.cursor[0]) / 2"
+          :y="(drawingPoly.last[1] + state.cursor[1]) / 2 - 6 / px"
           text-anchor="middle"
           :font-size="uiFont"
         >
-          {{ formatNumber(dist(drawingPoly.points[drawingPoly.points.length - 1]!, state.cursor), 2) }} m
+          {{ formatNumber(dist(drawingPoly.last, state.cursor), 2) }} m
         </text>
       </template>
       <g v-if="pillarGhost" class="ghost" :transform="`translate(${pillarGhost.x} ${pillarGhost.y})`">

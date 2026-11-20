@@ -9,6 +9,7 @@ import type {
   PlanPillar,
   PlanPoint,
   PlanWall,
+  PlanWallAlign,
 } from '../types';
 
 /**
@@ -23,9 +24,9 @@ export interface Box {
   h: number;
 }
 
-/** Raster beim Zeichnen: 10 cm */
-export const GRID_STEP = 0.1;
-/** Ecken anderer Formen rasten bis zu diesem Abstand ein (Meter) */
+/** Raster beim Zeichnen: 5 cm (Entscheid vom 20.11.2026, vorher 10 cm) */
+export const GRID_STEP = 0.05;
+/** Ecken und Kanten anderer Formen rasten höchstens bis zu diesem Abstand ein (Meter); näher gezoomt weniger */
 export const VERTEX_SNAP = 0.35;
 /** Grösse eines leeren Stockwerks für die erste Ansicht */
 export const EMPTY_FLOOR: Box = { x: 0, y: 0, w: 30, h: 18 };
@@ -58,6 +59,7 @@ export const AREA_KIND_PLURALS: Record<PlanAreaKind, string> = {
 /** Ohne Fläche in m² im Plan */
 export const AREA_WITHOUT_SIZE: PlanAreaKind[] = ['stairs', 'elevator', 'shaft'];
 export const OPENING_LABELS: Record<PlanOpeningKind, string> = { door: 'Tür', double: 'Zweiflüglige Tür', opening: 'Öffnung', window: 'Fenster' };
+export const WALL_ALIGN_LABELS: Record<PlanWallAlign, string> = { center: 'Mittig', left: 'Bündig', right: 'Bündig' };
 export const OPENING_DEFAULT_WIDTH: Record<PlanOpeningKind, number> = { door: 0.9, double: 1.6, opening: 1, window: 1.2 };
 export const DEFAULT_WALL_THICKNESS = 0.2;
 export const DEFAULT_PILLAR_SIZE = 0.3;
@@ -128,15 +130,14 @@ export const rectPoints = (x: number, y: number, w: number, h: number): PlanPoin
   [x, y + h],
 ];
 
-/** Abschnitte eines Linienzugs bzw. Vielecks als Paare von Ecken */
-export function wallSegments(wall: Pick<PlanWall, 'points' | 'closed'>): [PlanPoint, PlanPoint][] {
-  const segments: [PlanPoint, PlanPoint][] = [];
-  for (let i = 0; i < wall.points.length - 1; i++) segments.push([wall.points[i]!, wall.points[i + 1]!]);
-  if (wall.closed && wall.points.length > 2) segments.push([wall.points[wall.points.length - 1]!, wall.points[0]!]);
-  return segments;
+/** Kanten eines Linienzugs bzw. Vielecks als Paare von Ecken */
+export function edges(points: PlanPoint[], closed: boolean): [PlanPoint, PlanPoint][] {
+  const list: [PlanPoint, PlanPoint][] = [];
+  for (let i = 0; i < points.length - 1; i++) list.push([points[i]!, points[i + 1]!]);
+  if (closed && points.length > 2) list.push([points[points.length - 1]!, points[0]!]);
+  return list;
 }
-export const polylineLength = (points: PlanPoint[], closed: boolean) =>
-  wallSegments({ points, closed }).reduce((s, [a, b]) => s + dist(a, b), 0);
+export const wallLength = (w: Pick<PlanWall, 'a' | 'b'>) => dist(w.a, w.b);
 
 /* ---------- Ausdehnung und Einrasten ---------- */
 
@@ -154,7 +155,7 @@ export function floorBounds(c: FloorShapes, plan: PlanBackground | null): Box {
   const points: PlanPoint[] = [
     ...(c.outline ?? []),
     ...c.areas.flatMap((a) => a.points),
-    ...c.walls.flatMap((w) => w.points),
+    ...c.walls.flatMap((w) => [w.a, w.b]),
     ...c.pillars.map((p): PlanPoint => [p.x, p.y]),
     ...c.labels.map((l): PlanPoint => [l.x, l.y]),
   ];
@@ -164,14 +165,26 @@ export function floorBounds(c: FloorShapes, plan: PlanBackground | null): Box {
   return points.length ? bbox(points) : EMPTY_FLOOR;
 }
 
-/** Ecken, an denen gezeichnete Ecken einrasten: Umriss, Flächen und Wände (ohne die gerade bearbeitete Form) */
-export function snapCandidates(c: FloorShapes, except?: PlanPoint[]): PlanPoint[] {
-  const lists = [c.outline ?? [], ...c.areas.map((a) => a.points), ...c.walls.map((w) => w.points)];
-  return lists.filter((l) => l !== except).flat();
+/** Ecken, an denen gezeichnete Ecken einrasten: Umriss, Flächen und Enden der Wände (ohne die gerade bearbeiteten) */
+export function snapCandidates(c: FloorShapes, except: PlanPoint[][] = []): PlanPoint[] {
+  const lists = [c.outline ?? [], ...c.areas.map((a) => a.points), ...c.walls.map((w) => [w.a, w.b])];
+  return lists.filter((l) => !except.includes(l)).flat().filter((p) => !except.some((e) => e.includes(p)));
 }
 
-/** Einrasten: an der nächsten Ecke, sonst am Raster */
-export function snapPoint(p: PlanPoint, candidates: PlanPoint[], threshold = VERTEX_SNAP): PlanPoint {
+/** Kanten, an denen gezeichnete Ecken einrasten: Umriss, Flächen und Wände (ohne die gerade bearbeiteten Formen) */
+export function snapEdges(c: FloorShapes, exceptLists: PlanPoint[][] = [], exceptWallIds: string[] = []): [PlanPoint, PlanPoint][] {
+  return [
+    ...(c.outline && !exceptLists.includes(c.outline) ? edges(c.outline, true) : []),
+    ...c.areas.filter((a) => !exceptLists.includes(a.points)).flatMap((a) => edges(a.points, true)),
+    ...c.walls.filter((w) => !exceptWallIds.includes(w.id)).map((w): [PlanPoint, PlanPoint] => [w.a, w.b]),
+  ];
+}
+
+/**
+ * Einrasten: an der nächsten Ecke, sonst auf der nächsten Kante (bei waagrechten und senkrechten Kanten die andere
+ * Richtung am Raster), sonst am Raster.
+ */
+export function snapPoint(p: PlanPoint, candidates: PlanPoint[], threshold = VERTEX_SNAP, lines: [PlanPoint, PlanPoint][] = []): PlanPoint {
   let best: PlanPoint | null = null;
   let bestDistance = threshold;
   for (const q of candidates) {
@@ -181,7 +194,22 @@ export function snapPoint(p: PlanPoint, candidates: PlanPoint[], threshold = VER
       bestDistance = d;
     }
   }
-  return best ? [best[0], best[1]] : [snap(p[0]), snap(p[1])];
+  if (best) return [best[0], best[1]];
+  let onLine: PlanPoint | null = null;
+  bestDistance = threshold * 0.7;
+  for (const [a, b] of lines) {
+    const d = distanceToSegment(p, a, b);
+    if (d >= bestDistance) continue;
+    bestDistance = d;
+    if (Math.abs(a[1] - b[1]) < 1e-6) onLine = [snap(p[0]), a[1]];
+    else if (Math.abs(a[0] - b[0]) < 1e-6) onLine = [a[0], snap(p[1])];
+    else {
+      const len2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / len2));
+      onLine = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+    }
+  }
+  return onLine ?? [snap(p[0]), snap(p[1])];
 }
 
 /* ---------- Im Umriss ---------- */
@@ -241,14 +269,14 @@ export function segmentInPolygon(a: PlanPoint, b: PlanPoint, polygon: PlanPoint[
 /** Liegt das Vieleck bzw. der Linienzug ganz im Umriss? */
 export function shapeInPolygon(points: PlanPoint[], closed: boolean, polygon: PlanPoint[]): boolean {
   if (points.length === 1) return pointInPolygon(points[0]!, polygon);
-  return wallSegments({ points, closed }).every(([a, b]) => segmentInPolygon(a, b, polygon));
+  return edges(points, closed).every(([a, b]) => segmentInPolygon(a, b, polygon));
 }
 
 /** Was ausserhalb des Umrisses liegt, für den Hinweis; leer = alles drin */
 export function outsideOutline(outline: PlanPoint[], c: Omit<FloorShapes, 'outline'>): string[] {
   return [
     ...c.areas.filter((a) => !shapeInPolygon(a.points, true, outline)).map((a) => `«${areaTitle(a)}»`),
-    ...(c.walls.some((w) => !shapeInPolygon(w.points, w.closed, outline)) ? ['eine Wand'] : []),
+    ...(c.walls.some((w) => !segmentInPolygon(w.a, w.b, outline)) ? ['eine Wand'] : []),
     ...(c.pillars.some((p) => !pointInPolygon([p.x, p.y], outline)) ? ['eine Säule'] : []),
     ...c.labels.filter((l) => !pointInPolygon([l.x, l.y], outline)).map((l) => `«${l.text}»`),
   ];
@@ -291,10 +319,138 @@ export function growOutline(outline: PlanPoint[], area: PlanPoint[]): PlanPoint[
   return grown.length >= 3 ? grown : null;
 }
 
+/* ---------- Wände ---------- */
+
+/** Querschnitt einer Wand: Richtung u, Normale n (links), Länge, Dicke von lo bis hi quer zur Linie */
+export function wallBand(w: Pick<PlanWall, 'a' | 'b' | 'thickness' | 'align'>) {
+  const len = dist(w.a, w.b) || 1e-9;
+  const u: PlanPoint = [(w.b[0] - w.a[0]) / len, (w.b[1] - w.a[1]) / len];
+  const n: PlanPoint = [-u[1], u[0]];
+  const t = w.thickness;
+  const [lo, hi] = w.align === 'left' ? [0, t] : w.align === 'right' ? [-t, 0] : [-t / 2, t / 2];
+  return { u, n, len, lo, hi };
+}
+
+const add = (p: PlanPoint, v: PlanPoint, k = 1): PlanPoint => [p[0] + v[0] * k, p[1] + v[1] * k];
+const dot = (a: PlanPoint, b: PlanPoint) => a[0] * b[0] + a[1] * b[1];
+const cross = (a: PlanPoint, b: PlanPoint) => a[0] * b[1] - a[1] * b[0];
+/** Schnittpunkt zweier Geraden (Punkt und Richtung); null, wenn sie fast parallel sind */
+function intersect(p: PlanPoint, d: PlanPoint, q: PlanPoint, e: PlanPoint): PlanPoint | null {
+  const den = cross(d, e);
+  if (Math.abs(den) < 1e-9) return null;
+  const t = cross([q[0] - p[0], q[1] - p[1]], e) / den;
+  return add(p, d, t);
+}
+/** Liegt der Punkt im Querschnitt der Wand (mit Toleranz)? */
+function inWall(p: PlanPoint, w: PlanWall, tolerance = 0.01): boolean {
+  const { u, n, len, lo, hi } = wallBand(w);
+  const rel: PlanPoint = [p[0] - w.a[0], p[1] - w.a[1]];
+  const along = dot(rel, u);
+  const across = dot(rel, n);
+  return along >= -tolerance && along <= len + tolerance && across >= lo - tolerance && across <= hi + tolerance;
+}
+/** Enden anderer Wände an diesem Punkt (sie hängen zusammen und wandern beim Ziehen mit) */
+export function connectedEnds(walls: PlanWall[], p: PlanPoint, exceptId?: string): { id: string; end: 'a' | 'b' }[] {
+  const list: { id: string; end: 'a' | 'b' }[] = [];
+  for (const w of walls) {
+    if (w.id === exceptId) continue;
+    if (dist(w.a, p) < 0.005) list.push({ id: w.id, end: 'a' });
+    else if (dist(w.b, p) < 0.005) list.push({ id: w.id, end: 'b' });
+  }
+  return list;
+}
+
+/**
+ * Umriss jeder Wand als Viereck, mit sauberen Ecken: Treffen genau zwei Wände mit ihren Enden aufeinander, bekommen
+ * beide eine Gehrung (die Kanten schneiden sich, auch bei verschiedener Dicke). Endet eine Wand an oder in einer anderen
+ * (T-Stoss, mehr als zwei Wände), reicht sie bis zu deren Rückseite. Freie Enden sind gerade abgeschnitten.
+ */
+export function wallPolygons(walls: PlanWall[]): Map<string, PlanPoint[]> {
+  const result = new Map<string, PlanPoint[]>();
+  for (const w of walls) {
+    const { u, n, len, lo, hi } = wallBand(w);
+    if (len < 0.005) continue;
+    // Ecken am Ende: [Seite lo, Seite hi]
+    const endCorners = (end: 'a' | 'b'): [PlanPoint, PlanPoint] => {
+      const p = end === 'a' ? w.a : w.b;
+      const away: PlanPoint = end === 'a' ? u : [-u[0], -u[1]];
+      let cornerLo = add(p, n, lo);
+      let cornerHi = add(p, n, hi);
+      const ends = connectedEnds(walls, p, w.id);
+      const touching = walls.filter((o) => o.id !== w.id && !ends.some((e) => e.id === o.id) && inWall(p, o));
+      if (ends.length === 1 && !touching.length) {
+        // Gehrung: gleichnamige Kanten schneiden (innen mit innen, aussen mit aussen)
+        const o = walls.find((x) => x.id === ends[0]!.id)!;
+        const ob = wallBand(o);
+        const oAway: PlanPoint = ends[0]!.end === 'a' ? ob.u : [-ob.u[0], -ob.u[1]];
+        if (Math.abs(cross(away, oAway)) > 0.05) {
+          const otherOnHi = dot(oAway, n) > 0;
+          const meOnHi = dot(away, ob.n) > 0;
+          const oInner = add(o.a, ob.n, meOnHi ? ob.hi : ob.lo);
+          const oOuter = add(o.a, ob.n, meOnHi ? ob.lo : ob.hi);
+          const inner = intersect(add(w.a, n, otherOnHi ? hi : lo), u, oInner, ob.u);
+          const outer = intersect(add(w.a, n, otherOnHi ? lo : hi), u, oOuter, ob.u);
+          const limit = 3 * Math.max(w.thickness, o.thickness);
+          if (inner && outer && dist(inner, p) < limit && dist(outer, p) < limit) {
+            return otherOnHi ? [outer, inner] : [inner, outer];
+          }
+        }
+      }
+      // Stoss an andere Wände: bis zu deren Rückseite verlängern
+      let ext = 0;
+      const outward: PlanPoint = [-away[0], -away[1]];
+      for (const o of [...touching, ...ends.map((e) => walls.find((x) => x.id === e.id)!)]) {
+        const ob = wallBand(o);
+        const rate = dot(outward, ob.n);
+        if (Math.abs(rate) < 0.1) continue;
+        const c0 = dot([p[0] - o.a[0], p[1] - o.a[1]], ob.n);
+        const s = ((rate > 0 ? ob.hi : ob.lo) - c0) / rate;
+        if (s > ext) ext = Math.min(s, 2);
+      }
+      if (ext > 0) {
+        cornerLo = add(cornerLo, outward, ext);
+        cornerHi = add(cornerHi, outward, ext);
+      }
+      return [cornerLo, cornerHi];
+    };
+    const [aLo, aHi] = endCorners('a');
+    const [bLo, bHi] = endCorners('b');
+    result.set(w.id, [aLo, bLo, bHi, aHi]);
+  }
+  return result;
+}
+
+/** Lage der Wände entlang einer Fläche: mittig auf den Kanten, bündig innen oder bündig aussen */
+export type AlongSide = 'center' | 'inside' | 'outside';
+export const ALONG_SIDE_LABELS: Record<AlongSide, string> = { center: 'Mittig', inside: 'Innen bündig', outside: 'Aussen bündig' };
+
+/**
+ * Wände auf den Kanten eines Vielecks: eine je Kante, ohne Kanten, auf denen schon eine Wand liegt. Mittig auf der
+ * Kante oder bündig, die Dicke innen bzw. aussen (beim Umriss innen: die Aussenkante ist der Umriss).
+ */
+export function wallsAlong(points: PlanPoint[], walls: PlanWall[], side: AlongSide): { a: PlanPoint; b: PlanPoint; align: PlanWallAlign }[] {
+  const covered = (a: PlanPoint, b: PlanPoint) => walls.some((w) => distanceToSegment(a, w.a, w.b) <= 0.01 && distanceToSegment(b, w.a, w.b) <= 0.01);
+  const alignOf = (a: PlanPoint, b: PlanPoint): PlanWallAlign => {
+    if (side === 'center') return 'center';
+    const inner = sideInside(a, b, points);
+    return side === 'inside' ? inner : inner === 'left' ? 'right' : 'left';
+  };
+  return edges(points, true)
+    .filter(([a, b]) => dist(a, b) > 0.01 && !covered(a, b))
+    .map(([a, b]) => ({ a: [a[0], a[1]], b: [b[0], b[1]], align: alignOf(a, b) }));
+}
+
+/** Auf welcher Seite der Kante (in Richtung a nach b) liegt das Innere des Vielecks? */
+export function sideInside(a: PlanPoint, b: PlanPoint, polygon: PlanPoint[]): 'left' | 'right' {
+  const { n } = wallBand({ a, b, thickness: 0, align: 'center' });
+  const m: PlanPoint = [(a[0] + b[0]) / 2 + n[0] * 0.02, (a[1] + b[1]) / 2 + n[1] * 0.02];
+  return pointInPolygon(m, polygon, 0) ? 'left' : 'right';
+}
+
 /* ---------- Türen und Fenster ---------- */
 
 export interface OpeningFrame {
-  /** Mitte, Richtung der Wand (Einheitsvektor), Normale nach links, Wanddicke, Länge des Abschnitts */
+  /** Mitte (in der Mitte der Wanddicke), Richtung der Wand, Normale nach links, Wanddicke, Länge der Wand */
   c: PlanPoint;
   u: PlanPoint;
   n: PlanPoint;
@@ -302,16 +458,13 @@ export interface OpeningFrame {
   len: number;
 }
 
-/** Lage einer Tür oder eines Fensters in ihrer Wand; null, wenn die Wand oder der Abschnitt fehlt */
-export function openingFrame(o: Pick<PlanOpening, 'wallId' | 'segment' | 'offset'>, walls: PlanWall[]): OpeningFrame | null {
+/** Lage einer Tür oder eines Fensters in ihrer Wand; null, wenn die Wand fehlt */
+export function openingFrame(o: Pick<PlanOpening, 'wallId' | 'offset'>, walls: PlanWall[]): OpeningFrame | null {
   const wall = walls.find((w) => w.id === o.wallId);
-  const segment = wall ? wallSegments(wall)[o.segment] : undefined;
-  if (!wall || !segment) return null;
-  const [a, b] = segment;
-  const len = dist(a, b);
-  if (len === 0) return null;
-  const u: PlanPoint = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
-  return { c: [a[0] + u[0] * o.offset, a[1] + u[1] * o.offset], u, n: [-u[1], u[0]], t: wall.thickness, len };
+  if (!wall) return null;
+  const { u, n, len, lo, hi } = wallBand(wall);
+  if (len < 0.005) return null;
+  return { c: add(add(wall.a, u, o.offset), n, (lo + hi) / 2), u, n, t: wall.thickness, len };
 }
 
 /** Zeichnung einer Tür oder eines Fensters: Lücke in der Wand, Türblätter mit Bogen, Linien des Fensters */
@@ -331,8 +484,8 @@ export function openingDrawing(o: Pick<PlanOpening, 'width' | 'kind' | 'hinge' |
     const tip = at(hingeAlong, s * (half + r));
     const to = at(toAlong, s * half);
     leaves.push([hinge, tip]);
-    const cross = (tip[0] - hinge[0]) * (to[1] - hinge[1]) - (tip[1] - hinge[1]) * (to[0] - hinge[0]);
-    arcs.push(`M ${tip[0]} ${tip[1]} A ${r} ${r} 0 0 ${cross > 0 ? 1 : 0} ${to[0]} ${to[1]}`);
+    const c = (tip[0] - hinge[0]) * (to[1] - hinge[1]) - (tip[1] - hinge[1]) * (to[0] - hinge[0]);
+    arcs.push(`M ${tip[0]} ${tip[1]} A ${r} ${r} 0 0 ${c > 0 ? 1 : 0} ${to[0]} ${to[1]}`);
   };
   if (o.kind === 'door') {
     const start = o.hinge === 'start' ? -h : h;
@@ -346,65 +499,34 @@ export function openingDrawing(o: Pick<PlanOpening, 'width' | 'kind' | 'hinge' |
   return { gap, hit, leaves, arcs, lines };
 }
 
-/** Nächstes Wandstück zu einem Punkt (bis maxDistance neben der Wand): für Türen und Fenster */
-export function nearestWallSegment(p: PlanPoint, walls: PlanWall[], maxDistance: number) {
-  let best: { wall: PlanWall; segment: number; along: number; length: number; distance: number } | null = null;
+/** Nächste Wand zu einem Punkt (bis maxDistance neben ihr): für Türen und Fenster */
+export function nearestWall(p: PlanPoint, walls: PlanWall[], maxDistance: number) {
+  let best: { wall: PlanWall; along: number; length: number; distance: number } | null = null;
   for (const wall of walls) {
-    wallSegments(wall).forEach(([a, b], segment) => {
-      const d = distanceToSegment(p, a, b);
-      if (d > maxDistance + wall.thickness / 2 || (best && d >= best.distance)) return;
-      const length = dist(a, b);
-      const along = length ? ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / length : 0;
-      best = { wall, segment, along, length, distance: d };
-    });
+    const { u, n, len, lo, hi } = wallBand(wall);
+    const mid = (lo + hi) / 2;
+    const a = add(wall.a, n, mid);
+    const b = add(wall.b, n, mid);
+    const d = distanceToSegment(p, a, b);
+    if (d > maxDistance + wall.thickness / 2 || (best && d >= best.distance)) continue;
+    best = { wall, along: dot([p[0] - wall.a[0], p[1] - wall.a[1]], u), length: len, distance: d };
   }
-  return best as { wall: PlanWall; segment: number; along: number; length: number; distance: number } | null;
+  return best;
 }
 
-/** Mitte einer Öffnung auf dem Abschnitt: auf 5 cm, die Öffnung bleibt ganz im Abschnitt; null, wenn er zu kurz ist */
+/** Mitte einer Öffnung in der Wand: auf 5 cm, die Öffnung bleibt ganz in der Wand; null, wenn sie zu kurz ist */
 export function placeOnSegment(along: number, length: number, width: number): number | null {
   if (length + 1e-9 < width) return null;
   const min = width / 2;
   const max = length - width / 2;
-  return Math.min(max, Math.max(min, snap(along, 0.05)));
+  return Number(Math.min(max, Math.max(min, snap(along, 0.05))).toFixed(6));
 }
 
-/** Öffnung nach dem Ändern ihrer Wand: auf den nächsten Abschnitt bei ihrer alten Mitte; null, wenn sie nicht mehr passt */
+/** Öffnung nach dem Ändern ihrer Wand: an die Stelle ihrer alten Mitte; null, wenn sie nicht mehr passt */
 export function refitOpening(o: PlanOpening, wall: PlanWall, center: PlanPoint): PlanOpening | null {
-  const hit = nearestWallSegment(center, [wall], Infinity);
-  if (!hit) return null;
-  const offset = placeOnSegment(hit.along, hit.length, o.width);
-  return offset === null ? null : { ...o, segment: hit.segment, offset };
-}
-
-/* ---------- Wände entlang einer Fläche ---------- */
-
-/**
- * Wände auf den Kanten eines Vielecks (mittig): Kanten, auf denen schon eine Wand liegt, fallen weg. Sind alle Kanten
- * frei, gibt es eine geschlossene Wand, sonst je zusammenhängendes Stück einen Linienzug.
- */
-export function wallsAlong(points: PlanPoint[], walls: PlanWall[]): { points: PlanPoint[]; closed: boolean }[] {
-  const n = points.length;
-  const covered = (a: PlanPoint, b: PlanPoint) =>
-    walls.some((w) => wallSegments(w).some(([p, q]) => distanceToSegment(a, p, q) <= 0.01 && distanceToSegment(b, p, q) <= 0.01));
-  const free = points.map((p, i) => !covered(p, points[(i + 1) % n]!));
-  if (free.every(Boolean)) return [{ points: copyPoints(points), closed: true }];
-  const start = free.findIndex((f) => !f);
-  const chains: PlanPoint[][] = [];
-  let chain: PlanPoint[] | null = null;
-  for (let k = 1; k <= n; k++) {
-    const i = (start + k) % n;
-    if (free[i]) {
-      if (!chain) chain = [[points[i]![0], points[i]![1]]];
-      const next = points[(i + 1) % n]!;
-      chain.push([next[0], next[1]]);
-    } else if (chain) {
-      chains.push(chain);
-      chain = null;
-    }
-  }
-  if (chain) chains.push(chain);
-  return chains.map((c) => ({ points: c, closed: false }));
+  const { u, len } = wallBand(wall);
+  const offset = placeOnSegment(dot([center[0] - wall.a[0], center[1] - wall.a[1]], u), len, o.width);
+  return offset === null ? null : { ...o, wallId: wall.id, offset };
 }
 
 /* ---------- Zeichen in Flächen ---------- */
@@ -413,7 +535,7 @@ export function wallsAlong(points: PlanPoint[], walls: PlanWall[]): { points: Pl
 export function stairLines(points: PlanPoint[], step = 0.3): [PlanPoint, PlanPoint][] {
   let longest = 0;
   let u: PlanPoint = [1, 0];
-  for (const [a, b] of wallSegments({ points, closed: true })) {
+  for (const [a, b] of edges(points, true)) {
     const l = dist(a, b);
     if (l > longest) {
       longest = l;

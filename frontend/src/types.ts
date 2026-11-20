@@ -1117,12 +1117,15 @@ export interface PlanArea {
   description: string;
   points: PlanPoint[];
 }
-/** Wand: Linienzug mit Dicke in Metern, mittig auf der Linie */
+/** Lage der Wand zu ihrer Linie: mittig oder bündig (die Dicke links bzw. rechts, in Richtung von a nach b) */
+export type PlanWallAlign = 'center' | 'left' | 'right';
+/** Wand: ein gerades Stück von a nach b mit Dicke in Metern (Entscheid vom 20.11.2026) */
 export interface PlanWall {
   id: string;
-  points: PlanPoint[];
-  closed: boolean;
+  a: PlanPoint;
+  b: PlanPoint;
   thickness: number;
+  align: PlanWallAlign;
 }
 /** Säule: eckig (Breite × Tiefe, Drehung in Grad) oder rund (Durchmesser = Breite) */
 export interface PlanPillar {
@@ -1135,11 +1138,10 @@ export interface PlanPillar {
   rotation: number;
 }
 export type PlanOpeningKind = 'door' | 'double' | 'opening' | 'window';
-/** Tür oder Fenster in einer Wand: Abschnitt «segment», Mitte «offset» Meter nach dessen Anfang */
+/** Tür oder Fenster in einer Wand: Mitte «offset» Meter nach dem Anfang a der Wand */
 export interface PlanOpening {
   id: string;
   wallId: string;
-  segment: number;
   offset: number;
   width: number;
   kind: PlanOpeningKind;

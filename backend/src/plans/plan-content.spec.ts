@@ -18,7 +18,7 @@ const L: PlanPoint[] = [
   [0, 10],
 ];
 const area = (name: string, points = rect(0, 0, 4, 3), kind = 'room') => ({ id: crypto.randomUUID(), kind, name, description: '', points });
-const wall = (points: PlanPoint[], closed = false) => ({ id: crypto.randomUUID(), points, closed, thickness: 0.2 });
+const wall = (a: PlanPoint, b: PlanPoint) => ({ id: crypto.randomUUID(), a, b, thickness: 0.2 });
 const content = (parts: Record<string, unknown>) => ({
   outline: rect(-1, -1, 30, 20),
   areas: [],
@@ -81,7 +81,7 @@ describe('Inhalt eines Stockwerks', () => {
     expect(message({ outline: L, areas: [area('Büro', rect(8, 1, 4, 3))] })).toBe(
       'Der Umriss muss alles im Stockwerk umschliessen, ausserhalb liegt: «Büro»',
     );
-    expect(message({ outline: L, walls: [wall([[8, 1], [18, 7]])] })).toContain('eine Wand');
+    expect(message({ outline: L, walls: [wall([8, 1], [18, 7])] })).toContain('eine Wand');
     expect(
       message({ outline: L, pillars: [{ id: crypto.randomUUID(), shape: 'round', x: 15, y: 2, width: 0.3, depth: 0.3, rotation: 0 }] }),
     ).toContain('eine Säule');
@@ -90,27 +90,28 @@ describe('Inhalt eines Stockwerks', () => {
     expect(
       message({
         outline: L,
-        walls: [wall(L, true)],
+        walls: L.map((p, i) => wall(p, L[(i + 1) % L.length]!)),
         pillars: [{ id: crypto.randomUUID(), shape: 'rect', x: 10, y: 5, width: 0.3, depth: 0.3, rotation: 45 }],
       }),
     ).toBeUndefined();
   });
 
   it('Türen und Fenster gehören zu einer Wand und passen in ihren Abschnitt', () => {
-    const w = wall([[0, 0], [5, 0], [5, 4]]);
-    const opening = (parts: Record<string, unknown>) => ({ id: crypto.randomUUID(), wallId: w.id, segment: 0, offset: 2, width: 0.9, kind: 'door', ...parts });
-    expect(message({ walls: [w], openings: [opening({}), opening({ segment: 1, offset: 3.4, width: 1.2, kind: 'window' })] })).toBeUndefined();
-    expect(message({ walls: [w], openings: [opening({ wallId: crypto.randomUUID() })] })).toBe('Eine Tür gehört zu keiner Wand');
-    expect(message({ walls: [w], openings: [opening({ segment: 2 })] })).toBe('Eine Tür gehört zu keiner Wand');
-    expect(message({ walls: [w], openings: [opening({ segment: 1, offset: 3.8, width: 1.2, kind: 'window' })] })).toBe(
-      'Ein Fenster ist breiter als ihr Wandstück',
-    );
-    expect(message({ walls: [w], openings: [opening({ kind: 'garage' })] })).toBeDefined();
+    const w = wall([0, 0], [5, 0]);
+    const w2 = wall([5, 0], [5, 4]);
+    const opening = (parts: Record<string, unknown>) => ({ id: crypto.randomUUID(), wallId: w.id, offset: 2, width: 0.9, kind: 'door', ...parts });
+    const walls = [w, w2];
+    expect(message({ walls, openings: [opening({}), opening({ wallId: w2.id, offset: 3.4, width: 1.2, kind: 'window' })] })).toBeUndefined();
+    expect(message({ walls, openings: [opening({ wallId: crypto.randomUUID() })] })).toBe('Eine Tür gehört zu keiner Wand');
+    expect(message({ walls, openings: [opening({ wallId: w2.id, offset: 3.8, width: 1.2, kind: 'window' })] })).toBe('Ein Fenster ist breiter als ihre Wand');
+    expect(message({ walls, openings: [opening({ kind: 'garage' })] })).toBeDefined();
   });
 
-  it('Wände: Dicke in Grenzen, keine Abschnitte ohne Länge', () => {
-    expect(message({ walls: [{ ...wall([[0, 0], [4, 0]]), thickness: 0.01 }] })).toBe('Wanddicke: mindestens 2 cm');
-    expect(message({ walls: [wall([[0, 0], [0, 0], [4, 0]])] })).toBe('Eine Wand hat einen Abschnitt ohne Länge');
-    expect(message({ walls: [wall([[0, 0], [4, 0]], true)] })).toBe('Eine geschlossene Wand braucht mindestens drei Ecken');
+  it('Wände: gerade Stücke mit Dicke in Grenzen, Lage mittig oder bündig', () => {
+    expect(message({ walls: [{ ...wall([0, 0], [4, 0]), thickness: 0.01 }] })).toBe('Wanddicke: mindestens 2 cm');
+    expect(message({ walls: [wall([1, 1], [1, 1])] })).toBe('Eine Wand hat keine Länge');
+    expect(message({ walls: [{ ...wall([0, 0], [4, 0]), align: 'left' }, { ...wall([4, 0], [4, 3]), align: 'right' }] })).toBeUndefined();
+    expect(message({ walls: [{ ...wall([0, 0], [4, 0]), align: 'oben' }] })).toBeDefined();
+    expect(floorContentSchema.parse(content({ walls: [wall([0, 0], [4, 0])] })).walls[0]?.align).toBe('center');
   });
 });

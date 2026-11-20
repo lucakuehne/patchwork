@@ -21,8 +21,10 @@ import {
   refitOpening,
   segmentInPolygon,
   snapCandidates,
+  snapEdges,
   snapPoint,
   stairLines,
+  wallPolygons,
   wallsAlong,
   type FloorShapes,
 } from './geometry';
@@ -37,7 +39,7 @@ const L: PlanPoint[] = [
   [5, 16.5],
 ];
 const area = (points: PlanPoint[], kind: PlanArea['kind'] = 'room'): PlanArea => ({ id: 'a', kind, name: 'Raum', description: '', points });
-const wall = (points: PlanPoint[], closed = false, id = 'w'): PlanWall => ({ id, points, closed, thickness: 0.2 });
+const wall = (a: PlanPoint, b: PlanPoint, parts: Partial<PlanWall> = {}): PlanWall => ({ id: 'w', a, b, thickness: 0.2, align: 'center', ...parts });
 const shapes = (parts: Partial<FloorShapes>): FloorShapes => ({ outline: null, areas: [], walls: [], pillars: [], labels: [], ...parts });
 const round = (points: PlanPoint[]) => points.map(([x, y]) => [Number(x.toFixed(3)), Number(y.toFixed(3))]);
 
@@ -52,15 +54,20 @@ describe('Geometrie der Pläne', () => {
     expect(isRect(L)).toBe(false);
   });
 
-  it('Einrasten an Ecken von Umriss, Flächen und Wänden, sonst am 10-cm-Raster', () => {
+  it('Einrasten an Ecken von Umriss, Flächen und Wänden, sonst am 5-cm-Raster', () => {
     const own = rectPoints(10, 10, 2, 2);
-    const c = shapes({ outline: rectPoints(-1, -1, 30, 20), areas: [area(rectPoints(0, 0, 4, 3)), area(own)], walls: [wall([[6, 6], [8, 6]])] });
-    const candidates = snapCandidates(c, own);
+    const c = shapes({ outline: rectPoints(-1, -1, 30, 20), areas: [area(rectPoints(0, 0, 4, 3)), area(own)], walls: [wall([6, 6], [8, 6])] });
+    const candidates = snapCandidates(c, [own]);
     expect(snapPoint([4.2, 3.1], candidates)).toEqual([4, 3]);
     expect(snapPoint([7.9, 6.1], candidates)).toEqual([8, 6]);
     expect(snapPoint([10.1, 10.1], candidates)).toEqual([10.1, 10.1]);
-    const [x, y] = snapPoint([6.04, 7.96], candidates);
-    expect([x.toFixed(2), y.toFixed(2)]).toEqual(['6.00', '8.00']);
+    // Auf einer Kante: auf der Linie, entlang der Kante am Raster
+    const lines = snapEdges(c, [own]);
+    expect(snapPoint([2.03, 3.12], candidates, 0.35, lines)).toEqual([2.05, 3]);
+    expect(snapPoint([7.03, 5.9], candidates, 0.35, lines)).toEqual([7.05, 6]);
+    expect(snapPoint([11.03, 10.1], candidates, 0.35, lines)).toEqual([11.05, 10.1]);
+    expect(snapPoint([6.04, 7.96], candidates)).toEqual([6.05, 7.95]);
+    expect(snapPoint([6.02, 7.98], candidates)).toEqual([6, 8]);
   });
 
   it('Ausdehnung des Stockwerks mit Umriss und Plan, leer die Vorgabe', () => {
@@ -116,7 +123,7 @@ describe('Umriss', () => {
   it('nennt, was ausserhalb liegt', () => {
     const c = {
       areas: [area(rectPoints(1, 1, 2, 2)), { ...area(rectPoints(9, 1, 3, 2)), name: 'Lager' }],
-      walls: [wall([[1, 7], [12, 7]])],
+      walls: [wall([1, 7], [12, 7])],
       pillars: [{ id: 'p', shape: 'rect' as const, x: 9.9, y: 7.9, width: 0.3, depth: 0.3, rotation: 0 }],
       labels: [{ id: 'l', text: 'Parkplatz', x: 15, y: 1 }],
     };
@@ -125,8 +132,8 @@ describe('Umriss', () => {
 });
 
 describe('Türen und Fenster', () => {
-  const w = wall([[0, 0], [5, 0], [5, 4]]);
-  const door: PlanOpening = { id: 'o', wallId: 'w', segment: 0, offset: 2, width: 0.9, kind: 'door', hinge: 'start', side: 'left' };
+  const w = wall([0, 0], [5, 0]);
+  const door: PlanOpening = { id: 'o', wallId: 'w', offset: 2, width: 0.9, kind: 'door', hinge: 'start', side: 'left' };
 
   it('Lage in der Wand und Zeichnung mit Türblatt und Bogen', () => {
     const f = openingFrame(door, [w])!;
@@ -138,10 +145,12 @@ describe('Türen und Fenster', () => {
     expect(d.arcs[0]).toMatch(/^M 1\.55 1(\.0+\d*)? A 0\.9 0\.9 0 0 [01] 2\.45 0\.1/);
     expect(openingDrawing({ ...door, kind: 'double', width: 1.6 }, f).leaves).toHaveLength(2);
     expect(openingDrawing({ ...door, kind: 'window' }, f).lines).toHaveLength(5);
-    expect(openingFrame({ ...door, segment: 2 }, [w])).toBeNull();
+    expect(openingFrame({ ...door, wallId: 'x' }, [w])).toBeNull();
+    // Bündige Wand: die Öffnung sitzt in der Mitte der Dicke
+    expect(round([openingFrame(door, [{ ...w, align: 'left' }])!.c])).toEqual([[2, 0.1]]);
   });
 
-  it('bleibt ganz im Wandstück, auf 5 cm', () => {
+  it('bleibt ganz in der Wand, auf 5 cm', () => {
     expect(placeOnSegment(0.1, 5, 0.9)).toBe(0.45);
     expect(placeOnSegment(2.32, 5, 0.9)).toBe(2.3);
     expect(placeOnSegment(4.9, 5, 0.9)).toBe(4.55);
@@ -149,35 +158,59 @@ describe('Türen und Fenster', () => {
   });
 
   it('wandert mit, wenn sich die Wand ändert', () => {
-    // Ecke eingefügt: die Tür liegt danach auf dem zweiten Abschnitt
-    const changed = wall([[0, 0], [1, 0], [5, 0], [5, 4]]);
-    expect(refitOpening(door, changed, [2, 0])).toEqual({ ...door, segment: 1, offset: 1 });
-    // Abschnitt zu kurz: fällt weg
-    expect(refitOpening(door, wall([[0, 0], [0.5, 0]]), [2, 0])).toBeNull();
+    expect(refitOpening(door, wall([1, 0], [5, 0]), [2, 0])).toEqual({ ...door, offset: 1 });
+    // Zu kurz: fällt weg
+    expect(refitOpening(door, wall([0, 0], [0.5, 0]), [2, 0])).toBeNull();
   });
 });
 
-describe('Wände entlang einer Fläche', () => {
+describe('Wände', () => {
   const room = rectPoints(0, 0, 4, 3);
 
-  it('alle Kanten frei: eine geschlossene Wand', () => {
-    expect(wallsAlong(room, [])).toEqual([{ points: room, closed: true }]);
+  it('entlang einer Fläche: eine je Kante, mittig; Kanten mit Wand fallen weg', () => {
+    const pieces = wallsAlong(room, [], 'center');
+    expect(pieces.map((p) => [p.a, p.b, p.align])).toEqual([
+      [[0, 0], [4, 0], 'center'],
+      [[4, 0], [4, 3], 'center'],
+      [[4, 3], [0, 3], 'center'],
+      [[0, 3], [0, 0], 'center'],
+    ]);
+    expect(wallsAlong(room, [wall([-2, 0], [6, 0])], 'center')).toHaveLength(3);
   });
 
-  it('Kanten mit Wand fallen weg, der Rest als zusammenhängende Linienzüge', () => {
-    // Obere Kante liegt schon auf einer längeren Wand
-    expect(wallsAlong(room, [wall([[-2, 0], [6, 0]])])).toEqual([
-      {
-        points: [
-          [4, 0],
-          [4, 3],
-          [0, 3],
-          [0, 0],
-        ],
-        closed: false,
-      },
-    ]);
-    expect(wallsAlong(room, [wall(room, true)])).toEqual([]);
+  it('entlang einer Fläche bündig: die Dicke innen oder aussen', () => {
+    const within = (side: 'inside' | 'outside') =>
+      wallsAlong(room, [], side).map((p) => {
+        const poly = wallPolygons([{ id: 'x', a: p.a, b: p.b, thickness: 0.2, align: p.align }]).get('x')!;
+        return poly.every(([x, y]) => x >= -1e-9 && x <= 4 + 1e-9 && y >= -1e-9 && y <= 3 + 1e-9);
+      });
+    expect(within('inside')).toEqual([true, true, true, true]);
+    expect(within('outside')).toEqual([false, false, false, false]);
+  });
+
+  it('entlang des Umrisses: bündig innen, egal in welcher Richtung er gezeichnet ist', () => {
+    const inside = (points: PlanPoint[]) =>
+      wallsAlong(points, [], 'inside').map((p) => {
+        const poly = wallPolygons([{ id: 'x', a: p.a, b: p.b, thickness: 0.3, align: p.align }]).get('x')!;
+        return poly.every(([x, y]) => x >= -1e-9 && x <= 4 + 1e-9 && y >= -1e-9 && y <= 3 + 1e-9);
+      });
+    expect(inside(room)).toEqual([true, true, true, true]);
+    expect(inside([...room].reverse())).toEqual([true, true, true, true]);
+  });
+
+  it('Ecken: Gehrung bei zwei Wänden, auch verschieden dick; T-Stoss bis zur Rückseite; freie Enden gerade', () => {
+    // L-Ecke: 30 cm aussen (bündig innen = unten), 10 cm innen (mittig)
+    const outer = wall([0, 0], [6, 0], { id: 'o', thickness: 0.3, align: 'left' });
+    const inner = wall([0, 0], [0, 4], { id: 'i', thickness: 0.1 });
+    const polys = wallPolygons([outer, inner]);
+    // Die Aussenwand liegt zwischen y = 0 und 0.3 (Seite der Normalen, bei y nach unten also unten); die Innenwand stösst an
+    expect(round(polys.get('o')!)).toEqual([[-0.05, 0], [6, 0], [6, 0.3], [0.05, 0.3]]);
+    expect(round(polys.get('i')!)).toEqual([[0.05, 0.3], [0.05, 4], [-0.05, 4], [-0.05, 0]]);
+    // T-Stoss: Wand endet an der Mitte einer anderen und reicht bis zu deren Rückseite
+    const t = wall([3, 2], [3, 0.15], { id: 't', thickness: 0.1 });
+    expect(round(wallPolygons([outer, inner, t]).get('t')!)).toEqual([[2.95, 2], [2.95, 0], [3.05, 0], [3.05, 2]]);
+    // Freies Ende: gerade abgeschnitten
+    expect(round(wallPolygons([wall([0, 0], [2, 0])]).get('w')!)).toEqual([[0, -0.1], [2, -0.1], [2, 0.1], [0, 0.1]]);
   });
 });
 

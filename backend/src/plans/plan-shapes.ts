@@ -19,12 +19,16 @@ export const AREA_KIND_LABELS: Record<AreaKind, string> = {
   outdoor: 'Aussenbereich',
 };
 
-/** Wand: Linienzug mit Dicke (mittig auf der Linie); geschlossen: die letzte Ecke verbindet zur ersten */
+/** Lage der Wand zu ihrer Linie: mittig oder bündig, die Dicke links bzw. rechts (in Richtung von a nach b) */
+export const WALL_ALIGNS = ['center', 'left', 'right'] as const;
+export type WallAlign = (typeof WALL_ALIGNS)[number];
+/** Wand: ein gerades Stück von a nach b mit eigener Dicke (Entscheid vom 20.11.2026) */
 export interface PlanWall {
   id: string;
-  points: PlanPoint[];
-  closed: boolean;
+  a: PlanPoint;
+  b: PlanPoint;
   thickness: number;
+  align: WallAlign;
 }
 /** Säule: eckig (Breite × Tiefe, gedreht um die Mitte) oder rund (Durchmesser = Breite) */
 export interface PlanPillar {
@@ -39,14 +43,12 @@ export interface PlanPillar {
 export const OPENING_KINDS = ['door', 'double', 'opening', 'window'] as const;
 export type OpeningKind = (typeof OPENING_KINDS)[number];
 /**
- * Tür oder Fenster in einer Wand: auf dem Abschnitt «segment» (von Ecke segment zu segment + 1), Mitte «offset» Meter
- * nach dessen Anfang. Anschlag («hinge»): am Anfang oder Ende der Öffnung; Aufschlag («side»): links oder rechts der
- * Wand in Zeichenrichtung.
+ * Tür oder Fenster in einer Wand: Mitte «offset» Meter nach dem Anfang a der Wand. Anschlag («hinge»): am Anfang oder
+ * Ende der Öffnung; Aufschlag («side»): links oder rechts der Wand in Zeichenrichtung.
  */
 export interface PlanOpening {
   id: string;
   wallId: string;
-  segment: number;
   offset: number;
   width: number;
   kind: OpeningKind;
@@ -67,15 +69,15 @@ export function polygonArea(points: PlanPoint[]): number {
   return Math.abs(sum) / 2;
 }
 
-/** Abschnitte einer Wand als Paare von Ecken */
-export function wallSegments(wall: Pick<PlanWall, 'points' | 'closed'>): [PlanPoint, PlanPoint][] {
-  const segments: [PlanPoint, PlanPoint][] = [];
-  for (let i = 0; i < wall.points.length - 1; i++) segments.push([wall.points[i]!, wall.points[i + 1]!]);
-  if (wall.closed && wall.points.length > 2) segments.push([wall.points[wall.points.length - 1]!, wall.points[0]!]);
-  return segments;
+/** Kanten eines Linienzugs bzw. Vielecks als Paare von Ecken */
+export function edges(points: PlanPoint[], closed: boolean): [PlanPoint, PlanPoint][] {
+  const list: [PlanPoint, PlanPoint][] = [];
+  for (let i = 0; i < points.length - 1; i++) list.push([points[i]!, points[i + 1]!]);
+  if (closed && points.length > 2) list.push([points[points.length - 1]!, points[0]!]);
+  return list;
 }
 
-export const segmentLength = ([a, b]: [PlanPoint, PlanPoint]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+export const wallLength = (w: Pick<PlanWall, 'a' | 'b'>) => Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]);
 
 /** Abstand eines Punkts zu einer Strecke */
 export function distanceToSegment(p: PlanPoint, a: PlanPoint, b: PlanPoint): number {
@@ -137,5 +139,5 @@ export function segmentInPolygon(a: PlanPoint, b: PlanPoint, polygon: PlanPoint[
 /** Liegt das Vieleck (bzw. der Linienzug) ganz im Umriss? Alle Kanten innen genügt, weil der Umriss keine Löcher hat. */
 export function shapeInPolygon(points: PlanPoint[], closed: boolean, polygon: PlanPoint[], tolerance = INSIDE_TOLERANCE): boolean {
   if (points.length === 1) return pointInPolygon(points[0]!, polygon, tolerance);
-  return wallSegments({ points, closed }).every(([a, b]) => segmentInPolygon(a, b, polygon, tolerance));
+  return edges(points, closed).every(([a, b]) => segmentInPolygon(a, b, polygon, tolerance));
 }

@@ -3,11 +3,12 @@ import {
   AREA_KIND_LABELS,
   AREA_KINDS,
   OPENING_KINDS,
+  WALL_ALIGNS,
   pointInPolygon,
   polygonArea,
-  segmentLength,
+  segmentInPolygon,
   shapeInPolygon,
-  wallSegments,
+  wallLength,
   type PlanPoint,
 } from './plan-shapes';
 
@@ -48,11 +49,13 @@ const areaSchema = z.object({
   points: z.array(point).min(3, 'Eine Fläche braucht mindestens drei Ecken').max(200),
 });
 
+/** Wand: ein gerades Stück (Entscheid vom 20.11.2026), mittig oder bündig auf ihrer Linie */
 const wallSchema = z.object({
   id: z.uuid(),
-  points: z.array(point).min(2, 'Eine Wand braucht mindestens zwei Ecken').max(500),
-  closed: z.boolean().default(false),
+  a: point,
+  b: point,
   thickness: meters(0.02, 2, 'Wanddicke'),
+  align: z.enum(WALL_ALIGNS).default('center'),
 });
 
 const pillarSchema = z.object({
@@ -68,7 +71,6 @@ const pillarSchema = z.object({
 const openingSchema = z.object({
   id: z.uuid(),
   wallId: z.uuid(),
-  segment: z.number().int().min(0),
   offset: z.number().finite().min(0),
   width: meters(0.2, 10, 'Breite'),
   kind: z.enum(OPENING_KINDS),
@@ -118,20 +120,18 @@ export const floorContentSchema = z
     const tiny = c.areas.find((a) => polygonArea(a.points) < 0.01);
     if (tiny) issue(`Die Fläche «${areaName(tiny)}» hat keine Fläche`);
 
-    // Wände: Ecken nicht doppelt, geschlossen erst ab drei Ecken; Türen und Fenster passen in ihren Abschnitt
+    // Wände haben eine Länge; Türen und Fenster passen in ihre Wand
     const walls = new Map(c.walls.map((w) => [w.id, w]));
-    if (c.walls.some((w) => wallSegments(w).some((s) => segmentLength(s) < 0.01))) issue('Eine Wand hat einen Abschnitt ohne Länge');
-    if (c.walls.some((w) => w.closed && w.points.length < 3)) issue('Eine geschlossene Wand braucht mindestens drei Ecken');
+    if (c.walls.some((w) => wallLength(w) < 0.01)) issue('Eine Wand hat keine Länge');
     for (const o of c.openings) {
       const wall = walls.get(o.wallId);
-      const segment = wall ? wallSegments(wall)[o.segment] : undefined;
-      if (!segment) {
+      if (!wall) {
         issue(`${o.kind === 'window' ? 'Ein Fenster' : 'Eine Tür'} gehört zu keiner Wand`);
         continue;
       }
-      const length = segmentLength(segment);
+      const length = wallLength(wall);
       if (o.offset - o.width / 2 < -0.01 || o.offset + o.width / 2 > length + 0.01) {
-        issue(`${o.kind === 'window' ? 'Ein Fenster' : 'Eine Tür'} ist breiter als ihr Wandstück`);
+        issue(`${o.kind === 'window' ? 'Ein Fenster' : 'Eine Tür'} ist breiter als ihre Wand`);
       }
     }
 
@@ -148,7 +148,7 @@ export const floorContentSchema = z
     }
     const outside = [
       ...c.areas.filter((a) => !shapeInPolygon(a.points, true, outline)).map((a) => `«${areaName(a)}»`),
-      ...(c.walls.some((w) => !shapeInPolygon(w.points, w.closed, outline)) ? ['eine Wand'] : []),
+      ...(c.walls.some((w) => !segmentInPolygon(w.a, w.b, outline)) ? ['eine Wand'] : []),
       ...(c.pillars.some((p) => !pointInPolygon([p.x, p.y], outline)) ? ['eine Säule'] : []),
       ...c.labels.filter((l) => !pointInPolygon([l.x, l.y], outline)).map((l) => `die Beschriftung «${l.text}»`),
     ];
