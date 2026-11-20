@@ -1107,11 +1107,44 @@ export interface PlanTreeSite {
   buildings: PlanTreeBuilding[];
 }
 
-export interface PlanRoom {
+/** Arten der Flächen (feste Liste, Entscheid vom 20.11.2026) */
+export type PlanAreaKind = 'room' | 'corridor' | 'entrance' | 'stairs' | 'elevator' | 'open' | 'shaft' | 'outdoor';
+/** Fläche: Raum, Gang, Treppenhaus usw.; der Name ist nur bei Räumen Pflicht ('' = ohne Namen) */
+export interface PlanArea {
   id: string;
+  kind: PlanAreaKind;
   name: string;
   description: string;
   points: PlanPoint[];
+}
+/** Wand: Linienzug mit Dicke in Metern, mittig auf der Linie */
+export interface PlanWall {
+  id: string;
+  points: PlanPoint[];
+  closed: boolean;
+  thickness: number;
+}
+/** Säule: eckig (Breite × Tiefe, Drehung in Grad) oder rund (Durchmesser = Breite) */
+export interface PlanPillar {
+  id: string;
+  shape: 'rect' | 'round';
+  x: number;
+  y: number;
+  width: number;
+  depth: number;
+  rotation: number;
+}
+export type PlanOpeningKind = 'door' | 'double' | 'opening' | 'window';
+/** Tür oder Fenster in einer Wand: Abschnitt «segment», Mitte «offset» Meter nach dessen Anfang */
+export interface PlanOpening {
+  id: string;
+  wallId: string;
+  segment: number;
+  offset: number;
+  width: number;
+  kind: PlanOpeningKind;
+  hinge: 'start' | 'end';
+  side: 'left' | 'right';
 }
 export interface PlanLabel {
   id: string;
@@ -1134,13 +1167,19 @@ export interface PlanFloor {
   name: string;
   site: { id: string; name: string };
   building: { id: string; name: string };
-  rooms: PlanRoom[];
+  /** Umriss des Stockwerks; null nur, solange es leer ist */
+  outline: PlanPoint[] | null;
+  areas: PlanArea[];
+  walls: PlanWall[];
+  pillars: PlanPillar[];
+  openings: PlanOpening[];
   labels: PlanLabel[];
   plan: PlanBackground | null;
   contentUpdatedAt: string;
 }
 export interface PlanSearchHit {
   id: string;
+  kind: PlanAreaKind;
   name: string;
   description: string;
   floorId: string;

@@ -1,31 +1,37 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import PlanDrawing from './PlanDrawing.vue';
 import {
   bbox,
-  centroid,
+  copyPoints,
   dist,
   formatNumber,
   isRect,
-  labelSize,
+  nearestWallSegment,
   niceLength,
-  polygonArea,
+  placeOnSegment,
+  pointInPolygon,
   rectPoints,
+  segmentInPolygon,
   snap,
+  snapCandidates,
   snapPoint,
   type Box,
 } from '../../plans/geometry';
-import type { PlanEditor } from '../../plans/editor';
-import type { PlanPoint, PlanRoom } from '../../types';
+import { OUTLINE_ID, type PlanEditor } from '../../plans/editor';
+import { useToast } from '../../stores/toast';
+import type { PlanPoint } from '../../types';
 
 /**
- * Zeichenfläche eines Stockwerks (Pläne, Entscheid vom 20.11.2026): Plan im Hintergrund, Räume mit Name und Fläche,
- * Beschriftungen. Ansehen: Ziehen verschiebt, Mausrad vergrössert, Klick auf einen Raum wählt ihn. Bearbeiten: Rechteck,
- * Vieleck, Beschriftung, Ecken verschieben, Massstab setzen; Raster 10 cm, Ecken anderer Räume rasten ein.
+ * Zeichenfläche eines Stockwerks (Pläne, Entscheide vom 20.11.2026). Ansehen: Ziehen verschiebt, Mausrad vergrössert,
+ * Klick auf eine Fläche wählt sie. Bearbeiten: Umriss, Flächen (Rechteck oder Vieleck), Wände, Säulen, Türen, Fenster
+ * und Beschriftungen; Ecken ziehen, in der Mitte einer Kante eine Ecke einfügen, Doppelklick auf eine Ecke entfernt sie.
+ * Raster 10 cm, Ecken von Umriss, Flächen und Wänden rasten ein.
  */
 const props = defineProps<{ editor: PlanEditor }>();
 const editor = props.editor;
 const state = editor.state;
-
+const toast = useToast();
 
 const svg = ref<SVGSVGElement | null>(null);
 const size = reactive({ w: 800, h: 500 });
@@ -36,7 +42,6 @@ const panning = ref(false);
 const px = computed(() => Math.min(size.w / view.value.w, size.h / view.value.h) || 1);
 const viewBox = computed(() => `${view.value.x} ${view.value.y} ${view.value.w} ${view.value.h}`);
 const content = computed(() => editor.content.value);
-const plan = computed(() => content.value?.plan ?? null);
 const uiFont = computed(() => 13 / px.value);
 
 function fit(box?: Box) {
@@ -45,18 +50,18 @@ function fit(box?: Box) {
   view.value = { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 };
 }
 
-/** Auf einen Raum zoomen und ihn kurz hervorheben (Suche) */
-function focusRoom(id: string) {
-  const room = content.value?.rooms.find((r) => r.id === id);
-  if (!room) return;
-  const b = bbox(room.points);
+/** Auf eine Fläche zoomen und sie kurz hervorheben (Suche) */
+function focusArea(id: string) {
+  const area = content.value?.areas.find((a) => a.id === id);
+  if (!area) return;
+  const b = bbox(area.points);
   fit({ x: b.x - 4, y: b.y - 3, w: b.w + 8, h: b.h + 6 });
   state.flashId = id;
   window.setTimeout(() => {
     if (state.flashId === id) state.flashId = null;
   }, 2600);
 }
-defineExpose({ fit, focusRoom });
+defineExpose({ fit, focusArea });
 
 function zoom(factor: number, center?: PlanPoint) {
   const v = view.value;
@@ -89,18 +94,58 @@ const gridLines = computed(() => {
 });
 
 const pointsAttr = (points: PlanPoint[]) => points.map((p) => p.join(',')).join(' ');
-function roomText(r: PlanRoom) {
-  const [cx, cy] = centroid(r.points);
-  const name = r.name.trim() || 'Ohne Namen';
-  const fs = labelSize(name, bbox(r.points).w);
-  return { cx, cy, name, fs, area: `${formatNumber(polygonArea(r.points))} m²` };
+const candidates = (except?: PlanPoint[]) => (content.value ? snapCandidates(content.value, except) : []);
+const closeDistance = () => Math.max(0.4, 10 / px.value);
+
+/* ---------- Gewählte Form: Ecken und Kantenmitten ---------- */
+type ShapeKind = 'outline' | 'area' | 'wall';
+const handleShape = computed<{ kind: ShapeKind; id: string; points: PlanPoint[]; closed: boolean } | null>(() => {
+  const c = content.value;
+  if (!editor.editing.value || !c || state.tool !== 'select') return null;
+  if (editor.outlineSelected.value && c.outline) return { kind: 'outline', id: OUTLINE_ID, points: c.outline, closed: true };
+  const a = editor.selectedArea.value;
+  if (a) return { kind: 'area', id: a.id, points: a.points, closed: true };
+  const w = editor.selectedWall.value;
+  if (w) return { kind: 'wall', id: w.id, points: w.points, closed: w.closed };
+  return null;
+});
+const midpoints = computed(() => {
+  const s = handleShape.value;
+  if (!s) return [];
+  const count = s.closed ? s.points.length : s.points.length - 1;
+  return Array.from({ length: count }, (_, i) => {
+    const a = s.points[i]!;
+    const b = s.points[(i + 1) % s.points.length]!;
+    return { i, x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, long: dist(a, b) > 24 / px.value };
+  }).filter((m) => m.long);
+});
+
+/** Ecken einer Form im Entwurf (live, zum Ändern) */
+function livePoints(kind: ShapeKind, id: string): PlanPoint[] | null {
+  const d = state.draft;
+  if (!d) return null;
+  if (kind === 'outline') return d.outline;
+  if (kind === 'area') return d.areas.find((a) => a.id === id)?.points ?? null;
+  return d.walls.find((w) => w.id === id)?.points ?? null;
+}
+function setLivePoints(kind: ShapeKind, id: string, points: PlanPoint[]) {
+  const d = state.draft;
+  if (!d) return;
+  if (kind === 'outline') d.outline = points;
+  else if (kind === 'area') {
+    const a = d.areas.find((x) => x.id === id);
+    if (a) a.points = points;
+  } else {
+    const w = d.walls.find((x) => x.id === id);
+    if (w) w.points = points;
+  }
 }
 
-/** Masse beim Zeichnen und am gewählten Rechteck */
+/* ---------- Masse und Vorschau ---------- */
 const selectedDims = computed(() => {
-  const r = editor.selectedRoom.value;
-  if (!editor.editing.value || !r || !isRect(r.points)) return null;
-  return bbox(r.points);
+  const a = editor.selectedArea.value;
+  if (!editor.editing.value || !a || !isRect(a.points)) return null;
+  return bbox(a.points);
 });
 const drawingRect = computed(() => {
   const d = state.drawing;
@@ -112,7 +157,7 @@ const drawingRect = computed(() => {
 const drawingPoly = computed(() => {
   const d = state.drawing;
   if (!d || !('points' in d)) return null;
-  return { points: d.points, rubber: state.cursor ? [...d.points, state.cursor] : d.points };
+  return { points: d.points, rubber: state.cursor ? [...d.points, state.cursor] : d.points, wall: state.tool === 'wall' };
 });
 const lines = computed(() =>
   [
@@ -125,6 +170,7 @@ const lines = computed(() =>
       return { a: line!.a, b, text: b ? `${formatNumber(dist(line!.a, b), 2)} m${scale ? ' (laut Plan)' : ''}` : '' };
     }),
 );
+const pillarGhost = computed(() => (state.tool === 'pillar' && state.cursor ? { x: snap(state.cursor[0], 0.05), y: snap(state.cursor[1], 0.05) } : null));
 
 /* Massstabsleiste */
 const scalebar = computed(() => {
@@ -133,58 +179,99 @@ const scalebar = computed(() => {
 });
 
 /* ---------- Zeiger ---------- */
+type WallSnap = ReturnType<PlanEditor['wallSnapshot']>;
 type Drag =
-  | { kind: 'pan'; start: [number, number]; view: Box; moved: boolean; roomId: string | null }
-  | { kind: 'vertex'; index: number }
-  | { kind: 'room'; start: PlanPoint; orig: PlanPoint[] }
-  | { kind: 'label'; start: PlanPoint; orig: PlanPoint };
+  | { kind: 'pan'; start: [number, number]; view: Box; moved: boolean; areaId: string | null }
+  | { kind: 'vertex'; shape: ShapeKind; id: string; index: number; before: PlanPoint[]; wall?: WallSnap }
+  | { kind: 'move'; shape: 'area' | 'wall'; id: string; start: PlanPoint; before: PlanPoint[]; wall?: WallSnap }
+  | { kind: 'point'; what: 'pillar' | 'label'; id: string; start: PlanPoint; before: PlanPoint }
+  | { kind: 'opening'; id: string };
 let drag: Drag | null = null;
 
-const rooms = () => content.value?.rooms ?? [];
+const dataOf = (el: Element, name: string) => el.closest(`[data-${name}]`)?.getAttribute(`data-${name}`) ?? null;
 
 function onPointerDown(e: PointerEvent) {
   if (e.button !== 0 || !content.value) return;
   const p = toWorld(e);
   const target = e.target as Element;
-  const roomEl = target.closest('[data-room]') as HTMLElement | null;
-  const labelEl = target.closest('[data-label]') as HTMLElement | null;
-  const vertexEl = target.closest('[data-vertex]') as HTMLElement | null;
   const edit = editor.editing.value;
+  const d = state.draft;
   svg.value?.setPointerCapture(e.pointerId);
 
   switch (state.tool) {
     case 'select': {
-      if (edit && vertexEl) {
-        drag = { kind: 'vertex', index: Number(vertexEl.dataset.vertex) };
-      } else if (edit && roomEl) {
-        editor.select('room', roomEl.dataset.room);
-        const room = editor.selectedRoom.value!;
-        drag = { kind: 'room', start: p, orig: room.points.map((q): PlanPoint => [q[0], q[1]]) };
-      } else if (edit && labelEl) {
-        editor.select('label', labelEl.dataset.label);
-        const label = editor.selectedLabel.value!;
-        drag = { kind: 'label', start: p, orig: [label.x, label.y] };
+      const shape = handleShape.value;
+      const vertex = dataOf(target, 'vertex');
+      const mid = dataOf(target, 'mid');
+      if (edit && shape && (vertex !== null || mid !== null)) {
+        let index = Number(vertex ?? mid);
+        const before = copyPoints(shape.points);
+        const wall = shape.kind === 'wall' ? editor.wallSnapshot(editor.selectedWall.value!) : undefined;
+        if (mid !== null) {
+          // Ecke einfügen: in der Mitte der Kante, dann gleich ziehen
+          const a = shape.points[index]!;
+          const b = shape.points[(index + 1) % shape.points.length]!;
+          shape.points.splice(index + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+          index += 1;
+        }
+        drag = { kind: 'vertex', shape: shape.kind, id: shape.id, index, before, wall };
+        return;
+      }
+      const openingId = dataOf(target, 'opening');
+      const pillarId = dataOf(target, 'pillar');
+      const labelId = dataOf(target, 'label');
+      const wallId = dataOf(target, 'wall');
+      const areaId = dataOf(target, 'area');
+      if (edit && d && openingId) {
+        editor.select('opening', openingId);
+        drag = { kind: 'opening', id: openingId };
+      } else if (edit && d && pillarId) {
+        const pillar = d.pillars.find((x) => x.id === pillarId)!;
+        editor.select('pillar', pillarId);
+        drag = { kind: 'point', what: 'pillar', id: pillarId, start: p, before: [pillar.x, pillar.y] };
+      } else if (edit && d && labelId) {
+        const label = d.labels.find((x) => x.id === labelId)!;
+        editor.select('label', labelId);
+        drag = { kind: 'point', what: 'label', id: labelId, start: p, before: [label.x, label.y] };
+      } else if (edit && d && wallId) {
+        const wall = d.walls.find((x) => x.id === wallId)!;
+        editor.select('wall', wallId);
+        drag = { kind: 'move', shape: 'wall', id: wallId, start: p, before: copyPoints(wall.points), wall: editor.wallSnapshot(wall) };
+      } else if (edit && d && areaId) {
+        const area = d.areas.find((x) => x.id === areaId)!;
+        editor.select('area', areaId);
+        drag = { kind: 'move', shape: 'area', id: areaId, start: p, before: copyPoints(area.points) };
+      } else if (edit && dataOf(target, 'outline')) {
+        editor.select('outline');
       } else {
-        drag = { kind: 'pan', start: [e.clientX, e.clientY], view: { ...view.value }, moved: false, roomId: roomEl?.dataset.room ?? null };
+        drag = { kind: 'pan', start: [e.clientX, e.clientY], view: { ...view.value }, moved: false, areaId };
         panning.value = true;
       }
       return;
     }
-    case 'rect': {
-      const q = snapPoint(p, rooms());
-      state.drawing = { a: q, b: q };
-      return;
-    }
-    case 'poly': {
-      const q = snapPoint(p, rooms());
-      const pts = state.drawing && 'points' in state.drawing ? state.drawing.points : [];
-      if (pts.length >= 3 && dist(q, pts[0]!) < Math.max(0.4, 10 / px.value)) {
-        finishPolygon();
+    case 'outline':
+    case 'area': {
+      const q = snapPoint(p, candidates());
+      if (state.options.shape === 'rect') {
+        state.drawing = { a: q, b: q };
         return;
       }
-      state.drawing = { points: [...pts, q] };
+      const pts = state.drawing && 'points' in state.drawing ? state.drawing.points : [];
+      if (pts.length >= 3 && dist(q, pts[0]!) < closeDistance()) finishDrawing();
+      else state.drawing = { points: [...pts, q] };
       return;
     }
+    case 'wall':
+      wallClick(p);
+      return;
+    case 'pillar':
+      editor.addPillar(p);
+      return;
+    case 'door':
+    case 'window':
+      if (state.openingPreview) editor.addOpening();
+      else toast.error(`${state.tool === 'window' ? 'Ein Fenster' : 'Eine Tür'} sitzt in einer Wand: auf eine Wand klicken, die lang genug ist.`);
+      return;
     case 'label':
       editor.addLabel(p);
       return;
@@ -192,16 +279,55 @@ function onPointerDown(e: PointerEvent) {
     case 'scale': {
       const key = state.tool === 'measure' ? 'measure' : 'scaleLine';
       const line = state[key];
-      const q = state.tool === 'measure' ? snapPoint(p, rooms()) : p;
+      const q = state.tool === 'measure' ? snapPoint(p, candidates()) : p;
       state[key] = !line?.a || line.b ? { a: q } : { a: line.a, b: q };
       state.cursor = null;
     }
   }
 }
 
+/** Wand zeichnen: jede Ecke muss mit dem Stück davor im Umriss liegen; Klick auf die erste Ecke schliesst die Wand */
+function wallClick(p: PlanPoint) {
+  const outline = content.value?.outline;
+  if (!outline) {
+    toast.error('Zeichne zuerst den Umriss des Stockwerks oder eine Fläche.');
+    return;
+  }
+  const q = snapPoint(p, candidates());
+  const pts = state.drawing && 'points' in state.drawing ? state.drawing.points : [];
+  if (pts.length >= 3 && dist(q, pts[0]!) < closeDistance()) {
+    finishDrawing(true);
+    return;
+  }
+  const inside = pts.length ? segmentInPolygon(pts[pts.length - 1]!, q, outline) : pointInPolygon(q, outline);
+  if (!inside) {
+    toast.error('Die Wand muss im Umriss liegen.');
+    return;
+  }
+  state.drawing = { points: [...pts, q] };
+}
+
+/** Vieleck bzw. Wand abschliessen (erste Ecke, Doppelklick oder Eingabetaste) */
+function finishDrawing(closeWall = false) {
+  const d = state.drawing;
+  const pts = d && 'points' in d ? d.points : [];
+  // Ein Doppelklick setzt die letzte Ecke doppelt
+  const clean = pts.filter((p, i) => i === 0 || dist(p, pts[i - 1]!) > 0.05);
+  state.drawing = null;
+  state.cursor = null;
+  if (state.tool === 'wall') {
+    if (clean.length >= 2) editor.addWall(clean, closeWall && clean.length >= 3);
+    return;
+  }
+  if (clean.length < 3) return;
+  if (state.tool === 'outline') editor.setOutline(clean);
+  else editor.addArea(clean);
+}
+
 function onPointerMove(e: PointerEvent) {
   if (!content.value) return;
   const p = toWorld(e);
+  const d = state.draft;
   if (drag?.kind === 'pan') {
     const dx = (e.clientX - drag.start[0]) / px.value;
     const dy = (e.clientY - drag.start[1]) / px.value;
@@ -209,52 +335,115 @@ function onPointerMove(e: PointerEvent) {
     view.value = { ...drag.view, x: drag.view.x - dx, y: drag.view.y - dy };
     return;
   }
-  const room = editor.selectedRoom.value;
-  if (drag?.kind === 'vertex' && room) {
-    room.points[drag.index] = snapPoint(p, rooms(), room);
+  if (drag?.kind === 'vertex') {
+    const pts = livePoints(drag.shape, drag.id);
+    if (!pts) return;
+    pts[drag.index] = snapPoint(p, candidates(pts));
+    if (drag.shape === 'wall' && drag.wall) editor.refitOpenings(editor.selectedWall.value!, drag.wall);
+    if (drag.shape === 'outline') editor.checkOutline();
     return;
   }
-  if (drag?.kind === 'room' && room) {
+  if (drag?.kind === 'move') {
+    // Verschieben um ganze 10 cm; die Form selbst bleibt, wie sie ist
     const dx = snap(p[0] - drag.start[0]);
     const dy = snap(p[1] - drag.start[1]);
-    room.points = drag.orig.map(([x, y]): PlanPoint => [snap(x + dx), snap(y + dy)]);
+    setLivePoints(drag.shape, drag.id, drag.before.map(([x, y]): PlanPoint => [x + dx, y + dy]));
+    if (drag.shape === 'wall' && drag.wall) editor.refitOpenings(editor.selectedWall.value!, drag.wall);
     return;
   }
-  const label = editor.selectedLabel.value;
-  if (drag?.kind === 'label' && label) {
-    label.x = snap(drag.orig[0] + p[0] - drag.start[0]);
-    label.y = snap(drag.orig[1] + p[1] - drag.start[1]);
+  if (drag?.kind === 'point' && d) {
+    const id = drag.id;
+    const item = drag.what === 'pillar' ? d.pillars.find((x) => x.id === id) : d.labels.find((x) => x.id === id);
+    if (!item) return;
+    const step = drag.what === 'pillar' ? 0.05 : 0.1;
+    item.x = snap(drag.before[0] + p[0] - drag.start[0], step);
+    item.y = snap(drag.before[1] + p[1] - drag.start[1], step);
     return;
   }
-  if (state.tool === 'rect' && state.drawing && 'a' in state.drawing) {
-    state.drawing.b = snapPoint(p, rooms());
+  if (drag?.kind === 'opening' && d) {
+    const id = drag.id;
+    const o = d.openings.find((x) => x.id === id);
+    const hit = o ? nearestWallSegment(p, d.walls, 1) : null;
+    const offset = o && hit ? placeOnSegment(hit.along, hit.length, o.width) : null;
+    if (o && hit && offset !== null) Object.assign(o, { wallId: hit.wall.id, segment: hit.segment, offset });
+    return;
+  }
+  if ((state.tool === 'outline' || state.tool === 'area') && state.drawing && 'a' in state.drawing) {
+    state.drawing.b = snapPoint(p, candidates());
+    return;
+  }
+  if (state.tool === 'door' || state.tool === 'window') {
+    const kind = state.tool === 'window' ? 'window' : state.options.doorKind;
+    const width = state.options.widths[kind];
+    const hit = d ? nearestWallSegment(p, d.walls, 12 / px.value) : null;
+    const offset = hit ? placeOnSegment(hit.along, hit.length, width) : null;
+    state.openingPreview = hit && offset !== null ? { wallId: hit.wall.id, segment: hit.segment, offset, width, kind, hinge: 'start', side: 'left' } : null;
     return;
   }
   const waiting = (l: { a: PlanPoint; b?: PlanPoint } | null) => !!l?.a && !l.b;
-  if (state.tool === 'poly' || (state.tool === 'measure' && waiting(state.measure))) state.cursor = snapPoint(p, rooms());
-  else if (state.tool === 'scale' && waiting(state.scaleLine)) state.cursor = p;
+  if (['outline', 'area', 'wall', 'pillar'].includes(state.tool) || (state.tool === 'measure' && waiting(state.measure))) {
+    state.cursor = snapPoint(p, candidates());
+  } else if (state.tool === 'scale' && waiting(state.scaleLine)) state.cursor = p;
 }
 
 function onPointerUp() {
-  const d = drag;
+  const dr = drag;
   drag = null;
   panning.value = false;
-  if (d?.kind === 'pan' && !d.moved) editor.select(d.roomId ? 'room' : null, d.roomId ?? undefined);
-  if (state.tool === 'rect' && state.drawing && 'a' in state.drawing) {
+  const d = state.draft;
+  if (dr?.kind === 'pan' && !dr.moved) editor.select(dr.areaId ? 'area' : null, dr.areaId ?? undefined);
+  if ((dr?.kind === 'vertex' || dr?.kind === 'move') && d) commitShape(dr.shape, dr.id, dr.before, dr.wall);
+  if (dr?.kind === 'point' && d) {
+    const item = dr.what === 'pillar' ? d.pillars.find((x) => x.id === dr.id) : d.labels.find((x) => x.id === dr.id);
+    if (item) editor.commitPoint(item, dr.before, dr.what === 'pillar' ? 'Die Säule' : 'Die Beschriftung');
+  }
+  if ((state.tool === 'outline' || state.tool === 'area') && state.drawing && 'a' in state.drawing) {
     const r = drawingRect.value!;
     state.drawing = null;
-    if (r.w >= 0.5 && r.h >= 0.5) editor.addRoom(rectPoints(r.x, r.y, snap(r.w), snap(r.h)));
+    if (r.w < 0.3 || r.h < 0.3) return;
+    const pts = rectPoints(r.x, r.y, r.w, r.h);
+    if (state.tool === 'outline') editor.setOutline(pts);
+    else editor.addArea(pts);
   }
 }
 
-function finishPolygon() {
-  const d = state.drawing;
-  const pts = d && 'points' in d ? d.points : [];
-  // Ein Doppelklick setzt den letzten Punkt doppelt
-  const clean = pts.filter((p, i) => i === 0 || dist(p, pts[i - 1]!) > 0.05);
-  state.drawing = null;
-  state.cursor = null;
-  if (clean.length >= 3) editor.addRoom(clean);
+/** Nach dem Ziehen: Umriss umschliesst alles, Flächen lassen ihn wachsen, Wände bleiben drin */
+function commitShape(kind: ShapeKind, id: string, before: PlanPoint[], wall?: WallSnap) {
+  const d = state.draft;
+  if (!d) return;
+  if (kind === 'outline') editor.commitOutline(before);
+  else if (kind === 'area') {
+    const area = d.areas.find((a) => a.id === id);
+    if (area) editor.commitArea(area, before);
+  } else {
+    const w = d.walls.find((x) => x.id === id);
+    if (w && wall) editor.commitWall(w, wall);
+  }
+}
+
+/** Doppelklick: Vieleck oder Wand abschliessen, sonst eine Ecke der gewählten Form entfernen */
+function onDblClick(e: MouseEvent) {
+  if (state.drawing && 'points' in state.drawing) {
+    finishDrawing();
+    return;
+  }
+  const vertex = dataOf(e.target as Element, 'vertex');
+  const shape = handleShape.value;
+  if (vertex === null || !shape) return;
+  if (shape.points.length <= (shape.closed ? 3 : 2)) {
+    toast.error('Weniger Ecken geht nicht.');
+    return;
+  }
+  const before = copyPoints(shape.points);
+  const wall = shape.kind === 'wall' ? editor.wallSnapshot(editor.selectedWall.value!) : undefined;
+  if (wall) wall.points = before;
+  setLivePoints(
+    shape.kind,
+    shape.id,
+    before.filter((_, i) => i !== Number(vertex)),
+  );
+  if (shape.kind === 'wall' && wall) editor.refitOpenings(editor.selectedWall.value!, wall);
+  commitShape(shape.kind, shape.id, before, wall);
 }
 
 function onWheel(e: WheelEvent) {
@@ -268,19 +457,26 @@ function onKey(e: KeyboardEvent) {
     state.cursor = null;
     state.measure = null;
     state.scaleLine = null;
+    state.openingPreview = null;
     if (!typing) editor.select(null);
     return;
   }
   if (typing || !editor.editing.value) return;
-  if (e.key === 'Backspace' && state.tool === 'poly' && state.drawing && 'points' in state.drawing) {
+  const drawing = state.drawing && 'points' in state.drawing ? state.drawing : null;
+  if (e.key === 'Enter' && drawing) {
     e.preventDefault();
-    state.drawing.points.pop();
-    if (!state.drawing.points.length) state.drawing = null;
+    finishDrawing();
+    return;
+  }
+  if (e.key === 'Backspace' && drawing) {
+    e.preventDefault();
+    drawing.points.pop();
+    if (!drawing.points.length) state.drawing = null;
     return;
   }
   if ((e.key === 'Delete' || e.key === 'Backspace') && state.selection) {
     e.preventDefault();
-    if (state.selection.kind === 'room') state.confirmDelete = true;
+    if (state.selection.kind === 'area') state.confirmDelete = true;
     else editor.deleteSelected();
   }
 }
@@ -305,6 +501,14 @@ watch(
   () => fit(),
   { immediate: true },
 );
+// Werkzeug gewechselt: Vorschau weg
+watch(
+  () => state.tool,
+  () => {
+    state.openingPreview = null;
+    state.cursor = null;
+  },
+);
 </script>
 
 <template>
@@ -319,7 +523,8 @@ watch(
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
       @pointercancel="onPointerUp"
-      @dblclick="state.tool === 'poly' && finishPolygon()"
+      @pointerleave="state.openingPreview = null"
+      @dblclick="onDblClick"
       @wheel.prevent="onWheel"
     >
       <g v-if="gridLines.length">
@@ -335,55 +540,26 @@ watch(
           vector-effect="non-scaling-stroke"
         />
       </g>
-      <image
-        v-if="plan && state.showPlan"
-        class="plan-image"
-        :href="plan.url"
-        :x="plan.x"
-        :y="plan.y"
-        :width="plan.widthPx * plan.metersPerPx"
-        :height="plan.heightPx * plan.metersPerPx"
-        preserveAspectRatio="none"
+      <PlanDrawing
+        v-if="content"
+        :content="content"
+        :layers="state.layers"
+        uid="screen"
+        :editing="editor.editing.value"
+        :selection="state.selection"
+        :flash-id="state.flashId"
+        :px="px"
+        :outline-invalid="state.outlineInvalid"
+        :preview="state.openingPreview"
       />
-      <template v-if="content">
-        <polygon
-          v-for="r in content.rooms"
-          :key="r.id"
-          class="room"
-          :class="{ selected: state.selection?.kind === 'room' && state.selection.id === r.id, flash: state.flashId === r.id }"
-          :data-room="r.id"
-          :points="pointsAttr(r.points)"
-          vector-effect="non-scaling-stroke"
-        >
-          <title>{{ r.name }}</title>
-        </polygon>
-        <g v-for="r in content.rooms" :key="`t-${r.id}`" class="room-text">
-          <text class="room-name" :x="roomText(r).cx" :y="roomText(r).cy - roomText(r).fs * 0.15" text-anchor="middle" :font-size="roomText(r).fs">
-            {{ roomText(r).name }}
-          </text>
-          <text class="room-area" :x="roomText(r).cx" :y="roomText(r).cy + roomText(r).fs * 1.05" text-anchor="middle" :font-size="roomText(r).fs * 0.78">
-            {{ roomText(r).area }}
-          </text>
-        </g>
-        <text
-          v-for="l in content.labels"
-          :key="l.id"
-          class="free-label"
-          :class="{ selected: state.selection?.kind === 'label' && state.selection.id === l.id, editable: editor.editing.value }"
-          :data-label="l.id"
-          :x="l.x"
-          :y="l.y"
-          text-anchor="middle"
-          font-size="0.55"
-        >
-          {{ l.text }}
-        </text>
-      </template>
 
-      <!-- Bearbeiten: Ecken und Masse des gewählten Raums -->
-      <template v-if="editor.editing.value && editor.selectedRoom.value">
+      <!-- Bearbeiten: Ecken und Kantenmitten der gewählten Form -->
+      <template v-if="handleShape">
+        <circle v-for="m in midpoints" :key="`m-${m.i}`" class="mid-handle" :data-mid="m.i" :cx="m.x" :cy="m.y" :r="4 / px" vector-effect="non-scaling-stroke">
+          <title>Ziehen fügt eine Ecke ein</title>
+        </circle>
         <circle
-          v-for="(p, i) in editor.selectedRoom.value.points"
+          v-for="(p, i) in handleShape.points"
           :key="`v-${i}`"
           class="handle"
           :data-vertex="i"
@@ -391,7 +567,9 @@ watch(
           :cy="p[1]"
           :r="6 / px"
           vector-effect="non-scaling-stroke"
-        />
+        >
+          <title>Ziehen verschiebt die Ecke, Doppelklick entfernt sie</title>
+        </circle>
       </template>
       <template v-if="selectedDims">
         <text class="dim" :stroke-width="3 / px" :x="selectedDims.x + selectedDims.w / 2" :y="selectedDims.y - 8 / px" text-anchor="middle" :font-size="uiFont">
@@ -410,6 +588,7 @@ watch(
         </text>
       </template>
       <template v-if="drawingPoly">
+        <polyline v-if="drawingPoly.wall" class="draft-wall" :points="pointsAttr(drawingPoly.rubber)" :stroke-width="state.options.wallThickness" />
         <polyline class="draft" :points="pointsAttr(drawingPoly.rubber)" vector-effect="non-scaling-stroke" />
         <circle v-for="(p, i) in drawingPoly.points" :key="`p-${i}`" class="handle" :cx="p[0]" :cy="p[1]" :r="5 / px" vector-effect="non-scaling-stroke" />
         <text
@@ -424,6 +603,10 @@ watch(
           {{ formatNumber(dist(drawingPoly.points[drawingPoly.points.length - 1]!, state.cursor), 2) }} m
         </text>
       </template>
+      <g v-if="pillarGhost" class="ghost" :transform="`translate(${pillarGhost.x} ${pillarGhost.y})`">
+        <circle v-if="state.options.pillarShape === 'round'" :r="state.options.pillarSize / 2" />
+        <rect v-else :x="-state.options.pillarSize / 2" :y="-state.options.pillarSize / 2" :width="state.options.pillarSize" :height="state.options.pillarSize" />
+      </g>
 
       <!-- Messen und Massstab setzen -->
       <g v-for="(l, i) in lines" :key="`m-${i}`">
@@ -438,7 +621,7 @@ watch(
       </g>
     </svg>
 
-    <div v-if="editor.editing.value && plan && !plan.calibrated" class="plan-status">
+    <div v-if="editor.editing.value && content?.plan && !content.plan.calibrated" class="plan-status">
       Massstab noch nicht gesetzt: «Massstab setzen» wählen und eine bekannte Strecke auf dem Plan anklicken.
     </div>
     <div class="zoom">
@@ -477,8 +660,12 @@ watch(
 .panning {
   cursor: grabbing;
 }
-.tool-rect,
-.tool-poly,
+.tool-outline,
+.tool-area,
+.tool-wall,
+.tool-pillar,
+.tool-door,
+.tool-window,
 .tool-label,
 .tool-measure,
 .tool-scale {
@@ -491,71 +678,40 @@ watch(
 .grid.strong {
   stroke: var(--border);
 }
-.plan-image {
-  opacity: 0.6;
-}
-:global(:root[data-theme='dark']) .plan-image {
-  filter: invert(0.9) hue-rotate(180deg);
-}
-.room {
-  fill: color-mix(in srgb, var(--accent) 8%, transparent);
-  stroke: var(--accent);
-  stroke-width: 1.4;
-  cursor: pointer;
-}
-.room:hover {
-  fill: color-mix(in srgb, var(--accent) 15%, transparent);
-}
-.room.selected {
-  fill: color-mix(in srgb, var(--accent) 24%, transparent);
-  stroke-width: 2.4;
-}
-.room.flash {
-  animation: flash 1.2s ease-out 2;
-}
-@keyframes flash {
-  50% {
-    fill: color-mix(in srgb, var(--accent) 45%, transparent);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .room.flash {
-    animation: none;
-  }
-}
-.room-text text {
-  pointer-events: none;
-}
-.room-name {
-  fill: var(--text);
-  font-weight: 600;
-}
-.room-area {
-  fill: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-.free-label {
-  fill: var(--text-muted);
-  font-style: italic;
-}
-.free-label.editable {
-  cursor: move;
-}
-.free-label.selected {
-  fill: var(--accent);
-  font-weight: 600;
-}
 .handle {
   fill: var(--surface);
   stroke: var(--accent);
   stroke-width: 1.6;
   cursor: move;
 }
+.mid-handle {
+  fill: var(--accent);
+  fill-opacity: 0.45;
+  stroke: var(--surface);
+  stroke-width: 1;
+  cursor: copy;
+}
+.mid-handle:hover {
+  fill-opacity: 1;
+}
 .draft {
   fill: color-mix(in srgb, var(--accent) 18%, transparent);
   stroke: var(--accent);
   stroke-width: 1.6;
   stroke-dasharray: 5 4;
+}
+polyline.draft {
+  fill: none;
+}
+.draft-wall {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text) 45%, transparent);
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+.ghost {
+  fill: color-mix(in srgb, var(--accent) 45%, transparent);
+  pointer-events: none;
 }
 .dim {
   fill: var(--accent);

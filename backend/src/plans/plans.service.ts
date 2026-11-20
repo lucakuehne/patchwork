@@ -2,9 +2,10 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { and, asc, eq, ilike, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
 import { likePattern } from '../audit/audit-text';
 import { InjectDb, type Db } from '../db/db.module';
-import { planBuildings, planFloors, planLabels, planRooms, planSites, type PlanFloorRow } from '../db/schema';
+import { planAreas, planBuildings, planFloors, planLabels, planSites, type PlanFloorRow } from '../db/schema';
 import { StorageService } from '../storage/storage.service';
 import type { FloorContent } from './plan-content';
+import type { AreaKind } from './plan-shapes';
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, 'de', { numeric: true });
 
@@ -37,7 +38,8 @@ export class PlansService {
           name: planFloors.name,
           position: planFloors.position,
           // Spalten ausgeschrieben: drizzle lässt in einer Abfrage über eine Tabelle den Tabellennamen weg
-          roomCount: sql<number>`(select count(*)::int from plan_rooms r where r.floor_id = plan_floors.id)`,
+          // Der Baum zählt nur die Räume, nicht Gänge, Treppenhäuser usw.
+          roomCount: sql<number>`(select count(*)::int from plan_areas a where a.floor_id = plan_floors.id and a.kind = 'room')`,
         })
         .from(planFloors)
         .orderBy(asc(planFloors.position), asc(planFloors.createdAt)),
@@ -64,11 +66,11 @@ export class PlansService {
       .where(eq(planFloors.id, id))
       .limit(1);
     if (!row) throw new NotFoundException('Stockwerk nicht gefunden');
-    const [rooms, labels] = await Promise.all([
+    const [areas, labels] = await Promise.all([
       this.db
-        .select({ id: planRooms.id, name: planRooms.name, description: planRooms.description, points: planRooms.points })
-        .from(planRooms)
-        .where(eq(planRooms.floorId, id)),
+        .select({ id: planAreas.id, kind: planAreas.kind, name: planAreas.name, description: planAreas.description, points: planAreas.points })
+        .from(planAreas)
+        .where(eq(planAreas.floorId, id)),
       this.db.select({ id: planLabels.id, text: planLabels.text, x: planLabels.x, y: planLabels.y }).from(planLabels).where(eq(planLabels.floorId, id)),
     ]);
     const f = row.floor;
@@ -77,32 +79,41 @@ export class PlansService {
       name: f.name,
       site: { id: row.site.id, name: row.site.name },
       building: { id: row.building.id, name: row.building.name },
-      rooms: rooms.sort(byName),
+      outline: f.outline,
+      // Flächen ohne Namen zuletzt
+      areas: areas
+        .map((a) => ({ ...a, kind: a.kind as AreaKind, name: a.name ?? '' }))
+        .sort((a, b) => Number(!a.name) - Number(!b.name) || byName(a, b)),
+      walls: f.walls,
+      pillars: f.pillars,
+      openings: f.openings,
       labels,
       plan: planOf(f),
       contentUpdatedAt: f.contentUpdatedAt,
     };
   }
 
-  /** Räume nach Name oder Beschreibung, mit Standort, Gebäude und Stockwerk */
+  /** Flächen mit Namen (Räume, Gänge usw.) nach Name oder Beschreibung, mit Standort, Gebäude und Stockwerk */
   async search(q: string) {
     const pattern = likePattern(q.trim());
-    const rows = await this.db
+    const found = await this.db
       .select({
-        id: planRooms.id,
-        name: planRooms.name,
-        description: planRooms.description,
+        id: planAreas.id,
+        kind: planAreas.kind,
+        name: planAreas.name,
+        description: planAreas.description,
         floorId: planFloors.id,
         floor: planFloors.name,
         building: planBuildings.name,
         site: planSites.name,
       })
-      .from(planRooms)
-      .innerJoin(planFloors, eq(planFloors.id, planRooms.floorId))
+      .from(planAreas)
+      .innerJoin(planFloors, eq(planFloors.id, planAreas.floorId))
       .innerJoin(planBuildings, eq(planBuildings.id, planFloors.buildingId))
       .innerJoin(planSites, eq(planSites.id, planBuildings.siteId))
-      .where(or(ilike(planRooms.name, pattern), ilike(planRooms.description, pattern)))
+      .where(and(isNotNull(planAreas.name), or(ilike(planAreas.name, pattern), ilike(planAreas.description, pattern))))
       .limit(50);
+    const rows = found.map((r) => ({ ...r, kind: r.kind as AreaKind, name: r.name ?? '' }));
     // Treffer im Namen zuerst
     const needle = q.trim().toLowerCase();
     return rows
@@ -227,7 +238,8 @@ export class PlansService {
   /* ---------- Inhalt eines Stockwerks ---------- */
 
   /**
-   * Inhalt eines Stockwerks speichern: Räume und Beschriftungen ersetzen, Plan behalten, ersetzen oder entfernen. Hat
+   * Inhalt eines Stockwerks speichern: Umriss, Flächen, Bauteile und Beschriftungen ersetzen, Plan behalten, ersetzen
+   * oder entfernen. Hat
    * inzwischen jemand anderes gespeichert, gibt es einen Konflikt statt eines stillen Überschreibens.
    */
   async saveContent(id: string, content: FloorContent, image: PlanImage | null) {
@@ -244,11 +256,11 @@ export class PlansService {
         if (content.plan && !content.plan.replace && !floor.planStorageKey) throw new BadRequestException('Kein Plan hinterlegt');
         const plan = await this.planColumns(floor, content, image, (key) => (files.created = key));
         files.replaced = plan.oldKey;
-        await tx.delete(planRooms).where(eq(planRooms.floorId, id));
+        await tx.delete(planAreas).where(eq(planAreas.floorId, id));
         await tx.delete(planLabels).where(eq(planLabels.floorId, id));
-        if (content.rooms.length) {
-          await tx.insert(planRooms).values(
-            content.rooms.map((r) => ({ id: r.id, floorId: id, name: r.name, description: r.description, points: r.points })),
+        if (content.areas.length) {
+          await tx.insert(planAreas).values(
+            content.areas.map((a) => ({ id: a.id, floorId: id, kind: a.kind, name: a.name || null, description: a.description, points: a.points })),
           );
         }
         if (content.labels.length) {
@@ -256,7 +268,14 @@ export class PlansService {
         }
         const [updated] = await tx
           .update(planFloors)
-          .set({ ...plan.columns, contentUpdatedAt: new Date() })
+          .set({
+            ...plan.columns,
+            outline: content.outline,
+            walls: content.walls,
+            pillars: content.pillars,
+            openings: content.openings,
+            contentUpdatedAt: new Date(),
+          })
           .where(eq(planFloors.id, id))
           .returning({ contentUpdatedAt: planFloors.contentUpdatedAt });
         return updated!;
@@ -266,7 +285,7 @@ export class PlansService {
     } catch (err) {
       // Neues Bild nicht liegen lassen, wenn das Speichern scheitert
       if (files.created) await this.storage.remove(files.created).catch(() => undefined);
-      if ((err as { code?: string }).code === '23505') throw new BadRequestException('Ein Raumname kommt im Stockwerk doppelt vor');
+      if ((err as { code?: string }).code === '23505') throw new BadRequestException('Ein Name kommt im Stockwerk doppelt vor');
       if ((err as { code?: string }).code === '23503') throw new NotFoundException('Stockwerk nicht gefunden');
       throw err;
     }

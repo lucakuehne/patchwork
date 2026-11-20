@@ -634,6 +634,55 @@ automatisch gesetzt.
   pro Bildpunkt), `plan_rooms` (Ecken als JSON, eindeutiger Name je Stockwerk) und `plan_labels`. PDF über pdf.js
   (`pdfjs-dist`, Apache-2.0), das erst lädt, wenn jemand ein PDF wählt.
 
+### Stockwerk mit Umriss, Flächen und Bauteilen (bestätigt am 20.11.2026)
+
+- Anlass: Nicht alles in einem Stockwerk ist ein Raum (Gänge, Eingänge, Treppenhäuser, offene Bereiche), und es fehlen
+  das Stockwerk selbst und das Bauliche (Wände, Säulen, Türen, Fenster).
+- Ein Stockwerk besteht aus **Umriss**, **Flächen**, **Bauteilen** und **Beschriftungen**.
+- **Flächen** mit einer Art aus einer festen Liste: Raum, Gang/Flur, Eingang/Foyer, Treppenhaus, Lift, offener Bereich,
+  Schacht, Aussenbereich (Balkon, Terrasse); jede Art mit eigener Farbe, das Treppenhaus mit Treppenstrichen.
+- **Namen** sind nur bei Räumen Pflicht; bei den anderen Arten freiwillig und, wenn gesetzt, eindeutig im Stockwerk.
+  Ohne Namen zeigt der Plan klein die Art. Die Suche findet alle Flächen mit Namen.
+- **Wände** sind eigene Linienzüge mit einer Dicke (keine Wandarten); sie rasten an Ecken von Flächen und anderen
+  Wänden ein. «Wände entlang der Fläche» macht aus den Kanten einer gewählten Fläche Wände.
+- **Säulen** eckig (Breite × Tiefe) oder rund (Durchmesser), Masse in cm, dunkel gefüllt.
+- **Türen und Fenster:** Eine Tür ist eine Öffnung in einer Wand mit Breite und Aufschlagbogen (Seite und Richtung
+  wählbar; ein- oder zweiflüglig oder Öffnung ohne Tür), ein Fenster eine dünne Doppellinie in der Wand.
+- **Umriss** ist Pflicht und umschliesst immer alles im Stockwerk; er wächst mit, wenn Flächen über ihn hinausgehen.
+- **Angaben:** Flächen je Art summiert. **Ebenen** Plan, Flächen, Bauteile und Beschriftungen beim Ansehen und Drucken
+  einzeln ausblendbar.
+- **Bestehende Räume** werden zu Flächen der Art «Raum», die Beschriftungen bleiben.
+- **IT-Objekte** (Netzwerkdosen, Access Points, Drucker, Racks) später als eigener Schritt.
+- Details (bestätigt am 20.11.2026):
+  - Umriss: Ein leeres Stockwerk hat noch keinen; man zeichnet ihn mit «Umriss» (Rechteck oder Vieleck), oder die
+    erste Fläche wird zum Umriss. Wände, Säulen, Türen, Fenster und Beschriftungen gehen erst mit einem Umriss.
+  - Wachsen: Eine Fläche, die über den Umriss hinausgeht, wird mit ihm vereinigt. Sie muss ihn dafür berühren oder
+    überlappen; eine Fläche ganz ausserhalb lehnt Patchwork mit einem Hinweis ab (dann zuerst den Umriss grösser
+    ziehen). Wände, Säulen und Beschriftungen lassen den Umriss nicht wachsen, sie müssen in ihm liegen (Wände mit ihrer
+    Mittellinie, Säulen mit ihrer Mitte).
+  - Der Umriss wird nie von selbst kleiner. Von Hand: Ecken ziehen, Ecke einfügen (Punkt in der Mitte einer Kante
+    ziehen), Ecke entfernen (Doppelklick auf die Ecke); umschliesst er danach nicht mehr alles, springt er zurück und
+    Patchwork sagt warum. Löschen lässt er sich nur, wenn sonst nichts im Stockwerk ist. Ecken einfügen und entfernen
+    geht ebenso bei Flächen und Wänden.
+  - Bestehende Stockwerke erhalten als Umriss das Rechteck um alle Räume und Beschriftungen.
+  - Wände sitzen mittig auf der gezeichneten Linie, Vorgabe 20 cm (die zuletzt gewählte Dicke gilt für die nächste
+    Wand). «Wände entlang der Fläche» (auch beim Umriss) setzt sie mittig auf die Kanten und lässt Kanten aus, auf denen
+    schon eine Wand liegt.
+  - Türen und Fenster sitzen in einer Wand und wandern mit ihr; Vorgaben: Tür 90 cm, zweiflüglige Tür 160 cm, Öffnung
+    100 cm, Fenster 120 cm.
+  - Farben: Raum blau, Gang/Flur sand, Eingang/Foyer grün, Treppenhaus grau mit Treppenstrichen, Lift grau mit Kreuz,
+    offener Bereich gelb, Schacht dunkelgrau mit Kreuz, Aussenbereich türkis mit gestricheltem Rand. Die Fläche in m²
+    steht bei allen Arten ausser Treppenhaus, Lift und Schacht.
+  - Angaben zum Stockwerk: Fläche des Umrisses, je Art Anzahl und m², Anzahl Wände, Säulen, Türen und Fenster.
+  - Der Umriss ist immer sichtbar (keine eigene Ebene). Der Baum zählt weiterhin nur die Räume.
+  - Beim Ansehen lassen sich nur Flächen anklicken; Bauteile wählt man im Bearbeiten.
+- Technisch: Tabelle `plan_areas` (ersetzt `plan_rooms`, Art in `kind`, Name null = ohne Namen, eindeutig je
+  Stockwerk); in `plan_floors` der Umriss (`outline`) und die Bauteile als JSON (`walls`, `pillars`, `openings`; eine
+  Öffnung liegt auf einem Abschnitt ihrer Wand, Mitte als Abstand vom Anfang). Migrationen 0056 bis 0058 (neue Tabelle,
+  Räume übernehmen und Umriss setzen, alte Tabelle weg). Das Speichern prüft, dass alles im Umriss liegt
+  (`plans/plan-shapes.ts`, dieselbe Geometrie im Frontend); das Wachsen rechnet das Frontend mit `polygon-clipping` (MIT).
+  Bildschirm und Druck zeichnen mit derselben Komponente (`PlanDrawing.vue`).
+
 ## Typ wählen und Typ korrigiert (bestätigt am 16.11.2026)
 
 - Anlass: Der Typ wird beim Einordnen im Eingang immer wieder falsch zugewiesen, in beide Richtungen. Umgesetzt werden

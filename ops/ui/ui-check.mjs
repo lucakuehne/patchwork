@@ -2219,7 +2219,7 @@ function makePdf(pageCount) {
 }
 
 await step('plaene', async () => {
-  // Entscheid vom 20.11.2026: Standort → Gebäude → Stockwerk → Raum, massstabsgetreu
+  // Entscheide vom 20.11.2026: Standort → Gebäude → Stockwerk mit Umriss, Flächen und Bauteilen, massstabsgetreu
   await page.goto(`${BASE}/plans`);
   await page.locator('.plans-page h1', { hasText: 'Pläne' }).waitFor();
   if (!(await page.locator('.header .tab', { hasText: 'Pläne' }).count())) throw new Error('Menüpunkt «Pläne» fehlt');
@@ -2254,39 +2254,117 @@ await step('plaene', async () => {
   if (floorNames.join('|') !== '1. OG|EG') throw new Error(`Reihenfolge der Stockwerke: ${floorNames.join(', ')}`);
   await page.locator('.crumbs', { hasText: 'Hauptsitz · Gebäude A · 1. OG' }).waitFor();
 
-  // Bearbeiten: Rechteck ziehen, Namen eintippen, speichern
+  // Bearbeiten: zuerst der Umriss, dann eine Fläche (Rechteck ziehen), Namen eintippen, speichern
   await page.getByRole('button', { name: 'Bearbeiten' }).click();
-  await page.getByRole('button', { name: 'Rechteck', exact: true }).click();
+  const tool = (name) => page.locator('.tools').getByRole('button', { name, exact: true });
+  if (!(await tool('Wand').isDisabled())) throw new Error('«Wand» ohne Umriss nicht gesperrt');
   const stage = page.locator('.stage svg').first();
-  const box = await stage.boundingBox();
+  // Lage der Zeichenfläche jedes Mal neu messen (Fehlermeldungen über ihr können sie verschieben)
+  const at = async (x, y) => {
+    const box = await stage.boundingBox();
+    return [box.x + box.width * x, box.y + box.height * y];
+  };
   const drawRect = async (x1, y1, x2, y2) => {
-    await page.mouse.move(box.x + box.width * x1, box.y + box.height * y1);
+    await page.mouse.move(...(await at(x1, y1)));
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width * ((x1 + x2) / 2), box.y + box.height * ((y1 + y2) / 2), { steps: 4 });
-    await page.mouse.move(box.x + box.width * x2, box.y + box.height * y2, { steps: 4 });
+    await page.mouse.move(...(await at((x1 + x2) / 2, (y1 + y2) / 2)), { steps: 4 });
+    await page.mouse.move(...(await at(x2, y2)), { steps: 4 });
     await page.mouse.up();
   };
+  const toast = (text) => page.locator('.toast', { hasText: text }).last().waitFor();
+  await tool('Umriss').click();
+  await drawRect(0.08, 0.1, 0.75, 0.9);
+  await page.locator('.details h2', { hasText: 'Umriss' }).waitFor();
+  await tool('Fläche').click();
   await drawRect(0.15, 0.15, 0.4, 0.45);
-  await page.locator('#plan-room-name').waitFor();
-  if (!(await page.locator('#plan-room-name').evaluate((el) => el === document.activeElement))) throw new Error('Name des neuen Raums nicht im Fokus');
-  await page.locator('#plan-room-name').fill('Sitzungszimmer Säntis');
-  await page.locator('#plan-room-description').fill('Beamer, 12 Plätze');
+  await page.locator('#plan-area-name').waitFor();
+  if (!(await page.locator('#plan-area-name').evaluate((el) => el === document.activeElement))) throw new Error('Name der neuen Fläche nicht im Fokus');
+  if ((await page.locator('#plan-area-kind').inputValue()) !== 'room') throw new Error('Neue Fläche ist kein Raum');
+  await page.locator('#plan-area-name').fill('Sitzungszimmer Säntis');
+  await page.locator('#plan-area-description').fill('Beamer, 12 Plätze');
   await page.locator('.unsaved', { hasText: 'Ungespeicherte Änderungen' }).waitFor();
   await page.getByRole('button', { name: 'Speichern' }).click();
-  await page.locator('.toast', { hasText: 'Gespeichert' }).waitFor();
+  await toast('Gespeichert');
   await tree.locator('.node.floor', { hasText: '1. OG' }).locator('.count', { hasText: '1 Raum' }).waitFor();
 
   // Doppelter Name im Stockwerk: Speichern geht nicht
   await page.getByRole('button', { name: 'Bearbeiten' }).click();
-  await page.getByRole('button', { name: 'Rechteck', exact: true }).click();
+  await tool('Fläche').click();
   await drawRect(0.5, 0.15, 0.7, 0.45);
-  await page.locator('#plan-room-name').fill('sitzungszimmer säntis');
+  await page.locator('#plan-area-name').fill('sitzungszimmer säntis');
   await page.locator('.details .error-text', { hasText: 'Diesen Namen gibt es in diesem Stockwerk schon' }).waitFor();
   await page.getByRole('button', { name: 'Speichern' }).click();
   await page.locator('.save-error', { hasText: 'doppelt' }).waitFor();
-  await page.locator('#plan-room-name').fill('Sitzungszimmer Pilatus');
+  await page.locator('#plan-area-name').fill('Sitzungszimmer Pilatus');
+
+  // Gang über den Umriss hinaus: der Umriss wächst mit; ganz ausserhalb geht nicht
+  const outlineCorners = async () => ((await page.locator('.stage polygon.outline').getAttribute('points')) ?? '').trim().split(/\s+/).length;
+  if ((await outlineCorners()) !== 4) throw new Error('Umriss kein Rechteck');
+  await tool('Fläche').click();
+  await page.locator('.options select').selectOption('corridor');
+  await drawRect(0.6, 0.55, 0.92, 0.7);
+  await page.locator('.stage polygon.area.k-corridor').waitFor();
+  if ((await outlineCorners()) < 6) throw new Error(`Umriss nicht gewachsen: ${await outlineCorners()} Ecken`);
+  if (await page.locator('#plan-area-name').inputValue()) throw new Error('Gang hat einen Namen');
+  await tool('Fläche').click();
+  await drawRect(0.8, 0.74, 0.92, 0.84);
+  await toast('muss den Umriss berühren');
+  if ((await page.locator('.stage polygon.area').count()) !== 3) throw new Error('Fläche ausserhalb angelegt');
+
+  // Wände entlang der Fläche, Tür und Fenster in der Wand, Säule
+  await tool('Auswählen').click();
+  await page.mouse.click(...(await at(0.27, 0.3)));
+  await page.locator('#plan-area-name').waitFor();
+  if ((await page.locator('#plan-area-name').inputValue()) !== 'Sitzungszimmer Säntis') throw new Error('Säntis nicht gewählt');
+  await page.getByRole('button', { name: 'Wände entlang der Fläche' }).click();
+  await toast('Wand angelegt');
+  await tool('Tür').click();
+  await page.mouse.move(...(await at(0.27, 0.45)));
+  await page.locator('.stage .opening.preview').waitFor({ state: 'attached' });
+  await page.mouse.click(...(await at(0.27, 0.45)));
+  await page.locator('.details h2', { hasText: 'Tür' }).waitFor();
+  await page.getByRole('button', { name: 'Aufschlag wechseln' }).click();
+  await tool('Fenster').click();
+  await page.mouse.move(...(await at(0.3, 0.15)));
+  await page.mouse.click(...(await at(0.3, 0.15)));
+  await page.locator('.details h2', { hasText: 'Fenster' }).waitFor();
+  if ((await page.locator('.stage .opening line.glass').count()) < 5) throw new Error('Fenster nicht gezeichnet');
+  await tool('Säule').click();
+  await page.locator('.options').getByRole('button', { name: 'Rund', exact: true }).click();
+  await page.mouse.click(...(await at(0.55, 0.8)));
+  await page.locator('.details h2', { hasText: 'Säule' }).waitFor();
+  if ((await page.locator('#plan-pillar-width').inputValue()) !== '30') throw new Error('Säule nicht 30 cm');
+
+  // Umriss kleiner ziehen, bis etwas ausserhalb läge: springt zurück
+  await tool('Umriss').click();
+  await page.locator('.details h2', { hasText: 'Umriss' }).waitFor();
+  const corner = await page.locator('.stage circle.handle').first().boundingBox();
+  await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(...(await at(0.45, 0.5)), { steps: 6 });
+  if (!(await page.locator('.stage polygon.outline.invalid').count())) throw new Error('Umriss beim Ziehen nicht als ungültig markiert');
+  await page.mouse.up();
+  await toast('Der Umriss muss alles im Stockwerk umschliessen');
+  if ((await outlineCorners()) < 6) throw new Error('Umriss nicht zurückgesprungen');
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await toast('Gespeichert');
+  await tree.locator('.node.floor', { hasText: '1. OG' }).locator('.count', { hasText: '2 Räume' }).waitFor();
+  await page.getByRole('button', { name: '← Zum Stockwerk' }).click();
+  const facts = await page.locator('.details .facts').innerText();
+  for (const text of ['Umriss', 'Räume', 'Gang/Flur', '1 Wand', '1 Tür', '1 Fenster', '1 Säule']) {
+    if (!facts.includes(text)) throw new Error(`Angaben ohne «${text}»: ${facts}`);
+  }
+  await shot('137-plaene-bauteile');
+
+  // Ebenen: Bauteile ausblenden
+  await page.locator('.layers summary').click();
+  await page.locator('.layers-menu').getByLabel('Bauteile').uncheck();
+  if (await page.locator('.stage .wall').count()) throw new Error('Wände trotz ausgeblendeter Bauteile');
+  await page.locator('.layers-menu').getByLabel('Bauteile').check();
+  await page.locator('.layers summary').click();
 
   // Plan aus einem PDF mit zwei Seiten: Seite wählen, Massstab setzen
+  await page.getByRole('button', { name: 'Bearbeiten' }).click();
   await page.locator('#plan-file').setInputFiles({ name: 'Grundriss.pdf', mimeType: 'application/pdf', buffer: makePdf(2) });
   await dialog.locator('.page img').nth(1).waitFor({ timeout: 30000 });
   await shot('130-plan-pdf-seite');
@@ -2295,15 +2373,14 @@ await step('plaene', async () => {
   await dialog.waitFor({ state: 'detached' });
   await page.locator('.stage image.plan-image').waitFor({ state: 'attached' });
   await page.locator('.plan-status', { hasText: 'Massstab noch nicht gesetzt' }).waitFor();
-  if (!(await page.locator('.tool.active', { hasText: 'Massstab setzen' }).count())) throw new Error('«Massstab setzen» nicht gewählt');
-  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.8);
-  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.8);
+  if (!(await page.getByRole('button', { name: 'Massstab setzen', pressed: true }).count())) throw new Error('«Massstab setzen» nicht gewählt');
+  await page.mouse.click(...(await at(0.2, 0.8)));
+  await page.mouse.click(...(await at(0.6, 0.8)));
   await page.locator('#plan-scale-real').fill('12,5');
   await page.getByRole('button', { name: 'Übernehmen' }).click();
-  await page.locator('.toast', { hasText: 'Massstab gesetzt: 12,50 m' }).waitFor();
+  await toast('Massstab gesetzt: 12,50 m');
   await page.getByRole('button', { name: 'Speichern' }).click();
-  await page.locator('.toast', { hasText: 'Gespeichert' }).last().waitFor();
-  await tree.locator('.node.floor', { hasText: '1. OG' }).locator('.count', { hasText: '2 Räume' }).waitFor();
+  await toast('Gespeichert');
   await shot('131-plaene');
 
   // Suchen, auswählen, messen
@@ -2312,8 +2389,8 @@ await step('plaene', async () => {
   await page.locator('.details h2', { hasText: 'Sitzungszimmer Säntis' }).waitFor();
   if (!(await page.locator('.details', { hasText: 'Beamer, 12 Plätze' }).count())) throw new Error('Beschreibung fehlt');
   await page.getByRole('button', { name: 'Messen', exact: true }).click();
-  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.6);
-  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.6);
+  await page.mouse.click(...(await at(0.2, 0.6)));
+  await page.mouse.click(...(await at(0.5, 0.6)));
   await page.locator('.measure-text').waitFor();
   await shot('132-plaene-suchen-messen');
 
@@ -2331,7 +2408,8 @@ await step('plaene', async () => {
   // Ungespeicherte Änderungen beim Wechsel des Stockwerks: Rückfrage
   await page.getByRole('button', { name: 'Bearbeiten' }).click();
   await page.getByRole('button', { name: 'Beschriftung', exact: true }).click();
-  await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.2);
+  await page.mouse.click(...(await at(0.3, 0.6)));
+  await page.locator('#plan-label-text').waitFor();
   await tree.locator('.node.floor', { hasText: 'EG' }).getByRole('button', { name: 'EG', exact: true }).click();
   await dialog.locator('.leave-text', { hasText: 'ungespeicherte Änderungen' }).waitFor();
   await dialog.getByRole('button', { name: 'Verwerfen' }).click();

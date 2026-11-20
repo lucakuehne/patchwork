@@ -76,5 +76,7 @@ export const api = {
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
+  // Hinweise als Text, z.B. toast.error('Es ist kein aktives Postfach eingerichtet.')
+  if (typeof err === 'string' && err.trim()) return err;
   return 'Unbekannter Fehler';
 }

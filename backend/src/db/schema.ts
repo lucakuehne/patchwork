@@ -20,6 +20,7 @@ import {
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
+import type { PlanOpening, PlanPillar, PlanWall } from '../plans/plan-shapes';
 import type { Recurrence, WeekendRule } from '../recurring/recurrence';
 import type { RuleActions, RuleGroup, RuleSchedule, RuleTrigger } from '../rules/rule-types';
 import type { StoredPreferences } from '../users/preferences';
@@ -870,29 +871,38 @@ export const planFloors = pgTable(
     planY: doublePrecision('plan_y').notNull().default(0),
     /** Massstab über eine bekannte Strecke gesetzt */
     planCalibrated: boolean('plan_calibrated').notNull().default(false),
+    /** Umriss des Stockwerks (Ecken in Metern); Pflicht, sobald etwas im Stockwerk ist, umschliesst alles */
+    outline: jsonb('outline').$type<[number, number][]>(),
+    /** Bauteile: Wände (Linienzüge mit Dicke), Säulen, Türen und Fenster (in einer Wand) */
+    walls: jsonb('walls').$type<PlanWall[]>().notNull().default([]),
+    pillars: jsonb('pillars').$type<PlanPillar[]>().notNull().default([]),
+    openings: jsonb('openings').$type<PlanOpening[]>().notNull().default([]),
     createdAt: createdAt(),
-    /** Letztes Speichern des Inhalts (Räume, Beschriftungen, Plan); erkennt gleichzeitiges Bearbeiten */
+    /** Letztes Speichern des Inhalts (Umriss, Flächen, Bauteile, Beschriftungen, Plan); erkennt gleichzeitiges Bearbeiten */
     contentUpdatedAt: timestamp('content_updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('plan_floors_building_idx').on(t.buildingId)],
 );
 
-export const planRooms = pgTable(
-  'plan_rooms',
+/** Flächen eines Stockwerks: Räume, Gänge, Treppenhäuser usw. (Art in plan-shapes.ts) */
+export const planAreas = pgTable(
+  'plan_areas',
   {
     id: uuid('id').primaryKey(),
     floorId: uuid('floor_id')
       .notNull()
       .references(() => planFloors.id, { onDelete: 'cascade' }),
-    name: text('name').notNull(),
+    kind: text('kind').notNull().default('room'),
+    /** Pflicht bei Räumen, sonst freiwillig (null = ohne Namen) */
+    name: text('name'),
     description: text('description').notNull().default(''),
     /** Ecken in Metern, im Uhrzeigersinn oder dagegen */
     points: jsonb('points').$type<[number, number][]>().notNull(),
   },
   (t) => [
-    index('plan_rooms_floor_idx').on(t.floorId),
-    // Ein Name je Stockwerk, Gross-/Kleinschreibung egal
-    uniqueIndex('plan_rooms_floor_name_uq').on(t.floorId, sql`lower(${t.name})`),
+    index('plan_areas_floor_idx').on(t.floorId),
+    // Ein Name je Stockwerk, Gross-/Kleinschreibung egal (Flächen ohne Namen zählen nicht)
+    uniqueIndex('plan_areas_floor_name_uq').on(t.floorId, sql`lower(${t.name})`),
   ],
 );
 

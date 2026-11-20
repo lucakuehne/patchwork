@@ -1,28 +1,74 @@
 import { computed, reactive } from 'vue';
 import { api } from '../api';
-import type { PlanBackground, PlanFloor, PlanLabel, PlanPoint, PlanRoom } from '../types';
-import { dist, duplicateNames, floorBounds, snap } from './geometry';
+import { useToast } from '../stores/toast';
+import type {
+  PlanArea,
+  PlanAreaKind,
+  PlanBackground,
+  PlanFloor,
+  PlanLabel,
+  PlanOpening,
+  PlanOpeningKind,
+  PlanPillar,
+  PlanPoint,
+  PlanWall,
+} from '../types';
+import {
+  DEFAULT_PILLAR_SIZE,
+  DEFAULT_WALL_THICKNESS,
+  OPENING_DEFAULT_WIDTH,
+  copyPoints,
+  dist,
+  duplicateNames,
+  floorBounds,
+  growOutline,
+  normalizeRing,
+  openingFrame,
+  outsideOutline,
+  pointInPolygon,
+  polygonArea,
+  refitOpening,
+  shapeInPolygon,
+  snap,
+  wallsAlong,
+} from './geometry';
 
 /**
- * Bearbeiten eines Stockwerks (Pläne, Entscheid vom 20.11.2026): Änderungen gelten erst mit «Speichern», «Verwerfen»
- * nimmt alles seit «Bearbeiten» zurück. Standorte, Gebäude und Stockwerke selbst ändern sich sofort (Baum).
+ * Bearbeiten eines Stockwerks (Pläne, Entscheide vom 20.11.2026): Umriss, Flächen, Wände, Säulen, Türen, Fenster und
+ * Beschriftungen. Änderungen gelten erst mit «Speichern», «Verwerfen» nimmt alles seit «Bearbeiten» zurück. Der Umriss
+ * umschliesst immer alles: Flächen lassen ihn wachsen, alles andere muss in ihm liegen.
  */
-export type PlanTool = 'select' | 'rect' | 'poly' | 'label' | 'measure' | 'scale';
+export type PlanTool = 'select' | 'outline' | 'area' | 'wall' | 'pillar' | 'door' | 'window' | 'label' | 'measure' | 'scale';
+export type PlanSelectionKind = 'outline' | 'area' | 'wall' | 'pillar' | 'opening' | 'label';
 export interface PlanSelection {
-  kind: 'room' | 'label';
+  kind: PlanSelectionKind;
   id: string;
 }
+/** Der Umriss hat keine eigene ID */
+export const OUTLINE_ID = 'outline';
 /** Plan im Hintergrund beim Bearbeiten; «file»: neues Bild, kommt mit «Speichern» */
 export type EditablePlan = PlanBackground & { file?: Blob };
 export interface FloorContent {
-  rooms: PlanRoom[];
+  outline: PlanPoint[] | null;
+  areas: PlanArea[];
+  walls: PlanWall[];
+  pillars: PlanPillar[];
+  openings: PlanOpening[];
   labels: PlanLabel[];
   plan: EditablePlan | null;
+}
+/** Ebenen beim Ansehen und Drucken; der Umriss ist immer sichtbar */
+export interface Layers {
+  plan: boolean;
+  areas: boolean;
+  structure: boolean;
+  labels: boolean;
 }
 export interface Line {
   a: PlanPoint;
   b?: PlanPoint;
 }
+export type OpeningDraft = Omit<PlanOpening, 'id'>;
 
 /** UUID auch ohne sichere Verbindung (crypto.randomUUID gibt es nur über HTTPS bzw. localhost) */
 export function newId(): string {
@@ -34,52 +80,76 @@ export function newId(): string {
 }
 
 const clone = (c: FloorContent): FloorContent => ({
-  rooms: c.rooms.map((r) => ({ ...r, points: r.points.map((p): PlanPoint => [p[0], p[1]]) })),
+  outline: c.outline ? copyPoints(c.outline) : null,
+  areas: c.areas.map((a) => ({ ...a, points: copyPoints(a.points) })),
+  walls: c.walls.map((w) => ({ ...w, points: copyPoints(w.points) })),
+  pillars: c.pillars.map((p) => ({ ...p })),
+  openings: c.openings.map((o) => ({ ...o })),
   labels: c.labels.map((l) => ({ ...l })),
   plan: c.plan ? { ...c.plan } : null,
 });
 /** Vergleich ohne das Bild selbst */
 const fingerprint = (c: FloorContent) =>
-  JSON.stringify({ rooms: c.rooms, labels: c.labels, plan: c.plan ? { ...c.plan, url: undefined, file: !!c.plan.file } : null });
+  JSON.stringify({ ...c, plan: c.plan ? { ...c.plan, url: undefined, file: !!c.plan.file } : null });
+
+const NEED_OUTLINE = 'Zeichne zuerst den Umriss des Stockwerks oder eine Fläche.';
+const AREA_OUTSIDE = 'Die Fläche muss den Umriss berühren oder in ihm liegen. Ziehe sonst zuerst den Umriss grösser.';
 
 export function usePlanEditor() {
+  const toast = useToast();
   const state = reactive({
     floor: null as PlanFloor | null,
     draft: null as FloorContent | null,
     tool: 'select' as PlanTool,
     selection: null as PlanSelection | null,
-    /** Rechteck (a, b) oder Vieleck (points) beim Zeichnen */
+    /** Rechteck (a, b) oder Ecken (points) beim Zeichnen von Umriss, Fläche oder Wand */
     drawing: null as { a: PlanPoint; b: PlanPoint } | { points: PlanPoint[] } | null,
     cursor: null as PlanPoint | null,
     measure: null as Line | null,
     scaleLine: null as Line | null,
-    showPlan: true,
-    /** Kurz hervorgehobener Raum (nach der Suche) */
+    layers: { plan: true, areas: true, structure: true, labels: true } as Layers,
+    /** Einstellungen der Werkzeuge; die zuletzt gewählten gelten für das nächste Element */
+    options: {
+      shape: 'rect' as 'rect' | 'poly',
+      areaKind: 'room' as PlanAreaKind,
+      wallThickness: DEFAULT_WALL_THICKNESS,
+      pillarShape: 'rect' as 'rect' | 'round',
+      pillarSize: DEFAULT_PILLAR_SIZE,
+      doorKind: 'door' as Exclude<PlanOpeningKind, 'window'>,
+      widths: { ...OPENING_DEFAULT_WIDTH } as Record<PlanOpeningKind, number>,
+    },
+    /** Tür oder Fenster unter dem Zeiger, bevor man klickt */
+    openingPreview: null as OpeningDraft | null,
+    /** Umriss beim Ziehen einer Ecke: umschliesst nicht mehr alles */
+    outlineInvalid: false,
+    /** Kurz hervorgehobene Fläche (nach der Suche) */
     flashId: null as string | null,
     saving: false,
     saveError: '',
-    /** Raum löschen: Rückfrage offen */
+    /** Fläche löschen: Rückfrage offen */
     confirmDelete: false,
   });
 
   const editing = computed(() => state.draft !== null);
   const content = computed<FloorContent | null>(() => state.draft ?? state.floor);
   const dirty = computed(() => !!state.floor && !!state.draft && fingerprint(state.draft) !== fingerprint(state.floor));
-  const bounds = computed(() => (content.value ? floorBounds(content.value.rooms, content.value.labels, content.value.plan) : null));
-  const selectedRoom = computed(() =>
-    state.selection?.kind === 'room' ? (content.value?.rooms.find((r) => r.id === state.selection!.id) ?? null) : null,
-  );
-  const selectedLabel = computed(() =>
-    state.selection?.kind === 'label' ? (content.value?.labels.find((l) => l.id === state.selection!.id) ?? null) : null,
-  );
+  const bounds = computed(() => (content.value ? floorBounds(content.value, content.value.plan) : null));
+  const pick = <T extends { id: string }>(kind: PlanSelectionKind, list: (c: FloorContent) => T[]) =>
+    computed<T | null>(() => (state.selection?.kind === kind && content.value ? (list(content.value).find((x) => x.id === state.selection!.id) ?? null) : null));
+  const selectedArea = pick('area', (c) => c.areas);
+  const selectedWall = pick('wall', (c) => c.walls);
+  const selectedPillar = pick('pillar', (c) => c.pillars);
+  const selectedOpening = pick('opening', (c) => c.openings);
+  const selectedLabel = pick('label', (c) => c.labels);
+  const outlineSelected = computed(() => state.selection?.kind === 'outline' && !!content.value?.outline);
   /** Was das Speichern verhindert: Räume ohne Namen, doppelte Namen */
   const problems = computed(() => {
     const c = state.draft;
     if (!c) return [];
     const list: string[] = [];
-    const unnamed = c.rooms.filter((r) => !r.name.trim()).length;
+    const unnamed = c.areas.filter((a) => a.kind === 'room' && !a.name.trim()).length;
     if (unnamed) list.push(unnamed === 1 ? 'Ein Raum hat keinen Namen' : `${unnamed} Räume haben keinen Namen`);
-    const dups = duplicateNames(c.rooms.map((r) => r.name));
+    const dups = duplicateNames(c.areas.map((a) => a.name));
     if (dups.length) list.push(`Diese Namen gibt es im Stockwerk doppelt: «${dups.join('», «')}»`);
     return list;
   });
@@ -90,6 +160,8 @@ export function usePlanEditor() {
     state.cursor = null;
     state.measure = null;
     state.scaleLine = null;
+    state.openingPreview = null;
+    state.outlineInvalid = false;
     state.confirmDelete = false;
   }
 
@@ -109,13 +181,19 @@ export function usePlanEditor() {
     resetTools();
   }
 
+  /** Gibt es die Auswahl (noch)? */
+  function exists(sel: PlanSelection, c: FloorContent | null): boolean {
+    if (!c) return false;
+    if (sel.kind === 'outline') return !!c.outline;
+    const list = { area: c.areas, wall: c.walls, pillar: c.pillars, opening: c.openings, label: c.labels }[sel.kind];
+    return list.some((x) => x.id === sel.id);
+  }
+
   function discard() {
     if (state.draft?.plan?.file) URL.revokeObjectURL(state.draft.plan.url);
     state.draft = null;
     state.saveError = '';
-    if (state.selection && !content.value?.[state.selection.kind === 'room' ? 'rooms' : 'labels'].some((x) => x.id === state.selection!.id)) {
-      state.selection = null;
-    }
+    if (state.selection && !exists(state.selection, content.value)) state.selection = null;
     resetTools();
   }
 
@@ -133,7 +211,11 @@ export function usePlanEditor() {
     form.append(
       'content',
       JSON.stringify({
-        rooms: draft.rooms.map((r) => ({ id: r.id, name: r.name.trim(), description: r.description.trim(), points: r.points })),
+        outline: draft.outline,
+        areas: draft.areas.map((a) => ({ id: a.id, kind: a.kind, name: a.name.trim(), description: a.description.trim(), points: a.points })),
+        walls: draft.walls,
+        pillars: draft.pillars,
+        openings: draft.openings,
         labels: draft.labels.map((l) => ({ id: l.id, text: l.text.trim(), x: l.x, y: l.y })),
         plan: plan
           ? { replace: !!plan.file, widthPx: plan.widthPx, heightPx: plan.heightPx, metersPerPx: plan.metersPerPx, x: plan.x, y: plan.y, calibrated: plan.calibrated }
@@ -155,45 +237,261 @@ export function usePlanEditor() {
     }
   }
 
-  function select(kind: PlanSelection['kind'] | null, id?: string) {
-    state.selection = kind && id ? { kind, id } : null;
+  function select(kind: PlanSelectionKind | null, id?: string) {
+    state.selection = kind ? { kind, id: kind === 'outline' ? OUTLINE_ID : (id ?? '') } : null;
+    if (state.selection && !state.selection.id) state.selection = null;
     state.confirmDelete = false;
   }
 
-  function addRoom(points: PlanPoint[]) {
-    if (!state.draft) return;
-    const room: PlanRoom = { id: newId(), name: '', description: '', points };
-    state.draft.rooms.push(room);
+  /** Wände, Säulen, Türen, Fenster und Beschriftungen gehen erst mit einem Umriss */
+  function outlineOrHint(): PlanPoint[] | null {
+    const outline = state.draft?.outline ?? null;
+    if (!outline) toast.error(NEED_OUTLINE);
+    return outline;
+  }
+
+  /* ---------- Umriss ---------- */
+
+  function setOutline(points: PlanPoint[]) {
+    const d = state.draft;
+    if (!d) return;
+    const outline = normalizeRing(points);
+    const outside = outsideOutline(outline, d);
+    if (outside.length) {
+      toast.error(`Der Umriss muss alles im Stockwerk umschliessen, ausserhalb läge: ${outside.slice(0, 4).join(', ')}`);
+      return;
+    }
+    d.outline = outline;
     state.tool = 'select';
     state.drawing = null;
-    select('room', room.id);
+    select('outline');
+  }
+
+  /** Nach dem Ziehen einer Ecke: umschliesst er nicht mehr alles, springt er zurück */
+  function commitOutline(before: PlanPoint[]): boolean {
+    const d = state.draft;
+    state.outlineInvalid = false;
+    if (!d?.outline) return false;
+    const outside = polygonArea(d.outline) < 0.01 ? ['alles'] : outsideOutline(d.outline, d);
+    if (outside.length) {
+      d.outline = before;
+      toast.error(`Der Umriss muss alles im Stockwerk umschliessen, ausserhalb läge: ${outside.slice(0, 4).join(', ')}`);
+      return false;
+    }
+    d.outline = normalizeRing(d.outline);
+    return true;
+  }
+
+  /** Beim Ziehen: umschliesst der Umriss noch alles? */
+  function checkOutline() {
+    const d = state.draft;
+    state.outlineInvalid = !!d?.outline && outsideOutline(d.outline, d).length > 0;
+  }
+
+  /* ---------- Flächen ---------- */
+
+  function addArea(points: PlanPoint[]) {
+    const d = state.draft;
+    if (!d) return;
+    if (!d.outline) d.outline = normalizeRing(points);
+    else {
+      const grown = growOutline(d.outline, points);
+      if (!grown) {
+        toast.error(AREA_OUTSIDE);
+        state.drawing = null;
+        return;
+      }
+      d.outline = grown;
+    }
+    const area: PlanArea = { id: newId(), kind: state.options.areaKind, name: '', description: '', points };
+    d.areas.push(area);
+    state.tool = 'select';
+    state.drawing = null;
+    select('area', area.id);
+  }
+
+  /** Nach dem Verschieben einer Fläche oder einer Ecke: der Umriss wächst mit, ganz ausserhalb springt sie zurück */
+  function commitArea(area: PlanArea, before: PlanPoint[]): boolean {
+    const d = state.draft;
+    if (!d?.outline) return false;
+    const grown = growOutline(d.outline, area.points);
+    if (!grown) {
+      area.points = before;
+      toast.error(AREA_OUTSIDE);
+      return false;
+    }
+    d.outline = grown;
+    return true;
+  }
+
+  /* ---------- Wände ---------- */
+
+  function addWall(points: PlanPoint[], closed: boolean) {
+    const d = state.draft;
+    const outline = outlineOrHint();
+    if (!d || !outline) return;
+    if (!shapeInPolygon(points, closed, outline)) {
+      toast.error('Die Wand muss im Umriss liegen.');
+      return;
+    }
+    const wall: PlanWall = { id: newId(), points, closed, thickness: state.options.wallThickness };
+    d.walls.push(wall);
+    state.drawing = null;
+    state.cursor = null;
+    select('wall', wall.id);
+  }
+
+  /** Wände auf den Kanten einer Fläche oder des Umrisses; Kanten mit Wand fallen weg */
+  function addWallsAlong(points: PlanPoint[]) {
+    const d = state.draft;
+    if (!d || !outlineOrHint()) return;
+    const chains = wallsAlong(points, d.walls);
+    if (!chains.length) {
+      toast.error('Auf allen Kanten liegt schon eine Wand.');
+      return;
+    }
+    for (const c of chains) d.walls.push({ id: newId(), points: c.points, closed: c.closed, thickness: state.options.wallThickness });
+    toast.success(chains.length === 1 ? 'Wand angelegt' : `${chains.length} Wände angelegt`);
+  }
+
+  /** Stand einer Wand vor dem Ziehen, mit ihren Türen und Fenstern */
+  function wallSnapshot(wall: PlanWall) {
+    return {
+      points: copyPoints(wall.points),
+      openings: (state.draft?.openings ?? []).filter((o) => o.wallId === wall.id).map((o) => ({ ...o })),
+    };
+  }
+
+  /** Türen und Fenster folgen ihrer Wand: vom Stand vor dem Ziehen auf die neue Lage; passt eine nicht mehr, fällt sie weg */
+  function refitOpenings(wall: PlanWall, snapshot: ReturnType<typeof wallSnapshot>) {
+    const d = state.draft;
+    if (!d) return;
+    const old: PlanWall = { ...wall, points: snapshot.points };
+    const moved = new Map<string, PlanOpening | null>();
+    for (const o of snapshot.openings) {
+      const f = openingFrame(o, [old]);
+      moved.set(o.id, f ? refitOpening(o, wall, f.c) : null);
+    }
+    d.openings = [...d.openings.filter((o) => !moved.has(o.id)), ...[...moved.values()].filter((o): o is PlanOpening => !!o)];
+  }
+
+  /** Nach dem Ziehen einer Wand oder Ecke: ausserhalb des Umrisses springt sie zurück */
+  function commitWall(wall: PlanWall, snapshot: ReturnType<typeof wallSnapshot>): boolean {
+    const d = state.draft;
+    if (!d?.outline) return false;
+    if (shapeInPolygon(wall.points, wall.closed, d.outline)) {
+      const lost = snapshot.openings.filter((o) => !d.openings.some((x) => x.id === o.id)).length;
+      if (lost) toast.error(lost === 1 ? 'Eine Tür bzw. ein Fenster passte nicht mehr in die Wand und fiel weg.' : `${lost} Türen bzw. Fenster passten nicht mehr in die Wand und fielen weg.`);
+      return true;
+    }
+    wall.points = snapshot.points;
+    d.openings = [...d.openings.filter((o) => o.wallId !== wall.id), ...snapshot.openings];
+    toast.error('Die Wand muss im Umriss liegen.');
+    return false;
+  }
+
+  /* ---------- Säulen, Türen, Fenster, Beschriftungen ---------- */
+
+  function addPillar(p: PlanPoint) {
+    const d = state.draft;
+    const outline = outlineOrHint();
+    if (!d || !outline) return;
+    const at: PlanPoint = [snap(p[0], 0.05), snap(p[1], 0.05)];
+    if (!pointInPolygon(at, outline)) {
+      toast.error('Die Säule muss im Umriss liegen.');
+      return;
+    }
+    const size = state.options.pillarSize;
+    const pillar: PlanPillar = { id: newId(), shape: state.options.pillarShape, x: at[0], y: at[1], width: size, depth: size, rotation: 0 };
+    d.pillars.push(pillar);
+    select('pillar', pillar.id);
+  }
+
+  function addOpening() {
+    const d = state.draft;
+    const preview = state.openingPreview;
+    if (!d || !preview) return;
+    const opening: PlanOpening = { id: newId(), ...preview };
+    d.openings.push(opening);
+    state.openingPreview = null;
+    state.tool = 'select';
+    select('opening', opening.id);
   }
 
   function addLabel(p: PlanPoint) {
-    if (!state.draft) return;
-    const label: PlanLabel = { id: newId(), text: 'Beschriftung', x: snap(p[0]), y: snap(p[1]) };
-    state.draft.labels.push(label);
+    const d = state.draft;
+    const outline = outlineOrHint();
+    if (!d || !outline) return;
+    const at: PlanPoint = [snap(p[0]), snap(p[1])];
+    if (!pointInPolygon(at, outline)) {
+      toast.error('Die Beschriftung muss im Umriss liegen.');
+      return;
+    }
+    const label: PlanLabel = { id: newId(), text: 'Beschriftung', x: at[0], y: at[1] };
+    d.labels.push(label);
     state.tool = 'select';
     select('label', label.id);
   }
+
+  /** Nach dem Ziehen einer Säule oder Beschriftung: ausserhalb des Umrisses springt sie zurück */
+  function commitPoint(item: { x: number; y: number }, before: PlanPoint, what: string): boolean {
+    const outline = state.draft?.outline;
+    if (!outline || pointInPolygon([item.x, item.y], outline)) return true;
+    item.x = before[0];
+    item.y = before[1];
+    toast.error(`${what} muss im Umriss liegen.`);
+    return false;
+  }
+
+  /* ---------- Löschen ---------- */
+
+  /** Kann der Umriss weg? Nur, wenn sonst nichts im Stockwerk ist */
+  const outlineDeletable = computed(() => {
+    const c = content.value;
+    return !!c && !c.areas.length && !c.walls.length && !c.pillars.length && !c.labels.length;
+  });
 
   function deleteSelected() {
     const d = state.draft;
     const sel = state.selection;
     if (!d || !sel) return;
-    if (sel.kind === 'room') d.rooms = d.rooms.filter((r) => r.id !== sel.id);
-    else d.labels = d.labels.filter((l) => l.id !== sel.id);
+    switch (sel.kind) {
+      case 'outline':
+        if (!outlineDeletable.value) {
+          toast.error('Der Umriss lässt sich nur löschen, wenn sonst nichts im Stockwerk ist.');
+          return;
+        }
+        d.outline = null;
+        break;
+      case 'area':
+        d.areas = d.areas.filter((a) => a.id !== sel.id);
+        break;
+      case 'wall':
+        d.walls = d.walls.filter((w) => w.id !== sel.id);
+        d.openings = d.openings.filter((o) => o.wallId !== sel.id);
+        break;
+      case 'pillar':
+        d.pillars = d.pillars.filter((p) => p.id !== sel.id);
+        break;
+      case 'opening':
+        d.openings = d.openings.filter((o) => o.id !== sel.id);
+        break;
+      case 'label':
+        d.labels = d.labels.filter((l) => l.id !== sel.id);
+    }
     select(null);
   }
+
+  /* ---------- Plan im Hintergrund ---------- */
 
   /** Neues Bild als Plan; erster Massstab: so breit wie das Stockwerk bisher, danach «Massstab setzen» */
   function setPlanImage(file: Blob, widthPx: number, heightPx: number) {
     const d = state.draft;
     if (!d) return;
     if (d.plan?.file) URL.revokeObjectURL(d.plan.url);
-    const width = d.rooms.length ? Math.max(bounds.value?.w ?? 30, 10) : 30;
+    const width = d.outline ? Math.max(bounds.value?.w ?? 30, 10) : 30;
     d.plan = { url: URL.createObjectURL(file), widthPx, heightPx, metersPerPx: width / widthPx, x: 0, y: 0, calibrated: false, file };
-    state.showPlan = true;
+    state.layers.plan = true;
     resetTools();
     state.tool = 'scale';
   }
@@ -225,8 +523,13 @@ export function usePlanEditor() {
     content,
     dirty,
     bounds,
-    selectedRoom,
+    selectedArea,
+    selectedWall,
+    selectedPillar,
+    selectedOpening,
     selectedLabel,
+    outlineSelected,
+    outlineDeletable,
     problems,
     resetTools,
     show,
@@ -234,8 +537,20 @@ export function usePlanEditor() {
     discard,
     save,
     select,
-    addRoom,
+    setOutline,
+    commitOutline,
+    checkOutline,
+    addArea,
+    commitArea,
+    addWall,
+    addWallsAlong,
+    wallSnapshot,
+    refitOpenings,
+    commitWall,
+    addPillar,
+    addOpening,
     addLabel,
+    commitPoint,
     deleteSelected,
     setPlanImage,
     removePlan,
