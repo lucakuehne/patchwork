@@ -16,6 +16,7 @@ import type {
 import {
   DEFAULT_PILLAR_SIZE,
   DEFAULT_WALL_THICKNESS,
+  GRID_STEP,
   OPENING_DEFAULT_WIDTH,
   copyPoints,
   dist,
@@ -29,7 +30,6 @@ import {
   polygonArea,
   refitOpening,
   segmentInPolygon,
-  snap,
   wallsAlong,
   type AlongSide,
 } from './geometry';
@@ -129,6 +129,10 @@ export function usePlanEditor() {
     openingPreview: null as OpeningDraft | null,
     /** Umriss beim Ziehen einer Ecke: umschliesst nicht mehr alles */
     outlineInvalid: false,
+    /** Raster bei der aktuellen Ansicht (5 cm, nah 1 cm); setzt die Zeichenfläche */
+    gridStep: GRID_STEP,
+    /** Woran gerade etwas einrastet oder andockt: Ecke bzw. Kanten (Anzeige beim Zeichnen und Ziehen) */
+    snapHint: null as { vertex?: PlanPoint; lines: [PlanPoint, PlanPoint][] } | null,
     /** Kurz hervorgehobene Fläche (nach der Suche) */
     flashId: null as string | null,
     saving: false,
@@ -176,6 +180,7 @@ export function usePlanEditor() {
     state.scaleLine = null;
     state.openingPreview = null;
     state.outlineInvalid = false;
+    state.snapHint = null;
     state.confirmDelete = false;
   }
 
@@ -468,7 +473,8 @@ export function usePlanEditor() {
     const d = state.draft;
     const outline = outlineOrHint();
     if (!d || !outline) return;
-    const at: PlanPoint = [snap(p[0], 0.05), snap(p[1], 0.05)];
+    // Raster und Andocken rechnet die Zeichenfläche
+    const at: PlanPoint = [p[0], p[1]];
     if (!pointInPolygon(at, outline)) {
       toast.error('Die Säule muss im Umriss liegen.');
       return;
@@ -494,7 +500,7 @@ export function usePlanEditor() {
     const d = state.draft;
     const outline = outlineOrHint();
     if (!d || !outline) return;
-    const at: PlanPoint = [snap(p[0]), snap(p[1])];
+    const at: PlanPoint = [p[0], p[1]];
     if (!pointInPolygon(at, outline)) {
       toast.error('Die Beschriftung muss im Umriss liegen.');
       return;

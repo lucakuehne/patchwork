@@ -219,7 +219,7 @@ const HINTS: Record<'view' | 'edit', Partial<Record<PlanTool, string>>> = {
     select:
       'Anklicken wählt aus, Shift+Klick wählt mehrere Wände. Flächen, Wände, Säulen, Türen und Beschriftungen lassen sich ziehen. Bei der gewählten Form: Ecken ziehen, Punkt in der Kantenmitte ziehen fügt eine Ecke ein, Doppelklick entfernt sie. Entf löscht.',
     wall: 'Wand: Anfang anklicken, dann jeden weiteren Punkt; jedes gerade Stück wird eine eigene Wand. Doppelklick, Eingabetaste oder Esc beendet, Klick auf den ersten Punkt schliesst. Rücktaste nimmt die letzte Wand zurück.',
-    pillar: 'Säule: an die Stelle klicken. Form und Grösse oben, danach rechts änderbar.',
+    pillar: 'Säule: an die Stelle klicken; sie dockt an Wände, Kanten und andere Säulen an (mit Alt frei). Form und Grösse oben, danach rechts änderbar.',
     door: 'Tür: auf eine Wand klicken. Anschlag und Aufschlag stellst du danach rechts ein.',
     window: 'Fenster: auf eine Wand klicken.',
     label: 'Beschriftung: an die Stelle klicken, z.B. für Notausgang oder Haupteingang.',
@@ -228,7 +228,7 @@ const HINTS: Record<'view' | 'edit', Partial<Record<PlanTool, string>>> = {
   },
 };
 const DRAW_HINTS = {
-  rect: 'an einer Ecke drücken und zur gegenüberliegenden ziehen. Raster 5 cm, rastet an Ecken und Kanten ein.',
+  rect: 'an einer Ecke drücken und zur gegenüberliegenden ziehen; rastet an Ecken und Kanten ein, auch an Wandseiten (mit Alt frei).',
   poly: 'Ecken nacheinander anklicken, zum Abschliessen die erste Ecke anklicken oder doppelklicken. Rücktaste nimmt die letzte Ecke weg.',
 };
 const hint = computed(() => {

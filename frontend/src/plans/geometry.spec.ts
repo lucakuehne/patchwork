@@ -23,6 +23,13 @@ import {
   snapCandidates,
   snapEdges,
   snapPoint,
+  snapDetail,
+  snapTargets,
+  dockShift,
+  dockCircle,
+  pillarPolygon,
+  gridStepFor,
+  edges,
   stairLines,
   wallPolygons,
   wallsAlong,
@@ -211,6 +218,66 @@ describe('Wände', () => {
     expect(round(wallPolygons([outer, inner, t]).get('t')!)).toEqual([[2.95, 2], [2.95, 0], [3.05, 0], [3.05, 2]]);
     // Freies Ende: gerade abgeschnitten
     expect(round(wallPolygons([wall([0, 0], [2, 0])]).get('w')!)).toEqual([[0, -0.1], [2, -0.1], [2, 0.1], [0, 0.1]]);
+  });
+});
+
+describe('Raster, Einrasten und Andocken', () => {
+  // Zwei Wände 20 cm dick (mittig): oben von (0,0) nach (6,0), links von (0,0) nach (0,4); Innenseiten bei y = 0.1 und x = 0.1
+  const top = wall([0, 0], [6, 0], { id: 'top' });
+  const left = wall([0, 0], [0, 4], { id: 'left' });
+  const floor = shapes({ outline: rectPoints(-1, -1, 10, 10), walls: [top, left] });
+
+  it('Raster 5 cm, nah herangezoomt 1 cm', () => {
+    expect(gridStepFor(26)).toBe(0.05);
+    expect(gridStepFor(150)).toBe(0.01);
+    expect(snapPoint([1.234, 2.346], [], 0.35, [], 0.01)).toEqual([1.23, 2.35]);
+  });
+
+  it('sagt, woran der Punkt einrastet', () => {
+    const t = snapTargets(floor, { faces: true });
+    expect(snapDetail([0.12, 0.09], t.points, 0.05, t.lines).vertex).toEqual([0.1, 0.1]);
+    const onFace = snapDetail([2.02, 0.12], t.points, 0.05, t.lines, 0.01);
+    expect(onFace.p).toEqual([2.02, 0.1]);
+    expect(onFace.edge).toBeDefined();
+    // Ohne Seiten der Wände nur die Linie der Wand
+    const axis = snapTargets(floor, { faces: false });
+    expect(snapDetail([2.02, 0.03], axis.points, 0.05, axis.lines, 0.01).p).toEqual([2.02, 0]);
+  });
+
+  it('eckige Säule dockt an eine Wandseite, in der Ecke an beide', () => {
+    const lines = snapTargets(floor, { faces: true }).lines;
+    // 30 cm, Mitte 3 cm unter der Wand: die Oberkante (y = 0.27 - 0.15 = 0.12) dockt an die Seite bei y = 0.1
+    const near = dockShift(edges(pillarPolygon({ x: 3, y: 0.27, width: 0.3, depth: 0.3, rotation: 0 }), true), lines, 0.1);
+    expect([near.dx, Number(near.dy.toFixed(6))]).toEqual([0, -0.02]);
+    expect(near.lines).toHaveLength(1);
+    // In der Ecke: an beide Wände
+    const corner = dockShift(edges(pillarPolygon({ x: 0.3, y: 0.28, width: 0.3, depth: 0.3, rotation: 0 }), true), lines, 0.1);
+    expect([Number(corner.dx.toFixed(6)), Number(corner.dy.toFixed(6))]).toEqual([-0.05, -0.03]);
+    expect(corner.lines).toHaveLength(2);
+    // Zu weit weg oder schräg: nichts
+    expect(dockShift(edges(pillarPolygon({ x: 3, y: 0.6, width: 0.3, depth: 0.3, rotation: 0 }), true), lines, 0.1).lines).toEqual([]);
+    expect(dockShift(edges(pillarPolygon({ x: 3, y: 0.3, width: 0.3, depth: 0.3, rotation: 30 }), true), lines, 0.1).lines).toEqual([]);
+  });
+
+  it('runde Säule dockt mit ihrem Rand an', () => {
+    const lines = snapTargets(floor, { faces: true }).lines;
+    const dock = dockCircle([3, 0.35], 0.2, lines, 0.1);
+    expect([dock.dx, Number(dock.dy.toFixed(6))]).toEqual([0, -0.05]);
+  });
+
+  it('Fläche dockt mit ihrer Kante an eine Wandseite', () => {
+    const lines = snapTargets(floor, { faces: true }).lines;
+    const dock = dockShift(edges(rectPoints(0.16, 0.13, 3, 2), true), lines, 0.1);
+    expect([Number(dock.dx.toFixed(6)), Number(dock.dy.toFixed(6))]).toEqual([-0.06, -0.03]);
+  });
+
+  it('Säule im Umriss eckig gedreht', () => {
+    expect(pillarPolygon({ x: 1, y: 1, width: 0.4, depth: 0.2, rotation: 90 }).map(([x, y]) => [Number(x.toFixed(6)), Number(y.toFixed(6))])).toEqual([
+      [1.1, 0.8],
+      [1.1, 1.2],
+      [0.9, 1.2],
+      [0.9, 0.8],
+    ]);
   });
 });
 

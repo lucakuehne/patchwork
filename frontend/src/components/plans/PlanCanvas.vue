@@ -2,24 +2,30 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import PlanDrawing from './PlanDrawing.vue';
 import {
+  FREE_STEP,
   VERTEX_SNAP,
   bbox,
   connectedEnds,
   copyPoints,
   dist,
+  dockCircle,
+  dockShift,
+  edges,
   formatNumber,
+  gridStepFor,
   isRect,
   nearestWall,
   niceLength,
+  pillarPolygon,
   placeOnSegment,
   pointInPolygon,
   rectPoints,
   segmentInPolygon,
   snap,
-  snapCandidates,
-  snapEdges,
-  snapPoint,
+  snapDetail,
+  snapTargets,
   type Box,
+  type Dock,
 } from '../../plans/geometry';
 import { OUTLINE_ID, type PlanEditor } from '../../plans/editor';
 import { useToast } from '../../stores/toast';
@@ -29,7 +35,8 @@ import type { PlanPoint, PlanWall } from '../../types';
  * Zeichenfläche eines Stockwerks (Pläne, Entscheide vom 20.11.2026). Ansehen: Ziehen verschiebt, Mausrad vergrössert,
  * Klick auf eine Fläche wählt sie. Bearbeiten: Umriss, Flächen (Rechteck oder Vieleck), Wände (gerade Stücke, Klick für
  * Klick), Säulen, Türen, Fenster und Beschriftungen; Ecken ziehen, in der Mitte einer Kante eine Ecke einfügen,
- * Doppelklick auf eine Ecke entfernt sie; Shift+Klick wählt mehrere Wände. Raster 5 cm, Ecken und Kanten rasten ein.
+ * Doppelklick auf eine Ecke entfernt sie; Shift+Klick wählt mehrere Wände. Raster 5 cm, nah herangezoomt 1 cm; Ecken
+ * und Kanten rasten ein, Säulen und Flächen docken an Wandseiten und Kanten an; mit Alt frei (Entscheid vom 24.11.2026).
  */
 const props = defineProps<{ editor: PlanEditor }>();
 const editor = props.editor;
@@ -81,7 +88,7 @@ function toWorld(e: { clientX: number; clientY: number }): PlanPoint {
   return [p.x, p.y];
 }
 
-/* Raster beim Bearbeiten: 1 m, alle 5 m kräftiger */
+/* Raster beim Bearbeiten: 1 m, alle 5 m kräftiger; nah herangezoomt zusätzlich fein alle 10 cm */
 const gridLines = computed(() => {
   if (!editor.editing.value) return [];
   const v = view.value;
@@ -90,18 +97,71 @@ const gridLines = computed(() => {
   const y0 = Math.floor(v.y);
   const y1 = Math.ceil(v.y + v.h);
   if (x1 - x0 > 300 || y1 - y0 > 300) return [];
-  const lines: { x1: number; y1: number; x2: number; y2: number; strong: boolean }[] = [];
-  for (let x = x0; x <= x1; x++) lines.push({ x1: x, y1: y0, x2: x, y2: y1, strong: x % 5 === 0 });
-  for (let y = y0; y <= y1; y++) lines.push({ x1: x0, y1: y, x2: x1, y2: y, strong: y % 5 === 0 });
+  const lines: { x1: number; y1: number; x2: number; y2: number; strong: boolean; fine?: boolean }[] = [];
+  const fine = px.value >= 120 && (x1 - x0) * (y1 - y0) < 400;
+  for (let x = x0; x <= x1; x++) {
+    lines.push({ x1: x, y1: y0, x2: x, y2: y1, strong: x % 5 === 0 });
+    if (fine && x < x1) for (let k = 1; k < 10; k++) lines.push({ x1: x + k / 10, y1: y0, x2: x + k / 10, y2: y1, strong: false, fine: true });
+  }
+  for (let y = y0; y <= y1; y++) {
+    lines.push({ x1: x0, y1: y, x2: x1, y2: y, strong: y % 5 === 0 });
+    if (fine && y < y1) for (let k = 1; k < 10; k++) lines.push({ x1: x0, y1: y + k / 10, x2: x1, y2: y + k / 10, strong: false, fine: true });
+  }
   return lines;
 });
+// Raster je Ansicht: 5 cm, nah herangezoomt 1 cm
+watch(
+  px,
+  (value) => {
+    state.gridStep = gridStepFor(value);
+  },
+  { immediate: true },
+);
+/** Alt gedrückt: frei, ohne Raster, Einrasten und Andocken (auf den Millimeter) */
+let free = false;
+const step = () => (free ? FREE_STEP : state.gridStep);
+const snapRadius = () => Math.min(VERTEX_SNAP, 14 / px.value);
+/** Andocken bis 12 Bildpunkte, höchstens 60 cm */
+const dockRadius = () => Math.min(0.6, 12 / px.value);
 
 const pointsAttr = (points: PlanPoint[]) => points.map((p) => p.join(',')).join(' ');
-/** Einrasten an Ecken und Kanten (ohne die gerade bearbeiteten Formen), näher gezoomt mit kleinerem Radius */
-function snapAt(p: PlanPoint, exceptLists: PlanPoint[][] = [], exceptWallIds: string[] = []): PlanPoint {
+/**
+ * Einrasten an Ecken und Kanten (ohne die gerade bearbeiteten Formen), näher gezoomt mit kleinerem Radius; mit «faces»
+ * auch an den Seiten der Wände und Säulen (für Flächen, Umriss und Messen). Merkt sich die Stelle für die Anzeige.
+ */
+function snapAt(p: PlanPoint, opts: { faces?: boolean; exceptLists?: PlanPoint[][]; exceptWallIds?: string[] } = {}): PlanPoint {
   const c = content.value;
-  if (!c) return [snap(p[0]), snap(p[1])];
-  return snapPoint(p, snapCandidates(c, exceptLists), Math.min(VERTEX_SNAP, 14 / px.value), snapEdges(c, exceptLists, exceptWallIds));
+  if (free || !c) {
+    state.snapHint = null;
+    return [snap(p[0], step()), snap(p[1], step())];
+  }
+  const targets = snapTargets(c, { faces: !!opts.faces, exceptLists: opts.exceptLists, exceptWallIds: opts.exceptWallIds });
+  const r = snapDetail(p, targets.points, snapRadius(), targets.lines, step());
+  state.snapHint = r.vertex ? { vertex: r.vertex, lines: [] } : r.edge ? { lines: [r.edge] } : null;
+  return r.p;
+}
+/** Angedockt: Kanten für die Anzeige merken */
+function showDock(dock: Dock) {
+  state.snapHint = dock.lines.length ? { lines: dock.lines } : null;
+}
+/**
+ * Lage einer Säule: am Raster, dann mit ihrer Seite (eckig) bzw. ihrem Rand (rund) an Wandseiten, Kanten von Flächen
+ * und Umriss und an andere Säulen andocken; in Ecken an beide Seiten.
+ */
+function pillarAt(p: PlanPoint, pillar: { shape: 'rect' | 'round'; width: number; depth: number; rotation: number }, exceptId?: string): PlanPoint {
+  const base: PlanPoint = [snap(p[0], step()), snap(p[1], step())];
+  const c = content.value;
+  if (free || !c) {
+    state.snapHint = null;
+    return base;
+  }
+  const { lines } = snapTargets(c, { faces: true, exceptPillarId: exceptId });
+  const dock =
+    pillar.shape === 'round'
+      ? dockCircle(base, pillar.width / 2, lines, dockRadius())
+      : dockShift(edges(pillarPolygon({ ...pillar, x: base[0], y: base[1] }), true), lines, dockRadius());
+  showDock(dock);
+  return [Number((base[0] + dock.dx).toFixed(6)), Number((base[1] + dock.dy).toFixed(6))];
 }
 const closeDistance = () => Math.max(0.3, 10 / px.value);
 
@@ -179,7 +239,8 @@ const lines = computed(() =>
       return { a: line!.a, b, text: b ? `${formatNumber(dist(line!.a, b), 2)} m${scale ? ' (laut Plan)' : ''}` : '' };
     }),
 );
-const pillarGhost = computed(() => (state.tool === 'pillar' && state.cursor ? { x: snap(state.cursor[0]), y: snap(state.cursor[1]) } : null));
+/** Säule unter dem Zeiger, schon angedockt (state.cursor ist beim Werkzeug «Säule» die angedockte Mitte) */
+const pillarGhost = computed(() => (state.tool === 'pillar' && state.cursor ? { x: state.cursor[0], y: state.cursor[1] } : null));
 
 /* Massstabsleiste */
 const scalebar = computed(() => {
@@ -210,6 +271,7 @@ function setEnd(ref: EndRef, p: PlanPoint) {
 
 function onPointerDown(e: PointerEvent) {
   if (e.button !== 0 || !content.value) return;
+  free = e.altKey;
   const p = toWorld(e);
   const target = e.target as Element;
   const edit = editor.editing.value;
@@ -282,7 +344,7 @@ function onPointerDown(e: PointerEvent) {
     }
     case 'outline':
     case 'area': {
-      const q = snapAt(p);
+      const q = snapAt(p, { faces: true });
       if (state.options.shape === 'rect') {
         state.drawing = { a: q, b: q };
         return;
@@ -296,7 +358,8 @@ function onPointerDown(e: PointerEvent) {
       wallClick(p);
       return;
     case 'pillar':
-      editor.addPillar(snapAt(p));
+      editor.addPillar(pillarAt(p, { shape: state.options.pillarShape, width: state.options.pillarSize, depth: state.options.pillarSize, rotation: 0 }));
+      state.snapHint = null;
       return;
     case 'door':
     case 'window':
@@ -310,7 +373,7 @@ function onPointerDown(e: PointerEvent) {
     case 'scale': {
       const key = state.tool === 'measure' ? 'measure' : 'scaleLine';
       const line = state[key];
-      const q = state.tool === 'measure' ? snapAt(p) : p;
+      const q = state.tool === 'measure' ? snapAt(p, { faces: true }) : p;
       state[key] = !line?.a || line.b ? { a: q } : { a: line.a, b: q };
       state.cursor = null;
     }
@@ -367,6 +430,7 @@ function finishDrawing() {
 
 function onPointerMove(e: PointerEvent) {
   if (!content.value) return;
+  free = e.altKey;
   const p = toWorld(e);
   const d = state.draft;
   if (drag?.kind === 'pan') {
@@ -379,21 +443,29 @@ function onPointerMove(e: PointerEvent) {
   if (drag?.kind === 'vertex') {
     const pts = livePoints(drag.shape, drag.id);
     if (!pts) return;
-    pts[drag.index] = snapAt(p, [pts]);
+    pts[drag.index] = snapAt(p, { faces: true, exceptLists: [pts] });
     if (drag.shape === 'outline') editor.checkOutline();
     return;
   }
   if (drag?.kind === 'move') {
-    // Verschieben um ganze 5 cm; die Form selbst bleibt, wie sie ist
-    const dx = snap(p[0] - drag.start[0]);
-    const dy = snap(p[1] - drag.start[1]);
-    setLivePoints('area', drag.id, drag.before.map(([x, y]): PlanPoint => [x + dx, y + dy]));
+    // Verschieben am Raster (die Form selbst bleibt, wie sie ist), dann mit einer Kante an Wandseiten, andere Flächen
+    // oder den Umriss andocken
+    const dx = snap(p[0] - drag.start[0], step());
+    const dy = snap(p[1] - drag.start[1], step());
+    let moved = drag.before.map(([x, y]): PlanPoint => [x + dx, y + dy]);
+    if (!free && content.value) {
+      const { lines } = snapTargets(content.value, { faces: true, exceptAreaId: drag.id });
+      const dock = dockShift(edges(moved, true), lines, dockRadius());
+      showDock(dock);
+      moved = moved.map(([x, y]): PlanPoint => [Number((x + dock.dx).toFixed(6)), Number((y + dock.dy).toFixed(6))]);
+    } else state.snapHint = null;
+    setLivePoints('area', drag.id, moved);
     return;
   }
   if (drag?.kind === 'wallEnd' && d) {
     const moving = drag.ends.map((r) => pointOf(r)).filter((x): x is PlanPoint => !!x);
     const ids = [...new Set(drag.ends.map((r) => r.id))];
-    const q = snapAt(p, [moving], ids);
+    const q = snapAt(p, { exceptLists: [moving], exceptWallIds: ids });
     for (const r of drag.ends) setEnd(r, q);
     editor.refitOpenings(drag.snapshot);
     return;
@@ -401,8 +473,8 @@ function onPointerMove(e: PointerEvent) {
   if (drag?.kind === 'wallMove' && d) {
     const id = drag.id;
     const before = drag.snapshot.walls.find((w) => w.id === id)!;
-    const dx = snap(p[0] - drag.start[0]);
-    const dy = snap(p[1] - drag.start[1]);
+    const dx = snap(p[0] - drag.start[0], step());
+    const dy = snap(p[1] - drag.start[1], step());
     const a: PlanPoint = [before.a[0] + dx, before.a[1] + dy];
     const b: PlanPoint = [before.b[0] + dx, before.b[1] + dy];
     setEnd({ id: drag.id, end: 'a' }, a);
@@ -414,42 +486,55 @@ function onPointerMove(e: PointerEvent) {
   }
   if (drag?.kind === 'point' && d) {
     const id = drag.id;
-    const item = drag.what === 'pillar' ? d.pillars.find((x) => x.id === id) : d.labels.find((x) => x.id === id);
-    if (!item) return;
-    item.x = snap(drag.before[0] + p[0] - drag.start[0]);
-    item.y = snap(drag.before[1] + p[1] - drag.start[1]);
+    const target: PlanPoint = [drag.before[0] + p[0] - drag.start[0], drag.before[1] + p[1] - drag.start[1]];
+    if (drag.what === 'pillar') {
+      const pillar = d.pillars.find((x) => x.id === id);
+      if (!pillar) return;
+      [pillar.x, pillar.y] = pillarAt(target, pillar, pillar.id);
+      return;
+    }
+    const label = d.labels.find((x) => x.id === id);
+    if (!label) return;
+    label.x = snap(target[0], step());
+    label.y = snap(target[1], step());
     return;
   }
   if (drag?.kind === 'opening' && d) {
     const id = drag.id;
     const o = d.openings.find((x) => x.id === id);
     const hit = o ? nearestWall(p, d.walls, 1) : null;
-    const offset = o && hit ? placeOnSegment(hit.along, hit.length, o.width) : null;
+    const offset = o && hit ? placeOnSegment(hit.along, hit.length, o.width, step()) : null;
     if (o && hit && offset !== null) Object.assign(o, { wallId: hit.wall.id, offset });
     return;
   }
   if ((state.tool === 'outline' || state.tool === 'area') && state.drawing && 'a' in state.drawing) {
-    state.drawing.b = snapAt(p);
+    state.drawing.b = snapAt(p, { faces: true });
     return;
   }
   if (state.tool === 'door' || state.tool === 'window') {
     const kind = state.tool === 'window' ? 'window' : state.options.doorKind;
     const width = state.options.widths[kind];
     const hit = d ? nearestWall(p, d.walls, 12 / px.value) : null;
-    const offset = hit ? placeOnSegment(hit.along, hit.length, width) : null;
+    const offset = hit ? placeOnSegment(hit.along, hit.length, width, step()) : null;
     state.openingPreview = hit && offset !== null ? { wallId: hit.wall.id, offset, width, kind, hinge: 'start', side: 'left' } : null;
     return;
   }
   const waiting = (l: { a: PlanPoint; b?: PlanPoint } | null) => !!l?.a && !l.b;
-  if (['outline', 'area', 'wall', 'pillar'].includes(state.tool) || (state.tool === 'measure' && waiting(state.measure))) {
-    state.cursor = snapAt(p);
-  } else if (state.tool === 'scale' && waiting(state.scaleLine)) state.cursor = p;
+  if (state.tool === 'pillar') {
+    state.cursor = pillarAt(p, { shape: state.options.pillarShape, width: state.options.pillarSize, depth: state.options.pillarSize, rotation: 0 });
+  } else if (['outline', 'area', 'wall'].includes(state.tool) || (state.tool === 'measure' && waiting(state.measure))) {
+    state.cursor = snapAt(p, { faces: state.tool !== 'wall' });
+  } else {
+    if (state.tool === 'scale' && waiting(state.scaleLine)) state.cursor = p;
+    state.snapHint = null;
+  }
 }
 
 function onPointerUp() {
   const dr = drag;
   drag = null;
   panning.value = false;
+  if (dr) state.snapHint = null;
   const d = state.draft;
   if (dr?.kind === 'pan' && !dr.moved) editor.select(dr.areaId ? 'area' : null, dr.areaId ?? undefined);
   if (dr?.kind === 'vertex' && d) commitShape(dr.shape, dr.id, dr.before);
@@ -506,7 +591,13 @@ function onWheel(e: WheelEvent) {
   zoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, toWorld(e));
 }
 
+/** Alt beim Bearbeiten: frei zeichnen, ohne dass der Browser sein Menü öffnet */
+function onAltKey(e: KeyboardEvent) {
+  if (e.key === 'Alt' && editor.editing.value) e.preventDefault();
+}
+
 function onKey(e: KeyboardEvent) {
+  onAltKey(e);
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement as HTMLElement | null)?.tagName ?? '');
   const drawing = state.drawing && 'points' in state.drawing ? state.drawing : null;
   if (e.key === 'Escape') {
@@ -552,10 +643,12 @@ onMounted(() => {
   });
   if (svg.value) observer.observe(svg.value);
   document.addEventListener('keydown', onKey);
+  document.addEventListener('keyup', onAltKey);
 });
 onBeforeUnmount(() => {
   observer?.disconnect();
   document.removeEventListener('keydown', onKey);
+  document.removeEventListener('keyup', onAltKey);
 });
 // Anderes Stockwerk: ganzes Stockwerk zeigen
 watch(
@@ -569,6 +662,7 @@ watch(
   () => {
     state.openingPreview = null;
     state.cursor = null;
+    state.snapHint = null;
   },
 );
 </script>
@@ -585,7 +679,10 @@ watch(
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
       @pointercancel="onPointerUp"
-      @pointerleave="state.openingPreview = null"
+      @pointerleave="
+        state.openingPreview = null;
+        state.snapHint = null;
+      "
       @dblclick="onDblClick"
       @wheel.prevent="onWheel"
     >
@@ -594,7 +691,7 @@ watch(
           v-for="(l, i) in gridLines"
           :key="i"
           class="grid"
-          :class="{ strong: l.strong }"
+          :class="{ strong: l.strong, fine: l.fine }"
           :x1="l.x1"
           :y1="l.y1"
           :x2="l.x2"
@@ -670,6 +767,20 @@ watch(
         <rect v-else :x="-state.options.pillarSize / 2" :y="-state.options.pillarSize / 2" :width="state.options.pillarSize" :height="state.options.pillarSize" />
       </g>
 
+      <!-- Woran gerade etwas einrastet oder andockt -->
+      <g v-if="editor.editing.value && state.snapHint" class="snap-hint">
+        <line
+          v-for="(l, i) in state.snapHint.lines"
+          :key="`s-${i}`"
+          :x1="l[0][0]"
+          :y1="l[0][1]"
+          :x2="l[1][0]"
+          :y2="l[1][1]"
+          vector-effect="non-scaling-stroke"
+        />
+        <circle v-if="state.snapHint.vertex" :cx="state.snapHint.vertex[0]" :cy="state.snapHint.vertex[1]" :r="8 / px" vector-effect="non-scaling-stroke" />
+      </g>
+
       <!-- Messen und Massstab setzen -->
       <g v-for="(l, i) in lines" :key="`m-${i}`">
         <circle class="measure-dot" :cx="l.a[0]" :cy="l.a[1]" :r="4 / px" />
@@ -694,6 +805,7 @@ watch(
     <div class="scalebar" aria-hidden="true">
       <div class="bar" :style="{ width: `${scalebar.width}px` }" />
       <span>{{ scalebar.text }}</span>
+      <span v-if="editor.editing.value" class="grid-info">Raster {{ Math.round(state.gridStep * 100) }} cm · Alt: frei</span>
     </div>
     <svg class="north" viewBox="0 0 34 44" aria-label="Norden oben">
       <path d="M17 4 L25 24 L17 19 L9 24 Z" fill="currentColor" />
@@ -739,6 +851,24 @@ watch(
 }
 .grid.strong {
   stroke: var(--border);
+}
+.grid.fine {
+  stroke: color-mix(in srgb, var(--surface-2) 55%, transparent);
+}
+.snap-hint line {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-dasharray: 6 3;
+  pointer-events: none;
+}
+.snap-hint circle {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.grid-info {
+  margin-top: 2px;
 }
 .handle {
   fill: var(--surface);

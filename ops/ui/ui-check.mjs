@@ -2336,6 +2336,27 @@ await step('plaene', async () => {
   await page.locator('.details h2', { hasText: 'Säule' }).waitFor();
   if ((await page.locator('#plan-pillar-width').inputValue()) !== '30') throw new Error('Säule nicht 30 cm');
 
+  // Eckige Säule dockt an die Aussenseite der Wand von Säntis; die Stelle wird angezeigt
+  await page.locator('.options').getByRole('button', { name: 'Eckig', exact: true }).click();
+  await page.mouse.move(...(await at(0.14, 0.3)));
+  await page.locator('.stage .snap-hint line').first().waitFor({ state: 'attached' });
+  await page.mouse.click(...(await at(0.14, 0.3)));
+  const gap = await page.evaluate(() => {
+    const pillar = [...document.querySelectorAll('.stage g.pillar')].at(-1).getBoundingClientRect();
+    const walls = [...document.querySelectorAll('.stage polygon.wall')].map((w) => w.getBoundingClientRect());
+    return Math.min(...walls.filter((w) => w.top <= pillar.bottom && w.bottom >= pillar.top).map((w) => Math.abs(w.left - pillar.right)));
+  });
+  if (!(gap < 1.5)) throw new Error(`Säule nicht an die Wand angedockt: ${gap} px Abstand`);
+
+  // Raster: 5 cm, nah herangezoomt 1 cm
+  const gridInfo = page.locator('.stage .grid-info');
+  if (!(await gridInfo.innerText()).includes('Raster 5 cm')) throw new Error(`Raster: ${await gridInfo.innerText()}`);
+  const zoomIn = page.getByRole('button', { name: 'Vergrössern' });
+  const zoomOut = page.getByRole('button', { name: 'Verkleinern' });
+  for (let i = 0; i < 8; i++) await zoomIn.click();
+  if (!(await gridInfo.innerText()).includes('Raster 1 cm')) throw new Error(`Raster nah: ${await gridInfo.innerText()}`);
+  for (let i = 0; i < 8; i++) await zoomOut.click();
+
   // Wände Stück für Stück: jeder Klick eine Wand, Eingabetaste beendet; die neuen Wände sind gewählt
   await tool('Wand').click();
   await page.locator('.options input[aria-label="Dicke der Wand in cm"]').fill('20');
@@ -2372,7 +2393,7 @@ await step('plaene', async () => {
   await tree.locator('.node.floor', { hasText: '1. OG' }).locator('.count', { hasText: '2 Räume' }).waitFor();
   await page.getByRole('button', { name: '← Zum Stockwerk' }).click();
   const facts = await page.locator('.details .facts').innerText();
-  for (const text of ['Umriss', 'Räume', 'Gang/Flur', '6 Wände', '1 Tür', '1 Fenster', '1 Säule']) {
+  for (const text of ['Umriss', 'Räume', 'Gang/Flur', '6 Wände', '1 Tür', '1 Fenster', '2 Säulen']) {
     if (!facts.includes(text)) throw new Error(`Angaben ohne «${text}»: ${facts}`);
   }
   await shot('137-plaene-bauteile');

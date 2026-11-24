@@ -703,7 +703,7 @@ automatisch gesetzt.
   - Zieht man das Ende einer Wand, gehen die angrenzenden Wände (mit ihrem Ende am selben Punkt) mit; verschiebt man eine
     ganze Wand, bleiben die angrenzenden an ihr hängen und werden länger oder kürzer.
   - «Wände entlang der Fläche»: Die Lage wählt man neben dem Knopf: mittig auf den Kanten, innen bündig oder aussen
-    bündig (Vorgabe mittig, die zuletzt gewählte gilt beim nächsten Mal; noch zu bestätigen). Kanten, auf denen schon
+    bündig (Vorgabe mittig, die zuletzt gewählte gilt beim nächsten Mal). Kanten, auf denen schon
     eine Wand liegt, bleiben.
   - Ecken: Treffen genau zwei Wände mit ihren Enden aufeinander, stossen sie auf Gehrung (auch bei verschiedener Dicke);
     endet eine Wand an einer anderen (T-Stoss), reicht sie bis zu deren Rückseite; freie Enden sind gerade.
@@ -714,6 +714,28 @@ automatisch gesetzt.
   von a nach b; «left» ist die Seite der Normalen), eine Öffnung `{ wallId, offset, … }` ohne Abschnitt. Migration 0059
   teilt die bisherigen Linienzüge (das erste Stück behält die ID der Wand). Die Ecken rechnet `wallPolygons` in
   `plans/geometry.ts`.
+
+### Feiner einrasten und andocken (bestätigt am 24.11.2026)
+
+- **Raster** passt sich dem Zoom an: in der normalen Ansicht 5 cm, nah herangezoomt 1 cm. Mit gedrückter Alt-Taste
+  rastet nichts ein und nichts dockt an; man setzt frei, auf den Millimeter.
+- **Andocken:** Säulen docken mit ihrer Seite (eckig) bzw. ihrem Rand (rund) an Wandseiten, an Kanten von Flächen und
+  Umriss und an andere Säulen, in Ecken an beide Seiten. Bei Flächen rasten Ecken und Kanten an Seiten und Ecken von
+  Wänden ein; verschiebt man eine ganze Fläche, dockt ihre Kante an eine Wandseite oder eine andere Fläche. Wände rasten
+  weiter mit ihrer Linie ein (an die Seite legt man sie mit «Bündig»).
+- **Anzeige:** Beim Zeichnen und Ziehen ist die Ecke oder Kante hervorgehoben, an der etwas einrastet oder andockt.
+- Details (bestätigt am 24.11.2026):
+  - Das feine Raster gilt ab 150 Bildpunkten pro Meter; ab 120 erscheinen zusätzlich feine Rasterlinien alle 10 cm.
+    Unten links steht beim Bearbeiten «Raster 5 cm · Alt: frei» bzw. «Raster 1 cm …».
+  - Angedockt wird bis zu 12 Bildpunkte Abstand, höchstens 60 cm; gedrehte Säulen docken nur an Kanten, die zu einer
+    ihrer Seiten parallel sind.
+  - Beim Verschieben docken Flächen auch an den Umriss und an eckige Säulen; Ecken von Umriss und Flächen rasten beim
+    Zeichnen auch an den Ecken eckiger Säulen ein.
+  - Messen rastet auch an Wandseiten ein (z.B. um eine Wanddicke zu messen). Beschriftungen, Türen und Fenster folgen
+    nur dem Raster.
+- Technisch: `snapTargets` (Ecken und Kanten, mit oder ohne Seiten von Wänden und Säulen), `dockShift` und `dockCircle`
+  in `plans/geometry.ts`; die Zeichenfläche setzt das Raster je Ansicht (`gridStepFor`). Alt ruft beim Bearbeiten das
+  Menü des Browsers nicht auf.
 
 ## Typ wählen und Typ korrigiert (bestätigt am 16.11.2026)
 

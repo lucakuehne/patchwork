@@ -24,8 +24,15 @@ export interface Box {
   h: number;
 }
 
-/** Raster beim Zeichnen: 5 cm (Entscheid vom 20.11.2026, vorher 10 cm) */
+/** Raster beim Zeichnen: 5 cm (Entscheid vom 20.11.2026, vorher 10 cm); nah herangezoomt 1 cm (24.11.2026) */
 export const GRID_STEP = 0.05;
+export const FINE_GRID_STEP = 0.01;
+/** Ab so vielen Bildpunkten pro Meter gilt das feine Raster */
+export const FINE_GRID_FROM_PX = 150;
+/** Raster bei dieser Ansicht */
+export const gridStepFor = (pxPerMeter: number) => (pxPerMeter >= FINE_GRID_FROM_PX ? FINE_GRID_STEP : GRID_STEP);
+/** Mit gedrückter Alt-Taste: frei, auf den Millimeter */
+export const FREE_STEP = 0.001;
 /** Ecken und Kanten anderer Formen rasten höchstens bis zu diesem Abstand ein (Meter); näher gezoomt weniger */
 export const VERTEX_SNAP = 0.35;
 /** Grösse eines leeren Stockwerks für die erste Ansicht */
@@ -180,11 +187,24 @@ export function snapEdges(c: FloorShapes, exceptLists: PlanPoint[][] = [], excep
   ];
 }
 
+/** Ergebnis des Einrastens: der Punkt und woran er eingerastet ist (für die Anzeige) */
+export interface SnapResult {
+  p: PlanPoint;
+  vertex?: PlanPoint;
+  edge?: [PlanPoint, PlanPoint];
+}
+
 /**
  * Einrasten: an der nächsten Ecke, sonst auf der nächsten Kante (bei waagrechten und senkrechten Kanten die andere
  * Richtung am Raster), sonst am Raster.
  */
-export function snapPoint(p: PlanPoint, candidates: PlanPoint[], threshold = VERTEX_SNAP, lines: [PlanPoint, PlanPoint][] = []): PlanPoint {
+export function snapDetail(
+  p: PlanPoint,
+  candidates: PlanPoint[],
+  threshold = VERTEX_SNAP,
+  lines: [PlanPoint, PlanPoint][] = [],
+  step = GRID_STEP,
+): SnapResult {
   let best: PlanPoint | null = null;
   let bestDistance = threshold;
   for (const q of candidates) {
@@ -194,22 +214,157 @@ export function snapPoint(p: PlanPoint, candidates: PlanPoint[], threshold = VER
       bestDistance = d;
     }
   }
-  if (best) return [best[0], best[1]];
-  let onLine: PlanPoint | null = null;
+  if (best) return { p: [best[0], best[1]], vertex: best };
+  let onLine: SnapResult | null = null;
   bestDistance = threshold * 0.7;
   for (const [a, b] of lines) {
     const d = distanceToSegment(p, a, b);
     if (d >= bestDistance) continue;
     bestDistance = d;
-    if (Math.abs(a[1] - b[1]) < 1e-6) onLine = [snap(p[0]), a[1]];
-    else if (Math.abs(a[0] - b[0]) < 1e-6) onLine = [a[0], snap(p[1])];
+    let q: PlanPoint;
+    if (Math.abs(a[1] - b[1]) < 1e-6) q = [snap(p[0], step), a[1]];
+    else if (Math.abs(a[0] - b[0]) < 1e-6) q = [a[0], snap(p[1], step)];
     else {
       const len2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
       const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / len2));
-      onLine = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+      q = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+    }
+    onLine = { p: q, edge: [a, b] };
+  }
+  return onLine ?? { p: [snap(p[0], step), snap(p[1], step)] };
+}
+
+/** Einrasten, nur der Punkt */
+export function snapPoint(p: PlanPoint, candidates: PlanPoint[], threshold = VERTEX_SNAP, lines: [PlanPoint, PlanPoint][] = [], step = GRID_STEP): PlanPoint {
+  return snapDetail(p, candidates, threshold, lines, step).p;
+}
+
+/* ---------- Andocken ---------- */
+
+/** Umriss einer eckigen Säule (gedreht um ihre Mitte) */
+export function pillarPolygon(p: Pick<PlanPillar, 'x' | 'y' | 'width' | 'depth' | 'rotation'>): PlanPoint[] {
+  const r = (p.rotation * Math.PI) / 180;
+  const [c, sn] = [Math.cos(r), Math.sin(r)];
+  return [
+    [-p.width / 2, -p.depth / 2],
+    [p.width / 2, -p.depth / 2],
+    [p.width / 2, p.depth / 2],
+    [-p.width / 2, p.depth / 2],
+  ].map(([x, y]): PlanPoint => [p.x + x! * c - y! * sn, p.y + x! * sn + y! * c]);
+}
+
+/** Ecken und Kanten, an denen etwas einrastet oder andockt */
+export interface SnapTargets {
+  points: PlanPoint[];
+  lines: [PlanPoint, PlanPoint][];
+}
+
+/**
+ * Ziele zum Einrasten: Ecken und Kanten von Umriss, Flächen und der Linie der Wände; mit «faces» auch die Seiten und
+ * Ecken der Wände und eckigen Säulen (zum Andocken von Flächen und Säulen). Ohne die gerade bearbeiteten Formen.
+ */
+export function snapTargets(
+  c: FloorShapes,
+  opts: { faces: boolean; exceptLists?: PlanPoint[][]; exceptWallIds?: string[]; exceptAreaId?: string; exceptPillarId?: string },
+): SnapTargets {
+  const exceptLists = [...(opts.exceptLists ?? []), ...c.areas.filter((a) => a.id === opts.exceptAreaId).map((a) => a.points)];
+  const exceptWallIds = opts.exceptWallIds ?? [];
+  const points = snapCandidates(c, exceptLists);
+  const lines = snapEdges(c, exceptLists, exceptWallIds);
+  if (opts.faces) {
+    const polygons = wallPolygons(c.walls);
+    for (const w of c.walls) {
+      if (exceptWallIds.includes(w.id)) continue;
+      const poly = polygons.get(w.id);
+      if (!poly) continue;
+      points.push(...poly);
+      lines.push(...edges(poly, true));
+    }
+    for (const p of c.pillars) {
+      if (p.id === opts.exceptPillarId || p.shape !== 'rect') continue;
+      const poly = pillarPolygon(p);
+      points.push(...poly);
+      lines.push(...edges(poly, true));
     }
   }
-  return onLine ?? [snap(p[0]), snap(p[1])];
+  return { points, lines };
+}
+
+/** Andocken: Verschiebung und die Kanten, an denen angedockt wurde */
+export interface Dock {
+  dx: number;
+  dy: number;
+  lines: [PlanPoint, PlanPoint][];
+}
+interface DockCandidate {
+  shift: PlanPoint;
+  distance: number;
+  n: PlanPoint;
+  line: [PlanPoint, PlanPoint];
+}
+/** Die nächste Andockstelle und, quer dazu, eine zweite (für Ecken) */
+function bestDock(candidates: DockCandidate[]): Dock {
+  const sorted = [...candidates].sort((a, b) => a.distance - b.distance);
+  const first = sorted[0];
+  if (!first) return { dx: 0, dy: 0, lines: [] };
+  const second = sorted.find((c) => Math.abs(c.n[0] * first.n[0] + c.n[1] * first.n[1]) < 0.02);
+  return {
+    dx: first.shift[0] + (second?.shift[0] ?? 0),
+    dy: first.shift[1] + (second?.shift[1] ?? 0),
+    lines: second ? [first.line, second.line] : [first.line],
+  };
+}
+
+/**
+ * Andocken einer Form an Kanten: Liegt eine Kante der Form nahe und parallel zu einer Zielkante (und überlappen sie),
+ * wird die Form so verschoben, dass beide aufeinander liegen. Danach dasselbe quer dazu, damit sie in Ecken passt.
+ */
+export function dockShift(shapeEdges: [PlanPoint, PlanPoint][], targets: [PlanPoint, PlanPoint][], threshold: number): Dock {
+  const candidates: DockCandidate[] = [];
+  for (const [s1, s2] of shapeEdges) {
+    const sl = dist(s1, s2);
+    if (sl < 1e-6) continue;
+    const sd: PlanPoint = [(s2[0] - s1[0]) / sl, (s2[1] - s1[1]) / sl];
+    for (const line of targets) {
+      const [t1, t2] = line;
+      const tl = dist(t1, t2);
+      if (tl < 1e-6) continue;
+      const td: PlanPoint = [(t2[0] - t1[0]) / tl, (t2[1] - t1[1]) / tl];
+      if (Math.abs(sd[0] * td[1] - sd[1] * td[0]) > 0.02) continue;
+      const n: PlanPoint = [-td[1], td[0]];
+      const dn = (s1[0] - t1[0]) * n[0] + (s1[1] - t1[1]) * n[1];
+      if (Math.abs(dn) > threshold) continue;
+      const a0 = (s1[0] - t1[0]) * td[0] + (s1[1] - t1[1]) * td[1];
+      const a1 = (s2[0] - t1[0]) * td[0] + (s2[1] - t1[1]) * td[1];
+      const overlap = Math.min(Math.max(a0, a1), tl) - Math.max(Math.min(a0, a1), 0);
+      if (overlap < -threshold) continue;
+      candidates.push({ shift: [-n[0] * dn, -n[1] * dn], distance: Math.abs(dn), n, line });
+    }
+  }
+  return bestDock(candidates);
+}
+
+/** Andocken einer runden Säule: ihr Rand an nahe Kanten */
+export function dockCircle(center: PlanPoint, radius: number, targets: [PlanPoint, PlanPoint][], threshold: number): Dock {
+  const candidates: DockCandidate[] = [];
+  for (const line of targets) {
+    const [t1, t2] = line;
+    const tl = dist(t1, t2);
+    if (tl < 1e-6) continue;
+    const td: PlanPoint = [(t2[0] - t1[0]) / tl, (t2[1] - t1[1]) / tl];
+    const along = (center[0] - t1[0]) * td[0] + (center[1] - t1[1]) * td[1];
+    if (along < -radius || along > tl + radius) continue;
+    let n: PlanPoint = [-td[1], td[0]];
+    let d = (center[0] - t1[0]) * n[0] + (center[1] - t1[1]) * n[1];
+    if (d < 0) {
+      n = [-n[0], -n[1]];
+      d = -d;
+    }
+    const gap = d - radius;
+    if (Math.abs(gap) > threshold) continue;
+    candidates.push({ shift: [-n[0] * gap, -n[1] * gap], distance: Math.abs(gap), n, line });
+  }
+  return bestDock(candidates);
 }
 
 /* ---------- Im Umriss ---------- */
@@ -514,12 +669,12 @@ export function nearestWall(p: PlanPoint, walls: PlanWall[], maxDistance: number
   return best;
 }
 
-/** Mitte einer Öffnung in der Wand: auf 5 cm, die Öffnung bleibt ganz in der Wand; null, wenn sie zu kurz ist */
-export function placeOnSegment(along: number, length: number, width: number): number | null {
+/** Mitte einer Öffnung in der Wand: am Raster, die Öffnung bleibt ganz in der Wand; null, wenn sie zu kurz ist */
+export function placeOnSegment(along: number, length: number, width: number, step = GRID_STEP): number | null {
   if (length + 1e-9 < width) return null;
   const min = width / 2;
   const max = length - width / 2;
-  return Number(Math.min(max, Math.max(min, snap(along, 0.05))).toFixed(6));
+  return Number(Math.min(max, Math.max(min, snap(along, step))).toFixed(6));
 }
 
 /** Öffnung nach dem Ändern ihrer Wand: an die Stelle ihrer alten Mitte; null, wenn sie nicht mehr passt */
