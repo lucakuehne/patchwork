@@ -2360,7 +2360,8 @@ await step('plaene', async () => {
   // Wände Stück für Stück: jeder Klick eine Wand, Eingabetaste beendet; die neuen Wände sind gewählt
   await tool('Wand').click();
   await page.locator('.options input[aria-label="Dicke der Wand in cm"]').fill('20');
-  for (const [x, y] of [[0.45, 0.6], [0.45, 0.85], [0.6, 0.85]]) await page.mouse.click(...(await at(x, y)));
+  // Leicht schief geklickt: die Wände rasten senkrecht bzw. rechtwinklig zur vorherigen ein
+  for (const [x, y] of [[0.45, 0.6], [0.452, 0.85], [0.6, 0.845]]) await page.mouse.click(...(await at(x, y)));
   await page.keyboard.press('Enter');
   await page.locator('.details h2', { hasText: '2 Wände' }).waitFor();
   await page.locator('#plan-walls-thickness').fill('12');
@@ -2376,6 +2377,18 @@ await step('plaene', async () => {
   await page.keyboard.up('Shift');
   await page.locator('.details h2', { hasText: '2 Wände' }).waitFor();
   await page.keyboard.press('Escape');
+  const chainBoxes = await page.evaluate(() =>
+    [...document.querySelectorAll('.stage polygon.wall')].slice(-2).map((w) => {
+      const b = w.getBBox();
+      return [Number(b.width.toFixed(3)), Number(b.height.toFixed(3))];
+    }),
+  );
+  if (Math.abs(chainBoxes[0][0] - 0.12) > 0.002 || Math.abs(chainBoxes[1][1] - 0.12) > 0.002) {
+    throw new Error(`Wände nicht rechtwinklig eingerastet: ${JSON.stringify(chainBoxes)}`);
+  }
+  // Wände deckend: wo sie übereinander liegen, wird es nicht dunkler
+  const wallFill = await page.locator('.stage polygon.wall').first().evaluate((el) => getComputedStyle(el).fill);
+  if (/\/\s*0?\.\d|rgba\(/.test(wallFill)) throw new Error(`Wände durchsichtig: ${wallFill}`);
 
   // Umriss kleiner ziehen, bis etwas ausserhalb läge: springt zurück
   await tool('Umriss').click();

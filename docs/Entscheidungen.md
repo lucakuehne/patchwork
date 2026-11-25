@@ -737,6 +737,22 @@ automatisch gesetzt.
   in `plans/geometry.ts`; die Zeichenfläche setzt das Raster je Ansicht (`gridStepFor`). Alt ruft beim Bearbeiten das
   Menü des Browsers nicht auf.
 
+### Wände rechtwinklig (bestätigt am 25.11.2026)
+
+- Wände rasten im rechten Winkel zueinander ein (Wunsch vom 25.11.2026).
+- Details (bestätigt am 25.11.2026):
+  - Bis 5° Abweichung rastet die Richtung ein: rechtwinklig oder in Flucht (gerade weiter) zur Bezugswand.
+  - Bezug beim Zeichnen ist die vorherige Wand; beim ersten Stück die Wände am Startpunkt (die dort enden oder auf deren
+    Linie er liegt), ohne solche waagrecht oder senkrecht. Zieht man das Ende einer Wand, sind die Wände an ihrem festen
+    Ende der Bezug.
+  - Ecken gehen vor (z.B. Schliessen am ersten Punkt). Trifft die Richtung eine Kante in der Nähe, endet die Wand genau
+    dort. Die Länge folgt dem Raster; mit Alt frei.
+  - Anzeige: eine Hilfslinie in der Richtung und beim rechten Winkel ein Winkelzeichen an der Ecke.
+- **Bestehende Wände** bleiben, wie sie sind (bestätigt am 25.11.2026): keine automatische Ausrichtung und kein Knopf
+  dafür; man richtet sie von Hand aus, indem man ein Ende zieht (es rastet dann rechtwinklig ein).
+- Wände sind deckend gefüllt; wo sie übereinander liegen, wird es nicht dunkler (Fehler behoben am 25.11.2026).
+- Technisch: `angleSnap`, `rayHitsSegment` und `wallDirectionsAt` in `plans/geometry.ts`.
+
 ## Typ wählen und Typ korrigiert (bestätigt am 16.11.2026)
 
 - Anlass: Der Typ wird beim Einordnen im Eingang immer wieder falsch zugewiesen, in beide Richtungen. Umgesetzt werden

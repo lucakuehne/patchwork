@@ -239,6 +239,79 @@ export function snapPoint(p: PlanPoint, candidates: PlanPoint[], threshold = VER
   return snapDetail(p, candidates, threshold, lines, step).p;
 }
 
+/* ---------- Rechtwinklig ---------- */
+
+/** Bis zu so vielen Grad Abweichung rastet eine Wand rechtwinklig bzw. in Flucht ein */
+export const ANGLE_SNAP_DEG = 5;
+
+/** Rechtwinklig eingerastet: Punkt, Richtung ab «from» und die Bezugsrichtung, falls rechtwinklig zu ihr */
+export interface AngleSnap {
+  p: PlanPoint;
+  dir: PlanPoint;
+  /** Bezugsrichtung (vom Eckpunkt weg), wenn die neue Richtung rechtwinklig dazu ist: für das Winkelzeichen */
+  rightTo?: PlanPoint;
+}
+
+/**
+ * Rechtwinklig einrasten (Entscheid vom 25.11.2026): Liegt die Richtung von «from» zum Zeiger nahe an einer
+ * Bezugsrichtung (in Flucht) oder rechtwinklig dazu, gilt genau diese Richtung; die Länge folgt dem Raster. Ohne
+ * Bezugsrichtungen gelten waagrecht und senkrecht.
+ */
+export function angleSnap(from: PlanPoint, p: PlanPoint, refs: PlanPoint[], step = GRID_STEP, tolDeg = ANGLE_SNAP_DEG): AngleSnap | null {
+  const v: PlanPoint = [p[0] - from[0], p[1] - from[1]];
+  const len = Math.hypot(v[0], v[1]);
+  if (len < 0.05) return null;
+  const bases: PlanPoint[] = refs.length ? refs : [[1, 0]];
+  const cosTol = Math.cos((tolDeg * Math.PI) / 180);
+  let best: { dir: PlanPoint; c: number; rightTo?: PlanPoint } | null = null;
+  for (const r of bases) {
+    const rl = Math.hypot(r[0], r[1]);
+    if (rl < 1e-9) continue;
+    const u: PlanPoint = [r[0] / rl, r[1] / rl];
+    const options: [PlanPoint, boolean][] = [
+      [u, false],
+      [[-u[0], -u[1]], false],
+      [[-u[1], u[0]], true],
+      [[u[1], -u[0]], true],
+    ];
+    for (const [dir, perpendicular] of options) {
+      const c = (v[0] * dir[0] + v[1] * dir[1]) / len;
+      if (c >= cosTol && (!best || c > best.c)) best = { dir, c, rightTo: perpendicular && refs.length ? u : undefined };
+    }
+  }
+  if (!best) return null;
+  const along = snap(len * best.c, step);
+  const q: PlanPoint = [Number((from[0] + best.dir[0] * along).toFixed(6)), Number((from[1] + best.dir[1] * along).toFixed(6))];
+  return { p: q, dir: best.dir, rightTo: best.rightTo };
+}
+
+/** Schnittpunkt der Geraden ab «from» in Richtung «dir» mit der Strecke a–b; null, wenn keiner auf der Strecke liegt */
+export function rayHitsSegment(from: PlanPoint, dir: PlanPoint, a: PlanPoint, b: PlanPoint): PlanPoint | null {
+  const e: PlanPoint = [b[0] - a[0], b[1] - a[1]];
+  const den = dir[0] * e[1] - dir[1] * e[0];
+  if (Math.abs(den) < 1e-9) return null;
+  const w: PlanPoint = [a[0] - from[0], a[1] - from[1]];
+  const t = (w[0] * e[1] - w[1] * e[0]) / den;
+  const u = (w[0] * dir[1] - w[1] * dir[0]) / den;
+  if (t <= 0 || u < -1e-9 || u > 1 + 1e-9) return null;
+  return [Number((from[0] + dir[0] * t).toFixed(6)), Number((from[1] + dir[1] * t).toFixed(6))];
+}
+
+/**
+ * Bezugsrichtungen für eine Wand ab diesem Punkt: Wände, die hier enden (Richtung zu ihrem anderen Ende), und Wände,
+ * auf deren Linie der Punkt liegt.
+ */
+export function wallDirectionsAt(walls: PlanWall[], p: PlanPoint, exceptIds: string[] = []): PlanPoint[] {
+  const dirs: PlanPoint[] = [];
+  for (const w of walls) {
+    if (exceptIds.includes(w.id)) continue;
+    if (dist(w.a, p) < 0.005) dirs.push([w.b[0] - p[0], w.b[1] - p[1]]);
+    else if (dist(w.b, p) < 0.005) dirs.push([w.a[0] - p[0], w.a[1] - p[1]]);
+    else if (distanceToSegment(p, w.a, w.b) < 0.01) dirs.push([w.b[0] - w.a[0], w.b[1] - w.a[1]]);
+  }
+  return dirs;
+}
+
 /* ---------- Andocken ---------- */
 
 /** Umriss einer eckigen Säule (gedreht um ihre Mitte) */

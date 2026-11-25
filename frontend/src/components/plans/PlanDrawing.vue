@@ -230,7 +230,8 @@ const pillarTransform = (p: { x: number; y: number; rotation: number }) => `tran
   --k-open: #d9a92b;
   --k-shaft: #5d6879;
   --k-outdoor: #2a9d8f;
-  --wall: color-mix(in srgb, var(--text) 88%, transparent);
+  /* Deckend (nicht durchsichtig): wo Wände übereinander liegen, wird es sonst dunkler */
+  --wall: color-mix(in srgb, var(--text) 88%, var(--plan-bg, var(--surface)));
 }
 .plan-image {
   opacity: 0.6;

@@ -131,8 +131,11 @@ export function usePlanEditor() {
     outlineInvalid: false,
     /** Raster bei der aktuellen Ansicht (5 cm, nah 1 cm); setzt die Zeichenfläche */
     gridStep: GRID_STEP,
-    /** Woran gerade etwas einrastet oder andockt: Ecke bzw. Kanten (Anzeige beim Zeichnen und Ziehen) */
-    snapHint: null as { vertex?: PlanPoint; lines: [PlanPoint, PlanPoint][] } | null,
+    /**
+     * Woran gerade etwas einrastet oder andockt: Ecke bzw. Kanten, beim rechten Winkel das Winkelzeichen (Anzeige beim
+     * Zeichnen und Ziehen)
+     */
+    snapHint: null as { vertex?: PlanPoint; lines: [PlanPoint, PlanPoint][]; corner?: PlanPoint[] } | null,
     /** Kurz hervorgehobene Fläche (nach der Suche) */
     flashId: null as string | null,
     saving: false,

@@ -4,6 +4,7 @@ import PlanDrawing from './PlanDrawing.vue';
 import {
   FREE_STEP,
   VERTEX_SNAP,
+  angleSnap,
   bbox,
   connectedEnds,
   copyPoints,
@@ -19,11 +20,13 @@ import {
   pillarPolygon,
   placeOnSegment,
   pointInPolygon,
+  rayHitsSegment,
   rectPoints,
   segmentInPolygon,
   snap,
   snapDetail,
   snapTargets,
+  wallDirectionsAt,
   type Box,
   type Dock,
 } from '../../plans/geometry';
@@ -139,6 +142,47 @@ function snapAt(p: PlanPoint, opts: { faces?: boolean; exceptLists?: PlanPoint[]
   const r = snapDetail(p, targets.points, snapRadius(), targets.lines, step());
   state.snapHint = r.vertex ? { vertex: r.vertex, lines: [] } : r.edge ? { lines: [r.edge] } : null;
   return r.p;
+}
+/**
+ * Punkt einer Wand ab «from» (Entscheid vom 25.11.2026): Ecken gehen vor; sonst rastet die Wand rechtwinklig oder in
+ * Flucht zu den Bezugsrichtungen ein (ohne Bezug waagrecht oder senkrecht), auf einer Kante dort, wo die Richtung sie
+ * trifft.
+ */
+function wallPointAt(from: PlanPoint, p: PlanPoint, refs: PlanPoint[], opts: { exceptLists?: PlanPoint[][]; exceptWallIds?: string[] } = {}): PlanPoint {
+  const q = snapAt(p, opts);
+  if (free || state.snapHint?.vertex) return q;
+  const angle = angleSnap(from, p, refs, step());
+  if (!angle) return q;
+  const edge = state.snapHint?.lines[0];
+  const hit = edge ? rayHitsSegment(from, angle.dir, edge[0], edge[1]) : null;
+  const target = hit && dist(hit, p) < snapRadius() * 2 ? hit : angle.p;
+  // Hilfslinie in der Richtung, etwas über den Punkt hinaus; beim rechten Winkel das Winkelzeichen
+  const reach = 24 / px.value;
+  const guide: [PlanPoint, PlanPoint] = [from, [target[0] + angle.dir[0] * reach, target[1] + angle.dir[1] * reach]];
+  let corner: PlanPoint[] | undefined;
+  if (angle.rightTo) {
+    const s = 9 / px.value;
+    const r = angle.rightTo;
+    const len = Math.hypot(r[0], r[1]) || 1;
+    const u: PlanPoint = [(r[0] / len) * s, (r[1] / len) * s];
+    const d: PlanPoint = [angle.dir[0] * s, angle.dir[1] * s];
+    corner = [
+      [from[0] + u[0], from[1] + u[1]],
+      [from[0] + u[0] + d[0], from[1] + u[1] + d[1]],
+      [from[0] + d[0], from[1] + d[1]],
+    ];
+  }
+  state.snapHint = { lines: hit && target === hit && edge ? [edge, guide] : [guide], corner };
+  return target;
+}
+/** Bezugsrichtungen beim Zeichnen: die vorherige Wand, sonst die Wände am Startpunkt */
+function chainRefs(pts: PlanPoint[]): PlanPoint[] {
+  const d = state.draft;
+  const from = pts[pts.length - 1]!;
+  const lastId = state.chain[state.chain.length - 1];
+  const previous = lastId ? d?.walls.find((w) => w.id === lastId) : undefined;
+  if (previous) return [[previous.a[0] - from[0], previous.a[1] - from[1]]];
+  return d ? wallDirectionsAt(d.walls, from) : [];
 }
 /** Angedockt: Kanten für die Anzeige merken */
 function showDock(dock: Dock) {
@@ -390,8 +434,8 @@ function wallClick(p: PlanPoint) {
     toast.error('Zeichne zuerst den Umriss des Stockwerks oder eine Fläche.');
     return;
   }
-  const q = snapAt(p);
   const pts = state.drawing && 'points' in state.drawing ? state.drawing.points : [];
+  const q = pts.length ? wallPointAt(pts[pts.length - 1]!, p, chainRefs(pts)) : snapAt(p);
   if (!pts.length) {
     if (!pointInPolygon(q, outline)) toast.error('Die Wand muss im Umriss liegen.');
     else state.drawing = { points: [q] };
@@ -465,7 +509,12 @@ function onPointerMove(e: PointerEvent) {
   if (drag?.kind === 'wallEnd' && d) {
     const moving = drag.ends.map((r) => pointOf(r)).filter((x): x is PlanPoint => !!x);
     const ids = [...new Set(drag.ends.map((r) => r.id))];
-    const q = snapAt(p, { exceptLists: [moving], exceptWallIds: ids });
+    // Rechtwinklig zu den Wänden am festen Ende der gezogenen Wand
+    const own = wallById(drag.ends[0]!.id);
+    const fixed = own ? own[drag.ends[0]!.end === 'a' ? 'b' : 'a'] : null;
+    const q = fixed
+      ? wallPointAt([fixed[0], fixed[1]], p, wallDirectionsAt(d.walls, fixed, [own!.id]), { exceptLists: [moving], exceptWallIds: ids })
+      : snapAt(p, { exceptLists: [moving], exceptWallIds: ids });
     for (const r of drag.ends) setEnd(r, q);
     editor.refitOpenings(drag.snapshot);
     return;
@@ -522,8 +571,11 @@ function onPointerMove(e: PointerEvent) {
   const waiting = (l: { a: PlanPoint; b?: PlanPoint } | null) => !!l?.a && !l.b;
   if (state.tool === 'pillar') {
     state.cursor = pillarAt(p, { shape: state.options.pillarShape, width: state.options.pillarSize, depth: state.options.pillarSize, rotation: 0 });
-  } else if (['outline', 'area', 'wall'].includes(state.tool) || (state.tool === 'measure' && waiting(state.measure))) {
-    state.cursor = snapAt(p, { faces: state.tool !== 'wall' });
+  } else if (state.tool === 'wall') {
+    const pts = state.drawing && 'points' in state.drawing ? state.drawing.points : [];
+    state.cursor = pts.length ? wallPointAt(pts[pts.length - 1]!, p, chainRefs(pts)) : snapAt(p);
+  } else if (['outline', 'area'].includes(state.tool) || (state.tool === 'measure' && waiting(state.measure))) {
+    state.cursor = snapAt(p, { faces: true });
   } else {
     if (state.tool === 'scale' && waiting(state.scaleLine)) state.cursor = p;
     state.snapHint = null;
@@ -779,6 +831,7 @@ watch(
           vector-effect="non-scaling-stroke"
         />
         <circle v-if="state.snapHint.vertex" :cx="state.snapHint.vertex[0]" :cy="state.snapHint.vertex[1]" :r="8 / px" vector-effect="non-scaling-stroke" />
+        <polyline v-if="state.snapHint.corner" class="corner" :points="pointsAttr(state.snapHint.corner)" vector-effect="non-scaling-stroke" />
       </g>
 
       <!-- Messen und Massstab setzen -->
@@ -859,6 +912,12 @@ watch(
   stroke: var(--accent);
   stroke-width: 2.5;
   stroke-dasharray: 6 3;
+  pointer-events: none;
+}
+.snap-hint .corner {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
   pointer-events: none;
 }
 .snap-hint circle {

@@ -23,6 +23,9 @@ import {
   snapCandidates,
   snapEdges,
   snapPoint,
+  angleSnap,
+  rayHitsSegment,
+  wallDirectionsAt,
   snapDetail,
   snapTargets,
   dockShift,
@@ -278,6 +281,34 @@ describe('Raster, Einrasten und Andocken', () => {
       [0.9, 1.2],
       [0.9, 0.8],
     ]);
+  });
+});
+
+describe('Wände rechtwinklig', () => {
+  it('rastet rechtwinklig oder in Flucht zur Bezugsrichtung ein, die Länge am Raster', () => {
+    // Vorherige Wand geht von (0,0) nach (4,0), weiter ab (4,0): Bezug zeigt zurück nach (0,0)
+    const back: PlanPoint = [-4, 0];
+    const down = angleSnap([4, 0], [4.12, 2.53], [back]);
+    expect(down?.p).toEqual([4, 2.55]);
+    expect(down?.rightTo).toEqual([-1, 0]);
+    const straight = angleSnap([4, 0], [6.02, 0.1], [back]);
+    expect(straight?.p).toEqual([6, 0]);
+    expect(straight?.rightTo).toBeUndefined();
+    // Zu schräg: nichts
+    expect(angleSnap([4, 0], [5, 1], [back])).toBeNull();
+    // Schräge Bezugswand (45°): rechtwinklig dazu
+    const skew = angleSnap([0, 0], [1.02, -0.98], [[1, 1]], 0.01);
+    expect(skew?.dir.map((v) => Number(v.toFixed(4)))).toEqual([0.7071, -0.7071]);
+    // Ohne Bezug: waagrecht oder senkrecht
+    expect(angleSnap([1, 1], [1.08, 3.2], [])?.p).toEqual([1, 3.2]);
+  });
+
+  it('trifft eine Kante, Bezugsrichtungen an einem Punkt', () => {
+    expect(rayHitsSegment([0, 0], [0, 1], [-1, 2], [1, 2])).toEqual([0, 2]);
+    expect(rayHitsSegment([0, 0], [0, 1], [1, 2], [3, 2])).toBeNull();
+    const walls = [wall([0, 0], [4, 0], { id: 'a' }), wall([4, 0], [4, 3], { id: 'b' }), wall([2, -1], [2, 1], { id: 'c' })];
+    expect(wallDirectionsAt(walls, [4, 0])).toEqual([[-4, 0], [0, 3]]);
+    expect(wallDirectionsAt(walls, [2, 0.5], ['a'])).toEqual([[0, 2]]);
   });
 });
 
