@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
 import { usePlanEditor } from './editor';
 import { doubleLeaves, openingDrawing, openingFrame, rectPoints } from './geometry';
 import type { PlanFloor } from '../types';
@@ -19,10 +20,20 @@ const floor = (): PlanFloor => ({
   layers: { plan: true, areas: true, structure: true, labels: true },
   contentUpdatedAt: '2026-11-25T10:00:00.000Z',
 });
-/** Der Verlauf hält Änderungen nach einem Augenblick als Schritt fest */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+/**
+ * Der Verlauf hält Änderungen nach einem Augenblick als Schritt fest: erst läuft der Beobachter (nextTick), dann dessen
+ * Zeitgeber. Mit kontrollierter Zeit statt echtem Warten, sonst hängt die Reihenfolge von der Last des Rechners ab.
+ */
+const settle = async () => {
+  await nextTick();
+  vi.runAllTimers();
+};
 
-beforeEach(() => setActivePinia(createPinia()));
+beforeEach(() => {
+  setActivePinia(createPinia());
+  vi.useFakeTimers();
+});
+afterEach(() => vi.useRealTimers());
 
 describe('Rückgängig und Wiederholen', () => {
   it('jede Änderung ein Schritt, rückwärts und vorwärts', async () => {
