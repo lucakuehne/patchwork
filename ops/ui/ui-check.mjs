@@ -2537,6 +2537,9 @@ await step('plaene', async () => {
   const foot = await sheet.locator('.sheet-foot').innerText();
   if (!/Massstab 1:\d+ auf A4 quer/.test(foot)) throw new Error(`Druck: ${foot}`);
   if (await page.locator('.header').isVisible()) throw new Error('Kopfzeile im Druck sichtbar');
+  // Weisser Hintergrund (kein grauer Rest unter dem Blatt)
+  const printBg = await page.evaluate(() => [getComputedStyle(document.documentElement).backgroundColor, getComputedStyle(document.body).backgroundColor]);
+  if (printBg.some((c) => c !== 'rgb(255, 255, 255)')) throw new Error(`Hintergrund im Druck: ${printBg.join(', ')}`);
   await page.screenshot({ path: `${OUT}/133-plaene-druck.png` });
   console.log('Bild 133-plaene-druck');
   await page.emulateMedia({ media: 'screen' });

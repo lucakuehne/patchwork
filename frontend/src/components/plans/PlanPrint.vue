@@ -67,9 +67,15 @@ const today = new Intl.DateTimeFormat('de-CH', { day: '2-digit', month: '2-digit
   display: none;
 }
 @media print {
+  /* Ohne Rand der Seite: der Browser druckt dann keine eigene Kopf- und Fusszeile (Datum, Adresse); den Rand gibt das
+     Blatt selbst (Entscheid vom 25.11.2026) */
   @page {
     size: A4 landscape;
-    margin: 10mm;
+    margin: 0;
+  }
+  html,
+  body {
+    background: #ffffff !important;
   }
   body > *:not(.plan-print-root) {
     display: none !important;
@@ -84,6 +90,7 @@ const today = new Intl.DateTimeFormat('de-CH', { day: '2-digit', month: '2-digit
     display: flex;
     flex-direction: column;
     gap: 4mm;
+    padding: 10mm;
   }
   .plan-print-root .sheet-head {
     display: flex;

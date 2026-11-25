@@ -595,6 +595,17 @@ automatisch gesetzt.
   Beschreibung, Kommentare, Zuständig), nur mit kleinerer Schrift und weniger Abstand.
 - Beim Update erhalten «Backlog» und «Erledigt» der Aufgaben kleine Karten; neue Installationen ebenso.
 
+## Druck der Pläne: mehr Massstäbe, ohne Kopf- und Fusszeile des Browsers (bestätigt am 25.11.2026)
+
+- Anlass: Ein grosses Stockwerk passte nicht mehr auf 1:250 und wurde auf 1:500 gedruckt, nur etwa halb so hoch wie
+  die Seite.
+- Beim Drucken gibt es zusätzlich die runden Massstäbe 1:300 und 1:400 (weiterhin der kleinste, bei dem das Stockwerk
+  auf A4 quer passt).
+- Kopf- und Fusszeile des Browsers (Datum, Adresse der Seite) fallen weg; das Blatt hat Titel, Massstab und Datum
+  selbst.
+- Fehler behoben: Unter dem Blatt erschien beim Drucken mit Hintergrundgrafiken der graue Hintergrund der Seite.
+- Technisch: `@page` ohne Rand (dann druckt der Browser keine Kopf- und Fusszeile), den Rand von 10 mm gibt das Blatt.
+
 ## Interne Notiz öffentlich machen (bestätigt am 25.11.2026)
 
 - Eine eigene interne Notiz lässt sich nachträglich öffentlich machen, ebenso lange, wie man sie bearbeiten kann: die

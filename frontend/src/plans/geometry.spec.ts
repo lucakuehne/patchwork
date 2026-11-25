@@ -92,6 +92,9 @@ describe('Geometrie der Pläne', () => {
     expect(printScale(36, 20)).toBe(200);
     expect(printScale(10, 6)).toBe(50);
     expect(printScale(120, 60)).toBe(500);
+    // Zwischenmassstäbe: 50 × 45 m braucht mehr als 1:250, passt auf 1:300; 100 × 60 m auf 1:400
+    expect(printScale(50, 45)).toBe(300);
+    expect(printScale(100, 60)).toBe(400);
   });
 
   it('Name des neuen Stockwerks, doppelte Namen, Zahlen mit Komma', () => {

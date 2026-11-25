@@ -821,7 +821,8 @@ export function niceLength(meters: number): number {
 /** Druck auf A4 quer: kleinster üblicher Massstab, bei dem das Stockwerk auf die Seite passt (277 × 170 mm) */
 export function printScale(widthMeters: number, heightMeters: number): number {
   const needed = Math.max((widthMeters * 1000) / 277, (heightMeters * 1000) / 170);
-  return [20, 50, 100, 200, 250, 500, 1000, 2000].find((s) => s >= needed) ?? 5000;
+  // Seit 25.11.2026 auch 1:300 und 1:400, damit grössere Stockwerke die Seite besser füllen
+  return [20, 50, 100, 200, 250, 300, 400, 500, 1000, 2000].find((s) => s >= needed) ?? 5000;
 }
 
 /** Schriftgrösse des Namens in Metern: passt in die Breite der Fläche */
