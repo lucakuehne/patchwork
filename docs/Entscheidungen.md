@@ -753,6 +753,24 @@ automatisch gesetzt.
 - Wände sind deckend gefüllt; wo sie übereinander liegen, wird es nicht dunkler (Fehler behoben am 25.11.2026).
 - Technisch: `angleSnap`, `rayHitsSegment` und `wallDirectionsAt` in `plans/geometry.ts`.
 
+### Zweiflüglige Türen, Rückgängig und Wiederholen (bestätigt am 25.11.2026)
+
+- **Zweiflüglige Türen** auch mit ungleichen Flügeln: Breite je Flügel in cm (z.B. 90 und 40), die Gesamtbreite ergibt
+  sich; «Flügel tauschen» legt den breiten Flügel auf die andere Seite. Vorgabe beim Setzen 80 + 80 cm; die Felder
+  stehen oben beim Werkzeug und rechts bei der gewählten Tür. Beide Flügel gehen zur selben Seite auf, «Aufschlag
+  wechseln» gilt für beide.
+- **Rückgängig und Wiederholen** beim Bearbeiten: zwei Knöpfe neben «Verwerfen», dazu Ctrl+Z bzw. Ctrl+Y oder
+  Ctrl+Shift+Z. Ein Schritt ist eine abgeschlossene Änderung (Form zeichnen, Ziehen, Löschen, «Wände entlang …», Plan
+  hochladen, Massstab setzen); eine Eingabe rechts (Name, Dicke …) ist ein Schritt, nicht jeder Buchstabe. Auswahl und
+  Zoom sind keine Schritte. Bis 100 Schritte; nach «Speichern» oder «Verwerfen» beginnt der Verlauf neu.
+- Details (bestätigt am 25.11.2026):
+  - Die Knöpfe zeigen Pfeile (↶ ↷), beim Darüberfahren «Rückgängig (Ctrl+Z)» bzw. «Wiederholen (Ctrl+Y)».
+  - In einem Textfeld macht Ctrl+Z wie gewohnt das Tippen rückgängig, nicht den Plan.
+  - Rückgängig beendet ein laufendes Zeichnen von Wänden; nach einer neuen Änderung geht Wiederholen nicht mehr.
+- Technisch: Eine Öffnung hat optional `leaf` (Breite des ersten Flügels; ohne Angabe gleich breit), ohne Migration. Der
+  Verlauf im Editor hält Kopien des Entwurfs; beim Ziehen und in Feldern entsteht der Schritt beim Loslassen bzw.
+  Verlassen des Felds.
+
 ## Typ wählen und Typ korrigiert (bestätigt am 16.11.2026)
 
 - Anlass: Der Typ wird beim Einordnen im Eingang immer wieder falsch zugewiesen, in beide Richtungen. Umgesetzt werden

@@ -1147,6 +1147,8 @@ export interface PlanOpening {
   kind: PlanOpeningKind;
   hinge: 'start' | 'end';
   side: 'left' | 'right';
+  /** Zweiflüglige Tür: Breite des ersten Flügels (am Anfang der Öffnung); ohne Angabe sind beide gleich breit */
+  leaf?: number;
 }
 export interface PlanLabel {
   id: string;

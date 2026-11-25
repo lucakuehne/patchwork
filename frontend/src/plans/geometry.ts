@@ -696,7 +696,7 @@ export function openingFrame(o: Pick<PlanOpening, 'wallId' | 'offset'>, walls: P
 }
 
 /** Zeichnung einer Tür oder eines Fensters: Lücke in der Wand, Türblätter mit Bogen, Linien des Fensters */
-export function openingDrawing(o: Pick<PlanOpening, 'width' | 'kind' | 'hinge' | 'side'>, f: OpeningFrame, hitHalf = 0) {
+export function openingDrawing(o: Pick<PlanOpening, 'width' | 'kind' | 'hinge' | 'side' | 'leaf'>, f: OpeningFrame, hitHalf = 0) {
   const at = (along: number, across: number): PlanPoint => [f.c[0] + f.u[0] * along + f.n[0] * across, f.c[1] + f.u[1] * along + f.n[1] * across];
   const h = o.width / 2;
   const half = f.t / 2;
@@ -719,12 +719,20 @@ export function openingDrawing(o: Pick<PlanOpening, 'width' | 'kind' | 'hinge' |
     const start = o.hinge === 'start' ? -h : h;
     leaf(start, -start, o.width);
   } else if (o.kind === 'double') {
-    leaf(-h, 0, h);
-    leaf(h, 0, h);
+    // Zwei Flügel, auch verschieden breit: sie treffen sich dort, wo der erste aufhört
+    const first = doubleLeaves(o)[0];
+    leaf(-h, -h + first, first);
+    leaf(h, -h + first, o.width - first);
   } else if (o.kind === 'window') {
     lines.push([at(-h, -half), at(h, -half)], [at(-h, half), at(h, half)], [at(-h, 0), at(h, 0)], [at(-h, -half), at(-h, half)], [at(h, -half), at(h, half)]);
   }
   return { gap, hit, leaves, arcs, lines };
+}
+
+/** Breiten der beiden Flügel einer zweiflügligen Tür; ohne Angabe gleich breit */
+export function doubleLeaves(o: Pick<PlanOpening, 'width' | 'leaf'>): [number, number] {
+  const first = Math.min(o.width - 0.01, Math.max(0.01, o.leaf ?? o.width / 2));
+  return [first, Number((o.width - first).toFixed(6))];
 }
 
 /** Nächste Wand zu einem Punkt (bis maxDistance neben ihr): für Türen und Fenster */

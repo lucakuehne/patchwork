@@ -54,6 +54,8 @@ export interface PlanOpening {
   kind: OpeningKind;
   hinge: 'start' | 'end';
   side: 'left' | 'right';
+  /** Zweiflüglige Tür: Breite des ersten Flügels (am Anfang der Öffnung); ohne Angabe sind beide gleich breit */
+  leaf?: number;
 }
 
 /** Toleranz beim Prüfen, ob etwas im Umriss liegt: 1 cm */

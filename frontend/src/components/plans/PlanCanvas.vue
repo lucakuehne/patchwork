@@ -316,6 +316,8 @@ function setEnd(ref: EndRef, p: PlanPoint) {
 function onPointerDown(e: PointerEvent) {
   if (e.button !== 0 || !content.value) return;
   free = e.altKey;
+  // Ziehen wird ein Schritt beim Loslassen (Rückgängig)
+  if (editor.editing.value) editor.hold(true);
   const p = toWorld(e);
   const target = e.target as Element;
   const edit = editor.editing.value;
@@ -562,10 +564,15 @@ function onPointerMove(e: PointerEvent) {
   }
   if (state.tool === 'door' || state.tool === 'window') {
     const kind = state.tool === 'window' ? 'window' : state.options.doorKind;
-    const width = state.options.widths[kind];
+    // Zweiflüglig: zusammen so breit wie beide Flügel
+    const leaves = state.options.leaves;
+    const width = kind === 'double' ? Number((leaves[0] + leaves[1]).toFixed(6)) : state.options.widths[kind];
     const hit = d ? nearestWall(p, d.walls, 12 / px.value) : null;
     const offset = hit ? placeOnSegment(hit.along, hit.length, width, step()) : null;
-    state.openingPreview = hit && offset !== null ? { wallId: hit.wall.id, offset, width, kind, hinge: 'start', side: 'left' } : null;
+    state.openingPreview =
+      hit && offset !== null
+        ? { wallId: hit.wall.id, offset, width, kind, hinge: 'start', side: 'left', ...(kind === 'double' ? { leaf: leaves[0] } : {}) }
+        : null;
     return;
   }
   const waiting = (l: { a: PlanPoint; b?: PlanPoint } | null) => !!l?.a && !l.b;
@@ -587,6 +594,8 @@ function onPointerUp() {
   drag = null;
   panning.value = false;
   if (dr) state.snapHint = null;
+  // Nach allem, was das Loslassen noch ändert (unten), ein Schritt
+  window.setTimeout(() => editor.editing.value && editor.hold(false), 0);
   const d = state.draft;
   if (dr?.kind === 'pan' && !dr.moved) editor.select(dr.areaId ? 'area' : null, dr.areaId ?? undefined);
   if (dr?.kind === 'vertex' && d) commitShape(dr.shape, dr.id, dr.before);
@@ -666,6 +675,13 @@ function onKey(e: KeyboardEvent) {
     return;
   }
   if (typing || !editor.editing.value) return;
+  // Rückgängig: Ctrl+Z, Wiederholen: Ctrl+Y bzw. Ctrl+Shift+Z
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) {
+    e.preventDefault();
+    if (e.key.toLowerCase() === 'y' || e.shiftKey) editor.redo();
+    else editor.undo();
+    return;
+  }
   if (e.key === 'Enter' && drawing) {
     e.preventDefault();
     finishDrawing();

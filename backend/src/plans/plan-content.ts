@@ -76,6 +76,8 @@ const openingSchema = z.object({
   kind: z.enum(OPENING_KINDS),
   hinge: z.enum(['start', 'end']).default('start'),
   side: z.enum(['left', 'right']).default('left'),
+  /** Zweiflüglige Tür mit ungleichen Flügeln: Breite des ersten Flügels (Entscheid vom 25.11.2026) */
+  leaf: z.number().finite().positive().optional(),
 });
 
 const labelSchema = z.object({
@@ -132,6 +134,9 @@ export const floorContentSchema = z
       const length = wallLength(wall);
       if (o.offset - o.width / 2 < -0.01 || o.offset + o.width / 2 > length + 0.01) {
         issue(`${o.kind === 'window' ? 'Ein Fenster' : 'Eine Tür'} ist breiter als ihre Wand`);
+      }
+      if (o.kind === 'double' && o.leaf !== undefined && (o.leaf < 0.1 - 1e-9 || o.leaf > o.width - 0.1 + 1e-9)) {
+        issue('Ein Flügel einer zweiflügligen Tür ist schmaler als 10 cm');
       }
     }
 

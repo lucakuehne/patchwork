@@ -2325,6 +2325,23 @@ await step('plaene', async () => {
   await page.mouse.click(...(await at(0.27, 0.45)));
   await page.locator('.details h2', { hasText: 'Tür' }).waitFor();
   await page.getByRole('button', { name: 'Aufschlag wechseln' }).click();
+  // Zweiflüglige Tür mit ungleichen Flügeln (90 + 40 cm) in der rechten Wand von Säntis
+  await tool('Tür').click();
+  await page.locator('.options').getByRole('button', { name: 'Zweiflüglig', exact: true }).click();
+  await page.getByLabel('Breite des ersten Flügels in cm').fill('90');
+  await page.getByLabel('Breite des zweiten Flügels in cm').fill('40');
+  await page.mouse.move(...(await at(0.4, 0.3)));
+  await page.locator('.stage .opening.preview').waitFor({ state: 'attached' });
+  await page.mouse.click(...(await at(0.4, 0.3)));
+  await page.locator('.details h2', { hasText: 'Zweiflüglige Tür' }).waitFor();
+  if ((await page.locator('#plan-opening-leaf1').inputValue()) !== '90' || (await page.locator('#plan-opening-leaf2').inputValue()) !== '40') {
+    throw new Error('Flügel nicht 90 + 40 cm');
+  }
+  const radii = await page.locator('.stage .opening.selected path.swing').evaluateAll((paths) => paths.map((p) => p.getAttribute('d').split(' ')[4]));
+  if (radii.join(',') !== '0.9,0.4') throw new Error(`Bögen der Flügel: ${radii.join(', ')}`);
+  await page.getByRole('button', { name: 'Flügel tauschen' }).click();
+  if ((await page.locator('#plan-opening-leaf1').inputValue()) !== '40') throw new Error('Flügel nicht getauscht');
+
   await tool('Fenster').click();
   await page.mouse.move(...(await at(0.3, 0.15)));
   await page.mouse.click(...(await at(0.3, 0.15)));
@@ -2347,6 +2364,18 @@ await step('plaene', async () => {
     return Math.min(...walls.filter((w) => w.top <= pillar.bottom && w.bottom >= pillar.top).map((w) => Math.abs(w.left - pillar.right)));
   });
   if (!(gap < 1.5)) throw new Error(`Säule nicht an die Wand angedockt: ${gap} px Abstand`);
+
+  // Rückgängig und Wiederholen: Knöpfe und Tasten
+  const pillarCount = () => page.locator('.stage g.pillar').count();
+  const pillarsBefore = await pillarCount();
+  await page.getByRole('button', { name: 'Rückgängig' }).click();
+  if ((await pillarCount()) !== pillarsBefore - 1) throw new Error('Rückgängig nimmt die Säule nicht weg');
+  await page.getByRole('button', { name: 'Wiederholen' }).click();
+  if ((await pillarCount()) !== pillarsBefore) throw new Error('Wiederholen bringt die Säule nicht zurück');
+  await page.keyboard.press('Control+z');
+  if ((await pillarCount()) !== pillarsBefore - 1) throw new Error('Ctrl+Z nimmt die Säule nicht weg');
+  await page.keyboard.press('Control+y');
+  if ((await pillarCount()) !== pillarsBefore) throw new Error('Ctrl+Y bringt die Säule nicht zurück');
 
   // Raster: 5 cm, nah herangezoomt 1 cm
   const gridInfo = page.locator('.stage .grid-info');
@@ -2406,7 +2435,7 @@ await step('plaene', async () => {
   await tree.locator('.node.floor', { hasText: '1. OG' }).locator('.count', { hasText: '2 Räume' }).waitFor();
   await page.getByRole('button', { name: '← Zum Stockwerk' }).click();
   const facts = await page.locator('.details .facts').innerText();
-  for (const text of ['Umriss', 'Räume', 'Gang/Flur', '6 Wände', '1 Tür', '1 Fenster', '2 Säulen']) {
+  for (const text of ['Umriss', 'Räume', 'Gang/Flur', '6 Wände', '2 Türen', '1 Fenster', '2 Säulen']) {
     if (!facts.includes(text)) throw new Error(`Angaben ohne «${text}»: ${facts}`);
   }
   await shot('137-plaene-bauteile');

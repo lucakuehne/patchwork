@@ -105,6 +105,9 @@ describe('Inhalt eines Stockwerks', () => {
     expect(message({ walls, openings: [opening({ wallId: crypto.randomUUID() })] })).toBe('Eine Tür gehört zu keiner Wand');
     expect(message({ walls, openings: [opening({ wallId: w2.id, offset: 3.8, width: 1.2, kind: 'window' })] })).toBe('Ein Fenster ist breiter als ihre Wand');
     expect(message({ walls, openings: [opening({ kind: 'garage' })] })).toBeDefined();
+    // Zweiflüglig mit ungleichen Flügeln: 90 + 40 cm; ein Flügel unter 10 cm geht nicht
+    expect(message({ walls, openings: [opening({ kind: 'double', width: 1.3, leaf: 0.9 })] })).toBeUndefined();
+    expect(message({ walls, openings: [opening({ kind: 'double', width: 1.3, leaf: 1.25 })] })).toBe('Ein Flügel einer zweiflügligen Tür ist schmaler als 10 cm');
   });
 
   it('Wände: gerade Stücke mit Dicke in Grenzen, Lage mittig oder bündig', () => {

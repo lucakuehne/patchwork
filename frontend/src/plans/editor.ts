@@ -1,4 +1,4 @@
-import { computed, reactive } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { api } from '../api';
 import { useToast } from '../stores/toast';
 import type {
@@ -124,6 +124,8 @@ export function usePlanEditor() {
       pillarSize: DEFAULT_PILLAR_SIZE,
       doorKind: 'door' as Exclude<PlanOpeningKind, 'window'>,
       widths: { ...OPENING_DEFAULT_WIDTH } as Record<PlanOpeningKind, number>,
+      /** Zweiflüglige Tür: Breite der beiden Flügel (zusammen die Breite der Tür) */
+      leaves: [0.8, 0.8] as [number, number],
     },
     /** Tür oder Fenster unter dem Zeiger, bevor man klickt */
     openingPreview: null as OpeningDraft | null,
@@ -142,6 +144,11 @@ export function usePlanEditor() {
     saveError: '',
     /** Fläche löschen: Rückfrage offen */
     confirmDelete: false,
+    /**
+     * Rückgängig und Wiederholen (Entscheid vom 25.11.2026): Anzahl Schritte; «pending»: eine Änderung, die noch kein
+     * Schritt ist (z.B. beim Ziehen oder Tippen); «holding»: Schritt erst beim Loslassen bzw. Verlassen des Felds
+     */
+    history: { undo: 0, redo: 0, pending: false, holding: false },
   });
 
   const editing = computed(() => state.draft !== null);
@@ -187,13 +194,98 @@ export function usePlanEditor() {
     state.confirmDelete = false;
   }
 
+  /* ---------- Rückgängig und Wiederholen ---------- */
+
+  /** Bis so viele Schritte; nach «Speichern» oder «Verwerfen» beginnt der Verlauf neu */
+  const MAX_HISTORY = 100;
+  const history = { past: [] as FloorContent[], future: [] as FloorContent[], base: null as FloorContent | null };
+  /** Bilder neuer Pläne (Adressen im Browser): erst freigeben, wenn kein Schritt sie mehr braucht */
+  const planUrls = new Set<string>();
+
+  function syncHistory() {
+    state.history.undo = history.past.length;
+    state.history.redo = history.future.length;
+  }
+  function resetHistory() {
+    history.past = [];
+    history.future = [];
+    history.base = state.draft ? clone(state.draft) : null;
+    state.history.pending = false;
+    state.history.holding = false;
+    syncHistory();
+  }
+  function releasePlanUrls() {
+    for (const url of planUrls) URL.revokeObjectURL(url);
+    planUrls.clear();
+  }
+
+  /** Änderungen seit dem letzten Schritt als einen Schritt festhalten */
+  function commitHistory() {
+    const d = state.draft;
+    const base = history.base;
+    state.history.pending = false;
+    if (!d || !base || fingerprint(d) === fingerprint(base)) return;
+    history.past.push(base);
+    if (history.past.length > MAX_HISTORY) history.past.shift();
+    history.base = clone(d);
+    history.future = [];
+    syncHistory();
+  }
+  let commitTimer: ReturnType<typeof setTimeout> | undefined;
+  // Jede Änderung am Entwurf wird zum Schritt, ausser beim Ziehen oder Tippen: dann erst beim Loslassen
+  watch(
+    () => state.draft,
+    () => {
+      if (!state.draft || !history.base) return;
+      state.history.pending = true;
+      clearTimeout(commitTimer);
+      commitTimer = setTimeout(() => {
+        if (!state.history.holding) commitHistory();
+      }, 0);
+    },
+    { deep: true },
+  );
+  /** Beim Ziehen bzw. in einem Feld: Schritt erst beim Loslassen */
+  function hold(on: boolean) {
+    state.history.holding = on;
+    if (!on) commitHistory();
+  }
+  function restore(snapshot: FloorContent) {
+    resetTools();
+    state.draft = clone(snapshot);
+    if (state.selection && !exists(state.selection, state.draft)) state.selection = null;
+    state.confirmDelete = false;
+    syncHistory();
+  }
+  function undo() {
+    if (!state.draft) return;
+    commitHistory();
+    const previous = history.past.pop();
+    if (!previous || !history.base) return;
+    history.future.push(history.base);
+    history.base = previous;
+    restore(previous);
+  }
+  function redo() {
+    if (!state.draft) return;
+    commitHistory();
+    const next = history.future.pop();
+    if (!next || !history.base) return;
+    history.past.push(history.base);
+    history.base = next;
+    restore(next);
+  }
+  const canUndo = computed(() => state.history.undo > 0 || state.history.pending);
+  const canRedo = computed(() => state.history.redo > 0);
+
   function show(floor: PlanFloor) {
-    if (state.draft?.plan?.file) URL.revokeObjectURL(state.draft.plan.url);
+    releasePlanUrls();
     state.floor = floor;
     state.draft = null;
     state.selection = null;
     state.saveError = '';
     resetTools();
+    resetHistory();
   }
 
   function startEdit() {
@@ -201,6 +293,7 @@ export function usePlanEditor() {
     state.draft = clone(state.floor);
     state.saveError = '';
     resetTools();
+    resetHistory();
   }
 
   /** Gibt es die Auswahl (noch)? */
@@ -213,8 +306,9 @@ export function usePlanEditor() {
   }
 
   function discard() {
-    if (state.draft?.plan?.file) URL.revokeObjectURL(state.draft.plan.url);
+    releasePlanUrls();
     state.draft = null;
+    resetHistory();
     state.saveError = '';
     if (state.selection && !exists(state.selection, content.value)) state.selection = null;
     resetTools();
@@ -572,9 +666,10 @@ export function usePlanEditor() {
   function setPlanImage(file: Blob, widthPx: number, heightPx: number) {
     const d = state.draft;
     if (!d) return;
-    if (d.plan?.file) URL.revokeObjectURL(d.plan.url);
     const width = d.outline ? Math.max(bounds.value?.w ?? 30, 10) : 30;
-    d.plan = { url: URL.createObjectURL(file), widthPx, heightPx, metersPerPx: width / widthPx, x: 0, y: 0, calibrated: false, file };
+    const url = URL.createObjectURL(file);
+    planUrls.add(url);
+    d.plan = { url, widthPx, heightPx, metersPerPx: width / widthPx, x: 0, y: 0, calibrated: false, file };
     state.layers.plan = true;
     resetTools();
     state.tool = 'scale';
@@ -583,7 +678,6 @@ export function usePlanEditor() {
   function removePlan() {
     const d = state.draft;
     if (!d) return;
-    if (d.plan?.file) URL.revokeObjectURL(d.plan.url);
     d.plan = null;
     if (state.tool === 'scale') resetTools();
   }
@@ -617,6 +711,11 @@ export function usePlanEditor() {
     outlineDeletable,
     problems,
     resetTools,
+    hold,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     show,
     startEdit,
     discard,

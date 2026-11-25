@@ -15,6 +15,7 @@ import {
   ALONG_SIDE_LABELS,
   OPENING_LABELS,
   areaTitle,
+  doubleLeaves,
   bbox,
   dist,
   duplicateNames,
@@ -490,6 +491,62 @@ watch(
   () => (openingTooWide.value = false),
 );
 const isDoor = computed(() => opening.value?.kind === 'door' || opening.value?.kind === 'double');
+/**
+ * Zweiflüglige Tür: Breite je Flügel (Entscheid vom 25.11.2026); zusammen die Breite der Tür. Passt sie nicht mehr in
+ * die Wand, bleibt sie, wie sie war.
+ */
+function leafField(index: 0 | 1) {
+  return computed({
+    get: () => (opening.value ? Math.round(doubleLeaves(opening.value)[index] * 100) : 0),
+    set: (v: number | string) => {
+      const o = opening.value;
+      const d = state.draft;
+      const m = Number(v) / 100;
+      if (!o || !d || !(m >= 0.1 && m <= 5)) return;
+      const leaves = doubleLeaves(o);
+      leaves[index] = m;
+      const width = Number((leaves[0] + leaves[1]).toFixed(6));
+      const f = openingFrame(o, d.walls);
+      if (!f) return;
+      openingTooWide.value = width > f.len + 1e-9;
+      if (openingTooWide.value) return;
+      o.width = width;
+      o.leaf = leaves[0];
+      o.offset = Math.min(f.len - width / 2, Math.max(width / 2, o.offset));
+    },
+  });
+}
+const leaf1Cm = leafField(0);
+const leaf2Cm = leafField(1);
+function swapLeaves() {
+  const o = opening.value;
+  if (o) o.leaf = doubleLeaves(o)[1];
+}
+// Andere Art: die Breite der Flügel gilt nur bei zweiflügligen Türen
+watch(
+  () => opening.value?.kind,
+  (kind) => {
+    if (opening.value && kind !== 'double' && opening.value.leaf !== undefined) delete opening.value.leaf;
+  },
+);
+/** Flügel beim Setzen einer zweiflügligen Tür */
+const optionLeafCm = (index: 0 | 1) =>
+  cmField(
+    () => state.options.leaves[index],
+    (m) => {
+      state.options.leaves[index] = m;
+      state.options.widths.double = Number((state.options.leaves[0] + state.options.leaves[1]).toFixed(6));
+    },
+    10,
+    500,
+  );
+const optionLeaf1Cm = optionLeafCm(0);
+const optionLeaf2Cm = optionLeafCm(1);
+/** In einem Feld rechts: die Eingabe wird ein Schritt, wenn man das Feld verlässt */
+function onDetailsFocus(e: FocusEvent, on: boolean) {
+  const t = e.target as HTMLElement | null;
+  if (editing.value && t && ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) editor.hold(on);
+}
 
 const label = computed(() => editor.selectedLabel.value);
 
@@ -554,6 +611,10 @@ function print() {
               </div>
             </details>
             <template v-if="editing">
+              <div class="history" role="group" aria-label="Rückgängig und Wiederholen">
+                <button class="btn btn-sm" type="button" title="Rückgängig (Ctrl+Z)" aria-label="Rückgängig" :disabled="!editor.canUndo.value" @click="editor.undo()">↶</button>
+                <button class="btn btn-sm" type="button" title="Wiederholen (Ctrl+Y)" aria-label="Wiederholen" :disabled="!editor.canRedo.value" @click="editor.redo()">↷</button>
+              </div>
               <span v-if="editor.dirty.value" class="unsaved">Ungespeicherte Änderungen</span>
               <button class="btn btn-sm" type="button" @click="discardEdit">Verwerfen</button>
               <button class="btn btn-sm btn-primary" type="button" :disabled="state.saving" @click="saveFloor">Speichern</button>
@@ -600,7 +661,14 @@ function print() {
                   {{ k.label }}
                 </button>
               </div>
-              <label class="opt">
+              <label v-if="state.options.doorKind === 'double'" class="opt">
+                Flügel
+                <input v-model.number="optionLeaf1Cm" class="input input-sm num" type="number" min="10" max="500" aria-label="Breite des ersten Flügels in cm" />
+                +
+                <input v-model.number="optionLeaf2Cm" class="input input-sm num" type="number" min="10" max="500" aria-label="Breite des zweiten Flügels in cm" />
+                cm
+              </label>
+              <label v-else class="opt">
                 Breite <input v-model.number="doorWidthCm" class="input input-sm num" type="number" min="20" max="1000" aria-label="Breite der Tür in cm" /> cm
               </label>
             </template>
@@ -629,7 +697,7 @@ function print() {
         </div>
       </section>
 
-      <aside v-if="floor && content" class="card details" aria-label="Angaben">
+      <aside v-if="floor && content" class="card details" aria-label="Angaben" @focusin="onDetailsFocus($event, true)" @focusout="onDetailsFocus($event, false)">
         <!-- Massstab setzen -->
         <template v-if="state.tool === 'scale' && measuredLength !== null">
           <h2>Massstab setzen</h2>
@@ -818,15 +886,30 @@ function print() {
               <option v-for="(text, k) in OPENING_LABELS" :key="k" :value="k">{{ text }}</option>
             </select>
           </div>
-          <div class="field">
+          <template v-if="opening.kind === 'double'">
+            <div class="field-row">
+              <div class="field">
+                <label for="plan-opening-leaf1">Flügel 1 in cm</label>
+                <input id="plan-opening-leaf1" v-model.number="leaf1Cm" class="input" type="number" min="10" max="500" />
+              </div>
+              <div class="field">
+                <label for="plan-opening-leaf2">Flügel 2 in cm</label>
+                <input id="plan-opening-leaf2" v-model.number="leaf2Cm" class="input" type="number" min="10" max="500" />
+              </div>
+            </div>
+            <span class="hint">Zusammen {{ Math.round(opening.width * 100) }} cm.</span>
+            <span v-if="openingTooWide" class="error-text small">So breit ist diese Wand nicht.</span>
+          </template>
+          <div v-else class="field">
             <label for="plan-opening-width">Breite in cm</label>
             <input id="plan-opening-width" v-model.number="openingWidthCm" class="input" type="number" min="20" max="1000" />
-            <span v-if="openingTooWide" class="error-text small">So breit ist dieses Wandstück nicht.</span>
+            <span v-if="openingTooWide" class="error-text small">So breit ist diese Wand nicht.</span>
           </div>
           <div v-if="isDoor" class="row">
             <button v-if="opening.kind === 'door'" class="btn btn-sm" type="button" @click="opening.hinge = opening.hinge === 'start' ? 'end' : 'start'">
               Anschlag wechseln
             </button>
+            <button v-if="opening.kind === 'double'" class="btn btn-sm" type="button" @click="swapLeaves">Flügel tauschen</button>
             <button class="btn btn-sm" type="button" @click="opening.side = opening.side === 'left' ? 'right' : 'left'">Aufschlag wechseln</button>
           </div>
           <span class="hint">Ziehen verschiebt sie entlang der Wand oder in eine andere Wand.</span>
@@ -1067,6 +1150,15 @@ function print() {
   padding: 10px 12px;
   min-width: 200px;
   box-shadow: var(--shadow-md, 0 6px 20px rgb(0 0 0 / 0.12));
+}
+.history {
+  display: inline-flex;
+  gap: 4px;
+}
+.history .btn {
+  min-width: 32px;
+  font-size: 15px;
+  line-height: 1;
 }
 .unsaved {
   font-size: 12px;

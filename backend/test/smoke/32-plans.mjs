@@ -145,8 +145,14 @@ await step('Pläne: Umriss umschliesst alles, Flächen nach Art, Wände, Säulen
     openings: [
       { id: uuid(), wallId: outer[0].id, offset: 12, width: 1.6, kind: 'double', hinge: 'start', side: 'right' },
       { id: uuid(), wallId: outer[1].id, offset: 4, width: 1.2, kind: 'window' },
+      // Zweiflüglig mit ungleichen Flügeln: 90 + 40 cm
+      { id: uuid(), wallId: outer[2].id, offset: 6, width: 1.3, kind: 'double', hinge: 'start', side: 'left', leaf: 0.9 },
     ],
   };
+  assert.match(
+    (await saveContent(og, { ...content, openings: [{ ...content.openings[2], leaf: 1.25 }] }, { expect: [400] })).message,
+    /schmaler als 10 cm/,
+  );
   // Tür in einer unbekannten Wand oder breiter als ihre Wand
   assert.match((await saveContent(og, { ...content, openings: [{ ...content.openings[0], wallId: uuid() }] }, { expect: [400] })).message, /keiner Wand/);
   assert.match((await saveContent(og, { ...content, openings: [{ ...content.openings[0], offset: 19.5 }] }, { expect: [400] })).message, /breiter als ihre Wand/);
@@ -166,6 +172,7 @@ await step('Pläne: Umriss umschliesst alles, Flächen nach Art, Wände, Säulen
   assert.deepEqual(floor.walls, [...outer, { ...inner, align: 'center' }], 'Wände als gerade Stücke, Lage mittig als Vorgabe');
   assert.deepEqual(floor.pillars, content.pillars);
   assert.deepEqual(floor.openings[1], { ...content.openings[1], hinge: 'start', side: 'left' }, 'Vorgaben für Fenster');
+  assert.equal(floor.openings[2].leaf, 0.9, 'Breite des ersten Flügels');
   // Suche: Flächen mit Namen, mit Art; der Baum zählt nur Räume
   const hit = (await api('GET', `/plans/search?q=${encodeURIComponent(`treppe ost ${RUN}`)}`))[0];
   assert.deepEqual([hit.kind, hit.floorId, hit.description], ['stairs', og, 'bis ins 3. OG']);
