@@ -292,6 +292,16 @@ export class ItemsController {
     await this.items.editNote(user, id, body.body);
   }
 
+  /** Eigene interne Notiz öffentlich machen, solange sie sich bearbeiten lässt (Entscheid vom 25.11.2026) */
+  @Audit('items', 'Interne Notiz öffentlich gemacht', { target: 'entry' })
+  @Post('entries/:id/publish')
+  @HttpCode(204)
+  async publishNote(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    const [entry] = await this.db.select({ itemId: entries.itemId }).from(entries).where(eq(entries.id, id)).limit(1);
+    if (entry) await this.areas.assertItem(user, entry.itemId);
+    await this.items.publishNote(user, id);
+  }
+
   /** Zeit einer internen Notiz anpassen, nur Admins (Entscheid vom 27.10.2026) */
   @Audit('items', 'Zeit einer internen Notiz angepasst', { target: 'entry' })
   @Patch('entries/:id/time')

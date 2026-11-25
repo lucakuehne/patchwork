@@ -74,6 +74,29 @@ await step('Eigene interne Notiz kurz nach dem Erfassen bearbeiten', async () =>
   await loginAs('ada@test.local', 'geheim-geheim');
 });
 
+await step('Eigene interne Notiz öffentlich machen: wird zur Antwort an ihrer Stelle, Mail an Melderin und Beteiligte', async () => {
+  await loginAs('ada@test.local', 'geheim-geheim');
+  const text = `Doch öffentlich ${RUN}`;
+  const f = new FormData();
+  f.append('kind', 'note');
+  f.append('body', text);
+  await api('POST', `/items/${itemNo}/entries`, f);
+  const note = (await detail(itemNo)).entries.find((e) => e.body === text);
+  assert.equal(note.kind, 'note');
+  // Nur eigene Notizen
+  await loginAs(IVAN, 'geheim-geheim');
+  assert.match((await api('POST', `/entries/${note.id}/publish`, undefined, { expect: [403] })).message, /Nur eigene Notizen/);
+  await loginAs('ada@test.local', 'geheim-geheim');
+  await api('POST', `/entries/${note.id}/publish`);
+  const published = (await detail(itemNo)).entries.find((e) => e.id === note.id);
+  assert.deepEqual([published.kind, published.createdAt], ['reply', note.createdAt], 'Antwort an ihrer Stelle');
+  await waitForMail(ANNA, (m) => m.text.includes(text), 'öffentlich gemachte Notiz an die Melderin');
+  // Eine Antwort lässt sich nicht nochmals öffentlich machen
+  assert.match((await api('POST', `/entries/${note.id}/publish`, undefined, { expect: [403] })).message, /Nur interne Notizen/);
+  const { entries } = await api('GET', '/admin/audit-log?area=items&limit=30');
+  assert.ok(entries.some((e) => e.action === 'Interne Notiz öffentlich gemacht'), 'im Aktionsprotokoll');
+});
+
 await step('Admin passt die Zeit einer internen Notiz an: auch fremde, nicht in die Zukunft, Notiz rückt an die neue Stelle', async () => {
   // Notiz von Ivan, ein Admin setzt sie zwei Tage zurück (z.B. ein früheres Telefonat)
   await loginAs(IVAN, 'geheim-geheim');

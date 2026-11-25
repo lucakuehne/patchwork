@@ -37,6 +37,25 @@ export function noteEditRefusal(
 }
 
 /**
+ * Notiz öffentlich machen (Entscheid vom 25.11.2026): unter denselben Bedingungen wie Bearbeiten, also nur eigene, in
+ * Patchwork erfasste interne Notizen in den ersten Minuten. Gibt den Grund zurück, falls nicht.
+ */
+export function notePublishRefusal(
+  entry: Parameters<typeof noteEditRefusal>[0],
+  actorId: string,
+  now: Date,
+): { reason: 'kind' | 'author' | 'expired'; message: string } | null {
+  const refusal = noteEditRefusal(entry, actorId, now);
+  if (!refusal) return null;
+  const message = {
+    kind: 'Nur interne Notizen aus Patchwork lassen sich öffentlich machen',
+    author: 'Nur eigene Notizen lassen sich öffentlich machen',
+    expired: `Notizen lassen sich nur in den ersten ${NOTE_EDIT_MINUTES} Minuten öffentlich machen`,
+  }[refusal.reason];
+  return { reason: refusal.reason, message };
+}
+
+/**
  * Zeit einer internen Notiz anpassen (nur Admins, Entscheid vom 27.10.2026): alle internen Notizen, auch per Mail
  * eingegangene, jederzeit; die neue Zeit darf in der Vergangenheit liegen, auch vor der Erfassung des Vorgangs, aber
  * nicht in der Zukunft. Gibt den Grund zurück, falls nicht.

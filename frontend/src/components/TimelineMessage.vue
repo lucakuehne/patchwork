@@ -5,6 +5,7 @@ import { formatDateTime, itemRef } from '../format';
 import { DEFAULT_PREFIX, type ItemKey } from '../item-ref';
 import { renderMailHtml, renderMarkdown } from '../markdown';
 import { deliveryMark } from '../outgoing';
+import { useConfirm } from '../stores/confirm';
 import { useSession } from '../stores/session';
 import { useToast } from '../stores/toast';
 import { authorName, NOTE_EDIT_MINUTES } from '../timeline';
@@ -113,6 +114,28 @@ function startEdit() {
   editing.value = true;
 }
 
+/** Eigene Notiz öffentlich machen, solange «Bearbeiten» geht (Entscheid vom 25.11.2026): wird zur Antwort mit Mail */
+const confirm = useConfirm();
+const publishing = ref(false);
+async function publish() {
+  const ok = await confirm.ask({
+    title: 'Notiz öffentlich machen?',
+    message: 'Der Melder und die Beteiligten erhalten sie per Mail.',
+    confirmLabel: 'Öffentlich machen',
+  });
+  if (!ok) return;
+  publishing.value = true;
+  try {
+    await api.post(`/entries/${props.entry.id}/publish`);
+    toast.success('Notiz öffentlich gemacht');
+    emit('changed');
+  } catch (err) {
+    toast.error(err);
+  } finally {
+    publishing.value = false;
+  }
+}
+
 async function save() {
   if (!draft.value.trim()) {
     error.value = 'Der Text ist leer';
@@ -159,6 +182,16 @@ async function save() {
           @click="startEdit"
         >
           Bearbeiten
+        </button>
+        <button
+          v-if="canEdit && !editing"
+          class="link-btn small"
+          type="button"
+          :disabled="publishing"
+          :title="`Wird zur öffentlichen Antwort mit Mail an Melder und Beteiligte; möglich bis ${formatDateTime(new Date(editDeadline).toISOString())}`"
+          @click="publish"
+        >
+          Öffentlich machen
         </button>
         <button v-if="canChangeTime && !editing" class="link-btn small" type="button" @click="showTime = true">Zeit anpassen</button>
         <button v-if="entry.originalMessageId" class="link-btn small" type="button" @click="showOriginal = true">

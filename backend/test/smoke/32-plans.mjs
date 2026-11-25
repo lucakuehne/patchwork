@@ -173,6 +173,13 @@ await step('Pläne: Umriss umschliesst alles, Flächen nach Art, Wände, Säulen
   assert.deepEqual(floor.pillars, content.pillars);
   assert.deepEqual(floor.openings[1], { ...content.openings[1], hinge: 'start', side: 'left' }, 'Vorgaben für Fenster');
   assert.equal(floor.openings[2].leaf, 0.9, 'Breite des ersten Flügels');
+  // Ebenen: Vorgabe alle sichtbar, gespeichert für alle
+  assert.deepEqual(floor.layers, { plan: true, areas: true, structure: true, labels: true }, 'Ebenen: Vorgabe');
+  const layers = { plan: false, areas: true, structure: false, labels: true };
+  await saveContent(og, { ...editable(floor), layers });
+  floor = await api('GET', `/plans/floors/${og}`);
+  assert.deepEqual(floor.layers, layers, 'Ebenen gespeichert');
+  await saveContent(og, { ...editable(floor), layers: { ...layers, plan: 'ja' } }, { expect: [400] });
   // Suche: Flächen mit Namen, mit Art; der Baum zählt nur Räume
   const hit = (await api('GET', `/plans/search?q=${encodeURIComponent(`treppe ost ${RUN}`)}`))[0];
   assert.deepEqual([hit.kind, hit.floorId, hit.description], ['stairs', og, 'bis ins 3. OG']);

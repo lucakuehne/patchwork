@@ -770,7 +770,7 @@ watch(
       <PlanDrawing
         v-if="content"
         :content="content"
-        :layers="state.layers"
+        :layers="editor.layers.value"
         uid="screen"
         :editing="editor.editing.value"
         :selection="state.selection"

@@ -58,6 +58,15 @@ export interface PlanOpening {
   leaf?: number;
 }
 
+/** Ebenen eines Stockwerks (Entscheid vom 25.11.2026): was beim Ansehen und Drucken sichtbar ist, für alle */
+export interface PlanLayers {
+  plan: boolean;
+  areas: boolean;
+  structure: boolean;
+  labels: boolean;
+}
+export const DEFAULT_LAYERS: PlanLayers = { plan: true, areas: true, structure: true, labels: true };
+
 /** Toleranz beim Prüfen, ob etwas im Umriss liegt: 1 cm */
 export const INSIDE_TOLERANCE = 0.01;
 

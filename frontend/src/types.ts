@@ -1179,7 +1179,16 @@ export interface PlanFloor {
   openings: PlanOpening[];
   labels: PlanLabel[];
   plan: PlanBackground | null;
+  /** Sichtbare Ebenen, gespeichert für alle (Entscheid vom 25.11.2026) */
+  layers: PlanLayers;
   contentUpdatedAt: string;
+}
+/** Ebenen eines Stockwerks; der Umriss ist immer sichtbar */
+export interface PlanLayers {
+  plan: boolean;
+  areas: boolean;
+  structure: boolean;
+  labels: boolean;
 }
 export interface PlanSearchHit {
   id: string;

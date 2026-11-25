@@ -603,11 +603,14 @@ function print() {
             <details class="layers">
               <summary class="btn btn-sm">Ebenen</summary>
               <div class="layers-menu card">
-                <label v-if="content.plan" class="checkbox small"><input v-model="state.layers.plan" type="checkbox" /> Plan</label>
-                <label class="checkbox small"><input v-model="state.layers.areas" type="checkbox" /> Flächen</label>
-                <label class="checkbox small"><input v-model="state.layers.structure" type="checkbox" /> Bauteile</label>
-                <label class="checkbox small"><input v-model="state.layers.labels" type="checkbox" /> Beschriftungen</label>
-                <span class="hint">Der Umriss ist immer sichtbar. Gilt auch für den Druck.</span>
+                <label v-if="content.plan" class="checkbox small"><input v-model="editor.layers.value.plan" type="checkbox" /> Plan</label>
+                <label class="checkbox small"><input v-model="editor.layers.value.areas" type="checkbox" /> Flächen</label>
+                <label class="checkbox small"><input v-model="editor.layers.value.structure" type="checkbox" /> Bauteile</label>
+                <label class="checkbox small"><input v-model="editor.layers.value.labels" type="checkbox" /> Beschriftungen</label>
+                <span class="hint">
+                  Der Umriss ist immer sichtbar. Gilt auch für den Druck.
+                  {{ editing ? 'Wird mit «Speichern» für alle gespeichert.' : 'Nur vorübergehend; für alle speichern geht beim Bearbeiten.' }}
+                </span>
               </div>
             </details>
             <template v-if="editing">
@@ -957,7 +960,7 @@ function print() {
       </aside>
     </div>
 
-    <PlanPrint v-if="floor && content && editor.bounds.value" :title="path" :content="content" :bounds="editor.bounds.value" :layers="state.layers" />
+    <PlanPrint v-if="floor && content && editor.bounds.value" :title="path" :content="content" :bounds="editor.bounds.value" :layers="editor.layers.value" />
     <PlanPdfDialog v-if="pdfChoice" :pdf="pdfChoice.pdf" :file-name="pdfChoice.name" @choose="usePdfPage(pdfChoice.pdf, $event)" @close="pdfChoice.pdf.close(); pdfChoice = null" />
     <ModalDialog v-if="leaveDialog" title="Ungespeicherte Änderungen" @close="closeLeave(false)">
       <p class="leave-text">Das Stockwerk «{{ floor?.name }}» hat ungespeicherte Änderungen. Speichern oder verwerfen?</p>

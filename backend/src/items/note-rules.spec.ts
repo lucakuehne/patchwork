@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { noteEditRefusal, noteTimeRefusal } from './note-rules';
+import { noteEditRefusal, notePublishRefusal, noteTimeRefusal } from './note-rules';
 
 const created = new Date('2026-10-15T10:00:00Z');
 const note = { kind: 'note' as const, authorId: 'ada', meta: null, createdAt: created };
 const after = (minutes: number) => new Date(created.getTime() + minutes * 60_000);
+
+describe('notePublishRefusal', () => {
+  it('wie Bearbeiten: eigene interne Notiz in den ersten Minuten', () => {
+    expect(notePublishRefusal(note, 'ada', after(2))).toBeNull();
+    expect(notePublishRefusal(note, 'ivan', after(2))?.message).toBe('Nur eigene Notizen lassen sich öffentlich machen');
+    expect(notePublishRefusal(note, 'ada', after(9))?.message).toBe('Notizen lassen sich nur in den ersten 3 Minuten öffentlich machen');
+    expect(notePublishRefusal({ ...note, kind: 'reply' }, 'ada', after(1))?.reason).toBe('kind');
+    expect(notePublishRefusal({ ...note, meta: { source: 'mail' } }, 'ada', after(1))?.reason).toBe('kind');
+  });
+});
 
 describe('noteEditRefusal', () => {
   it('erlaubt die eigene Notiz in den ersten Minuten', () => {

@@ -172,6 +172,14 @@ export function floorBounds(c: FloorShapes, plan: PlanBackground | null): Box {
   return points.length ? bbox(points) : EMPTY_FLOOR;
 }
 
+/**
+ * Ausschnitt «Ganzes Stockwerk» (Entscheid vom 25.11.2026): der Umriss mit allem darin, ohne den Plan im Hintergrund;
+ * ohne Umriss wie bisher mit dem Plan
+ */
+export function focusBounds(c: FloorShapes, plan: PlanBackground | null): Box {
+  return c.outline ? floorBounds(c, null) : floorBounds(c, plan);
+}
+
 /** Ecken, an denen gezeichnete Ecken einrasten: Umriss, Flächen und Enden der Wände (ohne die gerade bearbeiteten) */
 export function snapCandidates(c: FloorShapes, except: PlanPoint[][] = []): PlanPoint[] {
   const lists = [c.outline ?? [], ...c.areas.map((a) => a.points), ...c.walls.map((w) => [w.a, w.b])];

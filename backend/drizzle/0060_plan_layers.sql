@@ -1,0 +1,1 @@
+ALTER TABLE "plan_floors" ADD COLUMN "layers" jsonb DEFAULT '{"plan":true,"areas":true,"structure":true,"labels":true}'::jsonb NOT NULL;

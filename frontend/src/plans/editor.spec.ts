@@ -16,6 +16,7 @@ const floor = (): PlanFloor => ({
   openings: [],
   labels: [],
   plan: null,
+  layers: { plan: true, areas: true, structure: true, labels: true },
   contentUpdatedAt: '2026-11-25T10:00:00.000Z',
 });
 /** Der Verlauf hält Änderungen nach einem Augenblick als Schritt fest */
@@ -86,6 +87,29 @@ describe('Rückgängig und Wiederholen', () => {
     e.startEdit();
     await settle();
     expect([e.canUndo.value, e.state.history.undo, e.state.history.redo]).toEqual([false, 0, 0]);
+  });
+});
+
+describe('Ebenen und Ausschnitt', () => {
+  it('beim Ansehen vorübergehend, beim Bearbeiten im Entwurf (gespeichert für alle)', () => {
+    const e = usePlanEditor();
+    e.show({ ...floor(), layers: { plan: false, areas: true, structure: true, labels: true } });
+    expect(e.layers.value.plan).toBe(false);
+    e.layers.value.areas = false;
+    expect([e.state.layers.areas, e.dirty.value]).toEqual([false, false]);
+    e.startEdit();
+    expect(e.layers.value.areas).toBe(true);
+    e.layers.value.labels = false;
+    expect([e.state.draft!.layers.labels, e.dirty.value]).toEqual([false, true]);
+  });
+
+  it('ganzes Stockwerk: der Umriss, ohne Umriss der Plan', () => {
+    const e = usePlanEditor();
+    const plan = { url: '', widthPx: 1000, heightPx: 500, metersPerPx: 0.05, x: -10, y: -5, calibrated: true };
+    e.show({ ...floor(), plan });
+    expect(e.bounds.value).toEqual({ x: -10, y: -5, w: 50, h: 25 });
+    e.show({ ...floor(), plan, outline: rectPoints(0, 0, 12, 8) });
+    expect(e.bounds.value).toEqual({ x: 0, y: 0, w: 12, h: 8 });
   });
 });
 

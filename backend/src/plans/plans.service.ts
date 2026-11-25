@@ -87,6 +87,7 @@ export class PlansService {
       walls: f.walls,
       pillars: f.pillars,
       openings: f.openings,
+      layers: f.layers,
       labels,
       plan: planOf(f),
       contentUpdatedAt: f.contentUpdatedAt,
@@ -274,6 +275,7 @@ export class PlansService {
             walls: content.walls,
             pillars: content.pillars,
             openings: content.openings,
+            layers: content.layers,
             contentUpdatedAt: new Date(),
           })
           .where(eq(planFloors.id, id))

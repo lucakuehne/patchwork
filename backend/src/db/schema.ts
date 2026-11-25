@@ -20,7 +20,7 @@ import {
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
-import type { PlanOpening, PlanPillar, PlanWall } from '../plans/plan-shapes';
+import type { PlanLayers, PlanOpening, PlanPillar, PlanWall } from '../plans/plan-shapes';
 import type { Recurrence, WeekendRule } from '../recurring/recurrence';
 import type { RuleActions, RuleGroup, RuleSchedule, RuleTrigger } from '../rules/rule-types';
 import type { StoredPreferences } from '../users/preferences';
@@ -877,6 +877,8 @@ export const planFloors = pgTable(
     walls: jsonb('walls').$type<PlanWall[]>().notNull().default([]),
     pillars: jsonb('pillars').$type<PlanPillar[]>().notNull().default([]),
     openings: jsonb('openings').$type<PlanOpening[]>().notNull().default([]),
+    /** Sichtbare Ebenen (Plan, Flächen, Bauteile, Beschriftungen), gespeichert für alle */
+    layers: jsonb('layers').$type<PlanLayers>().notNull().default({ plan: true, areas: true, structure: true, labels: true }),
     createdAt: createdAt(),
     /** Letztes Speichern des Inhalts (Umriss, Flächen, Bauteile, Beschriftungen, Plan); erkennt gleichzeitiges Bearbeiten */
     contentUpdatedAt: timestamp('content_updated_at', { withTimezone: true }).notNull().defaultNow(),

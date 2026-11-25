@@ -230,6 +230,30 @@ await step('im-namen', async () => {
   console.log('Bild 86-im-namen-verlauf');
 });
 
+await step('notiz-oeffentlich', async () => {
+  // Eigene Notiz öffentlich machen (Entscheid vom 25.11.2026): Rückfrage, danach eine öffentliche Antwort an ihrer Stelle
+  await page.goto(`${BASE}/items/PW-1`);
+  await page.locator('.timeline').waitFor();
+  await page.getByRole('button', { name: 'Intern', exact: true }).click();
+  await page.locator('.composer .ProseMirror').click();
+  await page.keyboard.type('Doch für den Melder bestimmt');
+  await sendKeepingStatus();
+  const note = page.locator('.timeline .message.note', { hasText: 'Doch für den Melder bestimmt' });
+  await note.waitFor();
+  await note.getByRole('button', { name: 'Öffentlich machen' }).click();
+  const dialog = page.locator('.dialog', { hasText: 'Notiz öffentlich machen?' });
+  await dialog.waitFor();
+  await dialog.screenshot({ path: `${OUT}/87-notiz-oeffentlich-rueckfrage.png` });
+  console.log('Bild 87-notiz-oeffentlich-rueckfrage');
+  await dialog.getByRole('button', { name: 'Öffentlich machen' }).click();
+  await page.locator('.toast', { hasText: 'Notiz öffentlich gemacht' }).waitFor();
+  const reply = page.locator('.timeline .message.reply', { hasText: 'Doch für den Melder bestimmt' });
+  await reply.waitFor();
+  if (await reply.getByRole('button', { name: 'Öffentlich machen' }).count()) throw new Error('Antwort bietet «Öffentlich machen» an');
+  await reply.screenshot({ path: `${OUT}/88-notiz-oeffentlich-verlauf.png` });
+  console.log('Bild 88-notiz-oeffentlich-verlauf');
+});
+
 await step('kennung-im-text', async () => {
   // «PW-1» im Text wird zum Link; ein Klick öffnet den Vorgang in der App, ohne die Seite neu zu laden
   const other = (await api('GET', '/items?view=incidents')).data.items.find((i) => i.number !== 1);
@@ -2447,6 +2471,26 @@ await step('plaene', async () => {
   await page.locator('.layers-menu').getByLabel('Bauteile').check();
   await page.locator('.layers summary').click();
 
+  // Ebenen gelten für alle: im Bearbeiten umschalten und speichern, nach dem Neuladen ebenso
+  await page.getByRole('button', { name: 'Bearbeiten' }).click();
+  await page.locator('.layers summary').click();
+  await page.locator('.layers-menu').getByLabel('Flächen').uncheck();
+  await page.locator('.layers summary').click();
+  await page.locator('.unsaved', { hasText: 'Ungespeicherte Änderungen' }).waitFor();
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await toast('Gespeichert');
+  await page.reload();
+  await page.locator('.stage polygon.outline').waitFor();
+  if (await page.locator('.stage polygon.area').count()) throw new Error('Ebene «Flächen» nicht für alle gespeichert');
+  await page.getByRole('button', { name: 'Bearbeiten' }).click();
+  await page.locator('.layers summary').click();
+  await page.locator('.layers-menu').getByLabel('Flächen').check();
+  await page.locator('.layers summary').click();
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.locator('.stage polygon.area').first().waitFor();
+  // «Ganzes Stockwerk zeigen»: der Umriss füllt die Ansicht (der Plan im Hintergrund kommt erst unten dazu)
+  await page.getByRole('button', { name: 'Ganzes Stockwerk zeigen' }).click();
+
   // Plan aus einem PDF mit zwei Seiten: Seite wählen, Massstab setzen
   await page.getByRole('button', { name: 'Bearbeiten' }).click();
   await page.locator('#plan-file').setInputFiles({ name: 'Grundriss.pdf', mimeType: 'application/pdf', buffer: makePdf(2) });
@@ -2465,6 +2509,14 @@ await step('plaene', async () => {
   await toast('Massstab gesetzt: 12,50 m');
   await page.getByRole('button', { name: 'Speichern' }).click();
   await toast('Gespeichert');
+  // Mit dem Plan im Hintergrund: «Ganzes Stockwerk zeigen» richtet sich nach dem Umriss
+  await page.getByRole('button', { name: 'Ganzes Stockwerk zeigen' }).click();
+  const fill = await page.evaluate(() => {
+    const stage = document.querySelector('.stage svg').getBoundingClientRect();
+    const outline = document.querySelector('.stage polygon.outline').getBoundingClientRect();
+    return Math.max(outline.width / stage.width, outline.height / stage.height);
+  });
+  if (!(fill > 0.7)) throw new Error(`Umriss füllt nur ${Math.round(fill * 100)} % der Ansicht`);
   await shot('131-plaene');
 
   // Suchen, auswählen, messen

@@ -43,7 +43,7 @@ import { duplicateRedirect } from './duplicates';
 import { imageRefs, replaceImages, TEXT_IMAGE_TYPES } from './inline-images';
 import { PRIORITY_LABELS, TYPE_LABELS } from './labels';
 import { mentionedIds } from './mentions';
-import { noteEditRefusal, noteTimeRefusal } from './note-rules';
+import { noteEditRefusal, notePublishRefusal, noteTimeRefusal } from './note-rules';
 import { byKey, HELPSPOT_PREFIX, itemRef, type ItemKey } from './item-ref';
 import { annotateReferences, referencedKeys, referenceMeta } from './references';
 import { closedAtAfter, moveTarget, newItemStatus, typeChangeStatus } from './status-change';
@@ -920,6 +920,37 @@ export class ItemsService {
       const before = new Set(mentionedIds(entry.body));
       const added = mentionedIds(text).filter((id) => !before.has(id));
       if (added.length) pending.push(() => this.notifications.mentioned(updated!, actor, added, 'note', text));
+    });
+    await this.flush(pending);
+  }
+
+  /**
+   * Eigene interne Notiz öffentlich machen (Entscheid vom 25.11.2026), solange sie sich bearbeiten lässt: Sie wird zur
+   * öffentlichen Antwort, mit Mail an Melder und Beteiligte wie beim Senden (auch im Testbetrieb dieselben Regeln). Der
+   * Status bleibt, im Verlauf bleibt sie an ihrer Stelle; Erwähnte und der Zuständige wissen schon von der Notiz.
+   */
+  async publishNote(actor: User, entryId: string): Promise<void> {
+    const pending: Pending = [];
+    await this.db.transaction(async (tx) => {
+      const [entry] = await tx.select().from(entries).where(eq(entries.id, entryId)).for('update').limit(1);
+      if (!entry) throw new NotFoundException('Eintrag nicht gefunden');
+      const refusal = notePublishRefusal(entry, actor.id, new Date());
+      if (refusal?.reason === 'expired') throw new BadRequestException(refusal.message);
+      if (refusal) throw new ForbiddenException(refusal.message);
+      const [item] = await tx.select().from(items).where(eq(items.id, entry.itemId)).for('update').limit(1);
+      if (!item) throw new NotFoundException('Vorgang nicht gefunden');
+      // Wer die Notiz geschrieben hat (auch im Namen eines anderen erfasst), antwortet
+      const [author] = entry.authorId === actor.id ? [actor] : await tx.select().from(users).where(eq(users.id, entry.authorId!)).limit(1);
+      if (!author) throw new NotFoundException('Verfasser nicht gefunden');
+      if (!(await this.mailboxes.forSending(item.mailboxId, tx))) {
+        const hasRecipients =
+          item.reporterId !== author.id || (await tx.select().from(participants).where(eq(participants.itemId, item.id)).limit(1)).length > 0;
+        if (hasRecipients) throw new BadRequestException('Es ist kein aktives Postfach für den Versand eingerichtet');
+      }
+      await tx.update(entries).set({ kind: 'reply' }).where(eq(entries.id, entry.id));
+      const [updated] = await tx.update(items).set({ updatedAt: new Date() }).where(eq(items.id, item.id)).returning();
+      const attachmentIds = (await tx.select({ id: attachments.id }).from(attachments).where(eq(attachments.entryId, entry.id))).map((a) => a.id);
+      pending.push(() => this.notifications.publicReply(updated!, author, entry.body, entry.id, attachmentIds));
     });
     await this.flush(pending);
   }

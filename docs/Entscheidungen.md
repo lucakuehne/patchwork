@@ -595,6 +595,22 @@ automatisch gesetzt.
   Beschreibung, Kommentare, Zuständig), nur mit kleinerer Schrift und weniger Abstand.
 - Beim Update erhalten «Backlog» und «Erledigt» der Aufgaben kleine Karten; neue Installationen ebenso.
 
+## Interne Notiz öffentlich machen (bestätigt am 25.11.2026)
+
+- Eine eigene interne Notiz lässt sich nachträglich öffentlich machen, ebenso lange, wie man sie bearbeiten kann: die
+  Person, die sie geschrieben hat (bzw. wer sie im Namen einer anderen Person erfasst hat), in den ersten 3 Minuten.
+  Der Knopf «Öffentlich machen» steht neben «Bearbeiten».
+- Die Notiz wird zu einer öffentlichen Antwort, als wäre sie so gesendet worden: Mail an Melder und Beteiligte (mit
+  Anhängen), sichtbar im Portal, zählt in den Auswertungen als Antwort, dieselben Regeln wie bei Antworten (auch im
+  Testbetrieb); Erwähnungen (@) stehen beim Melder als gewöhnlicher Text. Die Mail geht beim Öffentlichmachen weg, im
+  Verlauf bleibt die Nachricht an ihrer Stelle.
+- Der Status bleibt; wer ihn ändern will, ändert ihn wie gewohnt.
+- Vorher eine Rückfrage «Notiz öffentlich machen? Der Melder und die Beteiligten erhalten sie per Mail.» mit «Öffentlich
+  machen» und «Abbrechen».
+- Eine öffentliche Antwort lässt sich nicht wieder intern machen (die Mail ist schon weg).
+- Technisch: `POST /entries/:id/publish` (Aktionsprotokoll «Interne Notiz öffentlich gemacht»), Regeln in
+  `items/note-rules.ts` (`notePublishRefusal`); Erwähnte und Zuständige erhalten keine weitere Mail.
+
 ## Pläne (bestätigt am 20.11.2026)
 
 - Anlass: Man soll sehen, welcher Raum wo und auf welchem Stockwerk ist, und alle sollen ihn gleich nennen.
@@ -770,6 +786,18 @@ automatisch gesetzt.
 - Technisch: Eine Öffnung hat optional `leaf` (Breite des ersten Flügels; ohne Angabe gleich breit), ohne Migration. Der
   Verlauf im Editor hält Kopien des Entwurfs; beim Ziehen und in Feldern entsteht der Schritt beim Loslassen bzw.
   Verlassen des Felds.
+
+### Ebenen je Stockwerk, Ausschnitt nach dem Umriss (bestätigt am 25.11.2026)
+
+- **Ebenen je Stockwerk für alle:** Wer «Pläne bearbeiten» darf, stellt die Ebenen (Plan, Flächen, Bauteile,
+  Beschriftungen) im Bearbeiten ein; «Speichern» übernimmt sie für alle. Beim Ansehen kann jede Person sie
+  vorübergehend umschalten, ohne etwas zu speichern; beim nächsten Öffnen gilt wieder die gespeicherte Einstellung.
+- **Ganzes Stockwerk:** Der Knopf «Ganzes Stockwerk zeigen», die erste Ansicht beim Öffnen eines Stockwerks und der Druck
+  richten sich nach dem Umriss, nicht nach dem Plan im Hintergrund (im Druck wird der Plan ausserhalb abgeschnitten).
+  Ohne Umriss gilt wie bisher der Plan.
+- Technisch: Spalte `plan_floors.layers` (JSON, Vorgabe alle sichtbar, Migration 0060), gespeichert mit dem Inhalt; die
+  Umschaltung der Ebenen im Bearbeiten ist eine Änderung (ungespeichert, rückgängig machbar). `focusBounds` in
+  `plans/geometry.ts`.
 
 ## Typ wählen und Typ korrigiert (bestätigt am 16.11.2026)
 

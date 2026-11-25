@@ -7,6 +7,7 @@ import type {
   PlanBackground,
   PlanFloor,
   PlanLabel,
+  PlanLayers,
   PlanOpening,
   PlanOpeningKind,
   PlanPillar,
@@ -21,7 +22,7 @@ import {
   copyPoints,
   dist,
   duplicateNames,
-  floorBounds,
+  focusBounds,
   growOutline,
   normalizeRing,
   openingFrame,
@@ -59,14 +60,11 @@ export interface FloorContent {
   openings: PlanOpening[];
   labels: PlanLabel[];
   plan: EditablePlan | null;
+  /** Sichtbare Ebenen, gespeichert für alle mit «Speichern» */
+  layers: Layers;
 }
 /** Ebenen beim Ansehen und Drucken; der Umriss ist immer sichtbar */
-export interface Layers {
-  plan: boolean;
-  areas: boolean;
-  structure: boolean;
-  labels: boolean;
-}
+export type Layers = PlanLayers;
 export interface Line {
   a: PlanPoint;
   b?: PlanPoint;
@@ -90,6 +88,7 @@ const clone = (c: FloorContent): FloorContent => ({
   openings: c.openings.map((o) => ({ ...o })),
   labels: c.labels.map((l) => ({ ...l })),
   plan: c.plan ? { ...c.plan } : null,
+  layers: { ...c.layers },
 });
 /** Vergleich ohne das Bild selbst */
 const fingerprint = (c: FloorContent) =>
@@ -112,6 +111,7 @@ export function usePlanEditor() {
     cursor: null as PlanPoint | null,
     measure: null as Line | null,
     scaleLine: null as Line | null,
+    /** Ebenen beim Ansehen: zuerst die gespeicherten, vorübergehend umschaltbar (beim Bearbeiten gelten die des Entwurfs) */
     layers: { plan: true, areas: true, structure: true, labels: true } as Layers,
     /** Einstellungen der Werkzeuge; die zuletzt gewählten gelten für das nächste Element */
     options: {
@@ -154,7 +154,10 @@ export function usePlanEditor() {
   const editing = computed(() => state.draft !== null);
   const content = computed<FloorContent | null>(() => state.draft ?? state.floor);
   const dirty = computed(() => !!state.floor && !!state.draft && fingerprint(state.draft) !== fingerprint(state.floor));
-  const bounds = computed(() => (content.value ? floorBounds(content.value, content.value.plan) : null));
+  /** Ausschnitt «Ganzes Stockwerk»: der Umriss, ohne Umriss der Plan (auch für den Druck) */
+  const bounds = computed(() => (content.value ? focusBounds(content.value, content.value.plan) : null));
+  /** Sichtbare Ebenen: beim Bearbeiten die des Entwurfs (werden gespeichert), sonst die vorübergehenden */
+  const layers = computed<Layers>(() => state.draft?.layers ?? state.layers);
   const pick = <T extends { id: string }>(kind: PlanSelectionKind, list: (c: FloorContent) => T[]) =>
     computed<T | null>(() => (state.selection?.kind === kind && content.value ? (list(content.value).find((x) => x.id === state.selection!.id) ?? null) : null));
   const selectedArea = pick('area', (c) => c.areas);
@@ -284,6 +287,7 @@ export function usePlanEditor() {
     state.draft = null;
     state.selection = null;
     state.saveError = '';
+    state.layers = { ...floor.layers };
     resetTools();
     resetHistory();
   }
@@ -334,6 +338,7 @@ export function usePlanEditor() {
         pillars: draft.pillars,
         openings: draft.openings,
         labels: draft.labels.map((l) => ({ id: l.id, text: l.text.trim(), x: l.x, y: l.y })),
+        layers: draft.layers,
         plan: plan
           ? { replace: !!plan.file, widthPx: plan.widthPx, heightPx: plan.heightPx, metersPerPx: plan.metersPerPx, x: plan.x, y: plan.y, calibrated: plan.calibrated }
           : null,
@@ -670,7 +675,7 @@ export function usePlanEditor() {
     const url = URL.createObjectURL(file);
     planUrls.add(url);
     d.plan = { url, widthPx, heightPx, metersPerPx: width / widthPx, x: 0, y: 0, calibrated: false, file };
-    state.layers.plan = true;
+    d.layers.plan = true;
     resetTools();
     state.tool = 'scale';
   }
@@ -701,6 +706,7 @@ export function usePlanEditor() {
     content,
     dirty,
     bounds,
+    layers,
     selectedArea,
     selectedWall,
     selectedWalls,

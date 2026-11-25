@@ -107,6 +107,10 @@ export const floorContentSchema = z
     walls: z.array(wallSchema).max(2000).default([]),
     pillars: z.array(pillarSchema).max(1000).default([]),
     openings: z.array(openingSchema).max(2000).default([]),
+    /** Sichtbare Ebenen des Stockwerks, für alle (Entscheid vom 25.11.2026) */
+    layers: z
+      .object({ plan: z.boolean(), areas: z.boolean(), structure: z.boolean(), labels: z.boolean() })
+      .default({ plan: true, areas: true, structure: true, labels: true }),
     labels: z.array(labelSchema).max(1000),
     plan: planSchema.nullable(),
     /** Stand beim Laden: Hat inzwischen jemand anderes gespeichert, gilt das nicht einfach weiter */
