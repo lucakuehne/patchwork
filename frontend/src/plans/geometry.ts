@@ -818,11 +818,15 @@ export function niceLength(meters: number): number {
   return 1000;
 }
 
-/** Druck auf A4 quer: kleinster üblicher Massstab, bei dem das Stockwerk auf die Seite passt (277 × 170 mm) */
+/** Massstäbe beim Drucken: Vielfache davon */
+export const PRINT_SCALE_STEP = 50;
+
+/** Druck auf A4 quer: kleinster Massstab in 50er-Schritten, bei dem das Stockwerk auf die Seite passt (277 × 170 mm) */
 export function printScale(widthMeters: number, heightMeters: number): number {
   const needed = Math.max((widthMeters * 1000) / 277, (heightMeters * 1000) / 170);
-  // Seit 25.11.2026 auch 1:300 und 1:400, damit grössere Stockwerke die Seite besser füllen
-  return [20, 50, 100, 200, 250, 300, 400, 500, 1000, 2000].find((s) => s >= needed) ?? 5000;
+  // In 50er-Schritten (1:50, 1:100, 1:150 …), damit der Plan die Seite fast füllt und der Massstab rund bleibt
+  // (Entscheid vom 25.11.2026)
+  return Math.max(PRINT_SCALE_STEP, Math.ceil(needed / PRINT_SCALE_STEP - 1e-9) * PRINT_SCALE_STEP);
 }
 
 /** Schriftgrösse des Namens in Metern: passt in die Breite der Fläche */

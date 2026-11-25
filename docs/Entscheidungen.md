@@ -601,6 +601,8 @@ automatisch gesetzt.
   die Seite.
 - Beim Drucken gibt es zusätzlich die runden Massstäbe 1:300 und 1:400 (weiterhin der kleinste, bei dem das Stockwerk
   auf A4 quer passt).
+- Ergänzt am 25.11.2026 (der Plan war immer noch klein): Der Massstab geht in 50er-Schritten (1:50, 1:100, 1:150 …), der
+  kleinste, bei dem das Stockwerk auf A4 quer passt; nie kleiner als 1:50. Keine krummen Massstäbe wie 1:423.
 - Kopf- und Fusszeile des Browsers (Datum, Adresse der Seite) fallen weg; das Blatt hat Titel, Massstab und Datum
   selbst.
 - Fehler behoben: Unter dem Blatt erschien beim Drucken mit Hintergrundgrafiken der graue Hintergrund der Seite.

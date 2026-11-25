@@ -89,12 +89,16 @@ describe('Geometrie der Pläne', () => {
   it('Massstabsleiste und Druckmassstab auf A4 quer', () => {
     expect(niceLength(3.2)).toBe(5);
     expect(niceLength(0.3)).toBe(0.5);
-    expect(printScale(36, 20)).toBe(200);
+    // In 50er-Schritten: der kleinste, bei dem das Stockwerk auf 277 × 170 mm passt
+    expect(printScale(36, 20)).toBe(150);
     expect(printScale(10, 6)).toBe(50);
-    expect(printScale(120, 60)).toBe(500);
-    // Zwischenmassstäbe: 50 × 45 m braucht mehr als 1:250, passt auf 1:300; 100 × 60 m auf 1:400
+    expect(printScale(4, 2)).toBe(50);
+    expect(printScale(120, 60)).toBe(450);
     expect(printScale(50, 45)).toBe(300);
-    expect(printScale(100, 60)).toBe(400);
+    expect(printScale(70, 72)).toBe(450);
+    expect(printScale(85, 51)).toBe(350);
+    // Genau passend bleibt beim Schritt
+    expect(printScale(41.55, 10)).toBe(150);
   });
 
   it('Name des neuen Stockwerks, doppelte Namen, Zahlen mit Komma', () => {
